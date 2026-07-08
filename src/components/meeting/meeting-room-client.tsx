@@ -115,14 +115,22 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
     if (!chatInput.trim() || !activeMeeting) return;
 
     const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
+
+    let userId: string | null = null;
+
+    if (process.env.NEXT_PUBLIC_DISABLE_AUTH === "true") {
+      // Use fixed demo user ID — profile was seeded server-side by ensureDemoProfile()
+      userId = "00000000-0000-4000-8000-000000000001";
+    } else {
+      const { data: { user } } = await supabase.auth.getUser();
+      userId = user?.id ?? null;
+    }
+
+    if (!userId) return;
 
     await supabase.from("meeting_chat_messages").insert({
       meeting_id: activeMeeting.id,
-      user_id: user.id,
+      user_id: userId,
       content: chatInput.trim(),
     });
     setChatInput("");

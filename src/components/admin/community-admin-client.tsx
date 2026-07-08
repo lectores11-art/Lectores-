@@ -11,19 +11,26 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
   const [invites, setInvites] = useState<{ token: string; use_count: number; max_uses: number | null }[]>([]);
   const [newInviteUrl, setNewInviteUrl] = useState("");
   const [copied, setCopied] = useState(false);
+  const [inviteError, setInviteError] = useState("");
+  const [creatingInvite, setCreatingInvite] = useState(false);
 
   useEffect(() => {
     // Invites loaded on demand when created
   }, [slug]);
 
   async function createInvite() {
+    setCreatingInvite(true);
+    setInviteError("");
     const res = await fetch(`/api/c/${slug}/invites`, { method: "POST" });
     const data = await res.json();
-    if (data.invite) {
+    if (res.ok && data.invite) {
       const url = `${window.location.origin}/join/${data.invite.token}`;
       setNewInviteUrl(url);
       setInvites((prev) => [...prev, data.invite]);
+    } else {
+      setInviteError(data.error || "No se pudo generar el link. Intentá de nuevo.");
     }
+    setCreatingInvite(false);
   }
 
   function copyInvite() {
@@ -51,7 +58,10 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
             <p className="text-sm text-slate-600">
               Comparte este link con tus lectoras. Solo quienes tengan el link podrán unirse.
             </p>
-            <Button onClick={createInvite}>Generar nuevo link</Button>
+            <Button onClick={createInvite} disabled={creatingInvite}>
+              {creatingInvite ? "Generando..." : "Generar nuevo link"}
+            </Button>
+            {inviteError && <p className="text-sm text-red-500">{inviteError}</p>}
             {newInviteUrl && (
               <div className="flex gap-2">
                 <Input value={newInviteUrl} readOnly />
