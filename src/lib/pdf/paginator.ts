@@ -10,17 +10,43 @@ export interface TOCItem {
 
 const WORDS_PER_PAGE = 280;
 
+function buildParagraphs(fullText: string): string[] {
+  const normalized = fullText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  // Split into blocks separated by blank lines
+  const blocks = normalized.split(/\n[ \t]*\n/);
+
+  const paragraphs: string[] = [];
+  for (const block of blocks) {
+    const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (lines.length === 0) continue;
+
+    // Join wrapped lines within a paragraph. If a line ends with a hyphen,
+    // treat it as a word split across lines and glue without space.
+    let paragraph = "";
+    for (const line of lines) {
+      if (!paragraph) {
+        paragraph = line;
+      } else if (paragraph.endsWith("-")) {
+        paragraph = paragraph.slice(0, -1) + line;
+      } else {
+        paragraph += " " + line;
+      }
+    }
+    paragraphs.push(paragraph.trim());
+  }
+
+  return paragraphs;
+}
+
 export function paginateText(fullText: string): PaginatedPage[] {
-  const cleaned = fullText
-    .replace(/\r\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  const cleaned = fullText.trim();
 
   if (!cleaned) {
     return [{ pageNumber: 0, content: "Este libro no tiene contenido extraíble." }];
   }
 
-  const paragraphs = cleaned.split(/\n\n+/);
+  const paragraphs = buildParagraphs(cleaned);
   const pages: PaginatedPage[] = [];
   let currentPage = "";
   let pageNumber = 0;
@@ -83,13 +109,19 @@ export function extractTOC(pages: PaginatedPage[]): TOCItem[] {
 
 export async function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> {
   try {
-    // pdf-parse works natively in Node.js without worker configuration
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const pdfParseModule = (await import("pdf-parse")) as any;
-    const pdfParse: (buf: Buffer) => Promise<{ text: string }> =
-      pdfParseModule.default ?? pdfParseModule;
-    const result = await pdfParse(buffer);
-    return result.text || "";
+    // pdf-parse v2 API: new PDFParse({ data }).getText()
+    const { PDFParse } = await import("pdf-parse");
+    const parser = new PDFParse({ data: new Uint8Array(buffer) });
+    try {
+      const result = await parser.getText();
+      // Prefer per-page text (keeps page breaks) and fall back to combined text
+      if (result.pages && result.pages.length > 0) {
+        return result.pages.map((p) => p.text).join("\n\n");
+      }
+      return result.text || "";
+    } finally {
+      await parser.destroy();
+    }
   } catch (err) {
     console.error("extractTextFromPdfBuffer failed:", err);
     return "No se pudo extraer el texto del PDF. Verifica que el archivo contenga texto seleccionable.";
