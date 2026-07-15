@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { BookOpen } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { createClient } from "@/lib/supabase/client";
+import { InviteAuthForm } from "@/components/auth/invite-auth-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Community, Invite } from "@/lib/types/database";
 
@@ -14,12 +14,41 @@ export default function JoinPage({ params }: { params: Promise<{ token: string }
   const [community, setCommunity] = useState<Community | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [needsAuth, setNeedsAuth] = useState(false);
   const [joining, setJoining] = useState(false);
 
+  const runJoin = useCallback(
+    async (joinToken: string) => {
+      setJoining(true);
+      setError("");
+
+      const res = await fetch("/api/invites/join", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: joinToken }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "No se pudo unir a la comunidad.");
+        setJoining(false);
+        setNeedsAuth(false);
+        return;
+      }
+
+      router.push(`/c/${data.slug}/forum`);
+    },
+    [router]
+  );
+
   useEffect(() => {
-    async function loadInvite(t: string) {
+    let cancelled = false;
+
+    async function init(t: string) {
       const res = await fetch(`/api/invites/${t}`);
       const data = await res.json();
+
+      if (cancelled) return;
 
       if (!res.ok) {
         setError(data.error || "Invitación no válida o expirada");
@@ -35,34 +64,31 @@ export default function JoinPage({ params }: { params: Promise<{ token: string }
       }
 
       setCommunity(invite.community);
-      setLoading(false);
+
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (cancelled) return;
+
+      if (user) {
+        void runJoin(t);
+      } else {
+        setNeedsAuth(true);
+        setLoading(false);
+      }
     }
 
     params.then(({ token: t }) => {
       setToken(t);
-      void loadInvite(t);
-    });
-  }, [params]);
-
-  async function handleJoin() {
-    setJoining(true);
-    setError("");
-
-    const res = await fetch("/api/invites/join", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token }),
+      void init(t);
     });
 
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error || "Error al unirse");
-      setJoining(false);
-      return;
-    }
-
-    router.push(`/c/${data.slug}/forum`);
-  }
+    return () => {
+      cancelled = true;
+    };
+  }, [params, runJoin]);
 
   if (loading) {
     return (
@@ -92,15 +118,17 @@ export default function JoinPage({ params }: { params: Promise<{ token: string }
         </CardHeader>
         <CardContent className="space-y-4">
           {error && <p className="text-center text-sm text-red-500">{error}</p>}
-          {community && (
-            <>
-              <Button className="w-full" onClick={handleJoin} disabled={joining}>
-                {joining ? "Entrando..." : "Entrar a la comunidad"}
-              </Button>
-              <Button variant="outline" className="w-full" asChild>
-                <Link href={`/c/${community.slug}/forum`}>Entrar directo (modo demo)</Link>
-              </Button>
-            </>
+
+          {joining && (
+            <p className="text-center text-sm text-slate-500">Entrando a la comunidad...</p>
+          )}
+
+          {needsAuth && community && !joining && (
+            <InviteAuthForm
+              token={token}
+              communityName={community.name}
+              onAuthenticated={() => runJoin(token)}
+            />
           )}
         </CardContent>
       </Card>

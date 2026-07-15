@@ -15,7 +15,7 @@ export function LandingPage() {
           </div>
           <div className="flex items-center gap-3">
             <Button asChild>
-              <Link href="/dashboard">Entrar al panel</Link>
+              <Link href="/login">Iniciar sesión</Link>
             </Button>
           </div>
         </div>
@@ -33,12 +33,12 @@ export function LandingPage() {
           </p>
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             <Button size="lg" asChild>
-              <Link href="/dashboard">Entrar al panel</Link>
-            </Button>
-            <Button size="lg" variant="outline" asChild>
-              <Link href="/platform/admin">Crear primera comunidad</Link>
+              <Link href="/login">Iniciar sesión</Link>
             </Button>
           </div>
+          <p className="mt-4 text-sm text-slate-500">
+            El acceso es solo por invitación de tu comunidad.
+          </p>
         </div>
 
         <div className="mt-24 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">

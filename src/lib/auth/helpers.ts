@@ -1,17 +1,6 @@
-import { randomUUID } from "node:crypto";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Community, Membership, Profile } from "@/lib/types/database";
-
-const DEMO_PROFILE: Profile = {
-  id: "00000000-0000-4000-8000-000000000001",
-  email: "demo@lectores.local",
-  full_name: "Admin Demo",
-  avatar_url: null,
-  is_super_admin: true,
-  created_at: new Date(0).toISOString(),
-  updated_at: new Date(0).toISOString(),
-};
 
 function formatError(error: unknown): string {
   if (!error) return "Error desconocido";
@@ -64,59 +53,32 @@ async function ensureProfile(
   return userId;
 }
 
-async function createAuthUser(email: string) {
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+// Creates the community owner in Supabase Auth AND sends her an invite email
+// with a link to set her password. The email template must point to
+// /auth/confirm?token_hash=...&type=invite&next=/onboarding/set-password
+async function inviteOwnerByEmail(serviceClient: SupabaseClient, email: string) {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
-  if (!serviceKey || !supabaseUrl) {
-    throw new Error("Faltan variables de Supabase en .env.local");
-  }
-
-  const response = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
-    method: "POST",
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      email,
-      password: `Tmp-${randomUUID()}`,
-      email_confirm: true,
-      user_metadata: {
-        full_name: email.split("@")[0],
-      },
-    }),
+  const { data, error } = await serviceClient.auth.admin.inviteUserByEmail(email, {
+    redirectTo: `${appUrl}/auth/confirm?next=/onboarding/set-password`,
+    data: { full_name: email.split("@")[0] },
   });
 
-  const payload = (await response.json()) as {
-    id?: string;
-    msg?: string;
-    message?: string;
-    error_description?: string;
-  };
-
-  if (!response.ok) {
-    const authMessage =
-      payload.msg ||
-      payload.message ||
-      payload.error_description ||
-      `No se pudo crear usuario en Supabase Auth (HTTP ${response.status})`;
-
-    if (authMessage.toLowerCase().includes("database error creating new user")) {
+  if (error) {
+    const message = formatError(error);
+    if (message.toLowerCase().includes("database error")) {
       throw new Error(
         "Supabase no pudo crear el perfil automáticamente. Ejecutá en SQL Editor el archivo supabase/migrations/002_fix_auth_trigger.sql y volvé a intentar."
       );
     }
-
-    throw new Error(authMessage);
+    throw new Error(message);
   }
 
-  if (!payload.id) {
-    throw new Error("Supabase Auth no devolvió el ID del usuario");
+  if (!data.user?.id) {
+    throw new Error("Supabase Auth no devolvió el ID del usuario invitado");
   }
 
-  return payload.id;
+  return data.user.id;
 }
 
 async function findAuthUserIdByEmail(
@@ -162,7 +124,7 @@ export async function getOrCreateOwnerByEmail(email: string): Promise<string> {
   }
 
   try {
-    const userId = await createAuthUser(normalizedEmail);
+    const userId = await inviteOwnerByEmail(serviceClient, normalizedEmail);
     return ensureProfile(serviceClient, userId, normalizedEmail);
   } catch (error) {
     const message = formatError(error);
@@ -179,56 +141,7 @@ export async function getOrCreateOwnerByEmail(email: string): Promise<string> {
   }
 }
 
-let _demoProfileSeeded = false;
-
-async function ensureDemoProfile() {
-  if (_demoProfileSeeded) return;
-
-  const serviceClient = await createServiceClient();
-
-  const { data: existing } = await serviceClient
-    .from("profiles")
-    .select("id")
-    .eq("id", DEMO_PROFILE.id)
-    .maybeSingle();
-
-  if (existing) {
-    _demoProfileSeeded = true;
-    return;
-  }
-
-  // Create the auth user with the fixed demo UUID so FK profile→auth.users holds
-  const { error: authError } = await serviceClient.auth.admin.createUser({
-    id: DEMO_PROFILE.id,
-    email: DEMO_PROFILE.email,
-    email_confirm: true,
-    user_metadata: { full_name: DEMO_PROFILE.full_name },
-  });
-
-  if (authError && !authError.message.toLowerCase().includes("already")) {
-    console.error("ensureDemoProfile: no se pudo crear auth user:", authError.message);
-  }
-
-  const { error: profileError } = await serviceClient.from("profiles").upsert({
-    id: DEMO_PROFILE.id,
-    email: DEMO_PROFILE.email,
-    full_name: DEMO_PROFILE.full_name,
-    is_super_admin: true,
-  });
-
-  if (profileError) {
-    console.error("ensureDemoProfile: no se pudo upsert profile:", profileError.message);
-  } else {
-    _demoProfileSeeded = true;
-  }
-}
-
 export async function getCurrentUser() {
-  if (process.env.NEXT_PUBLIC_DISABLE_AUTH === "true") {
-    await ensureDemoProfile();
-    return DEMO_PROFILE;
-  }
-
   const supabase = await createClient();
   const {
     data: { user },
@@ -239,9 +152,28 @@ export async function getCurrentUser() {
     .from("profiles")
     .select("*")
     .eq("id", user.id)
+    .maybeSingle();
+
+  if (profile) return profile as Profile;
+
+  // Session exists but no profile row (e.g. the auth trigger did not run).
+  // Create it from the auth user so we never leave an authenticated user
+  // without a profile (which would cause a /login <-> /dashboard redirect loop).
+  const serviceClient = await createServiceClient();
+  const { data: created } = await serviceClient
+    .from("profiles")
+    .upsert(
+      {
+        id: user.id,
+        email: user.email ?? "",
+        full_name: (user.user_metadata?.full_name as string | undefined) ?? null,
+      },
+      { onConflict: "id" }
+    )
+    .select("*")
     .single();
 
-  return profile as Profile | null;
+  return (created as Profile | null) ?? null;
 }
 
 export async function getMembership(communityId: string, userId: string) {
@@ -274,10 +206,6 @@ export async function requireCommunityAccess(slug: string) {
   const community = await getCommunityBySlug(slug);
   if (!community) return { user, community: null, membership: null };
 
-  if (process.env.NEXT_PUBLIC_DISABLE_AUTH === "true") {
-    return { user, community, membership: null };
-  }
-
   const membership = await getMembership(community.id, user.id);
   const hasAccess =
     user.is_super_admin ||
@@ -296,7 +224,7 @@ export async function isCommunityAdmin(
   userId: string,
   isSuperAdmin: boolean
 ) {
-  if (isSuperAdmin || process.env.NEXT_PUBLIC_DISABLE_AUTH === "true") {
+  if (isSuperAdmin) {
     return true;
   }
 

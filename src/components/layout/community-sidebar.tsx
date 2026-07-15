@@ -13,6 +13,7 @@ import {
   Video,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LogoutButton } from "@/components/auth/logout-button";
 import type { Community, Profile } from "@/lib/types/database";
 
 const navItems = [
@@ -107,13 +108,16 @@ export function CommunitySidebar({ community, user, isAdmin }: CommunitySidebarP
             <p className="truncate text-xs text-slate-500">{user.email}</p>
           </div>
         </div>
-        <Link
-          href="/dashboard"
-          className="mt-3 flex items-center gap-2 text-xs text-slate-500 hover:text-sky-600"
-        >
-          <LayoutDashboard className="h-3 w-3" />
-          Mis comunidades
-        </Link>
+        <div className="mt-3 flex items-center justify-between">
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-2 text-xs text-slate-500 hover:text-sky-600"
+          >
+            <LayoutDashboard className="h-3 w-3" />
+            Mis comunidades
+          </Link>
+          <LogoutButton />
+        </div>
       </div>
     </aside>
   );

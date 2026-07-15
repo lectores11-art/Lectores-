@@ -33,15 +33,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Comunidad no encontrada" }, { status: 404 });
     }
 
-    if (process.env.NEXT_PUBLIC_DISABLE_AUTH === "true") {
-      await serviceClient
-        .from("invites")
-        .update({ use_count: invite.use_count + 1 })
-        .eq("id", invite.id);
-
-      return NextResponse.json({ slug: invite.community.slug });
-    }
-
     const supabase = await createClient();
     const {
       data: { user },

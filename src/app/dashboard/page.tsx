@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { BookOpen, Plus } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth/helpers";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { LogoutButton } from "@/components/auth/logout-button";
 import type { Community, Membership } from "@/lib/types/database";
 
 export const dynamic = "force-dynamic";
@@ -12,15 +14,7 @@ export default async function DashboardPage() {
   const user = await getCurrentUser();
 
   if (!user) {
-    return (
-      <DashboardLayout user={{ full_name: "Visitante", email: "sin-login" }}>
-        <Card>
-          <CardContent className="py-12 text-center text-slate-500">
-            El inicio de sesión está desactivado temporalmente.
-          </CardContent>
-        </Card>
-      </DashboardLayout>
-    );
+    redirect("/login?redirect=/dashboard");
   }
 
   const supabase = await createClient();
@@ -103,7 +97,10 @@ function DashboardLayout({
             </div>
             <span className="font-semibold">Lectores</span>
           </div>
-          <p className="text-sm text-slate-600">{user.full_name || user.email}</p>
+          <div className="flex items-center gap-4">
+            <p className="text-sm text-slate-600">{user.full_name || user.email}</p>
+            <LogoutButton />
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>

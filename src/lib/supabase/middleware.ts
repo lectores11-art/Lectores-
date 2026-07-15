@@ -4,10 +4,6 @@ import { NextResponse, type NextRequest } from "next/server";
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
-  if (process.env.NEXT_PUBLIC_DISABLE_AUTH === "true") {
-    return supabaseResponse;
-  }
-
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -44,7 +40,8 @@ export async function updateSession(request: NextRequest) {
   const isAuthPage =
     pathname.startsWith("/login") ||
     pathname.startsWith("/register") ||
-    pathname.startsWith("/join");
+    pathname.startsWith("/join") ||
+    pathname.startsWith("/auth");
   const isPublicPage = pathname === "/" || isAuthPage;
 
   if (!user && !isPublicPage && !pathname.startsWith("/api")) {

@@ -12,15 +12,10 @@ export default async function CommunityLayout({
   const { slug } = await params;
   const { user, community, membership } = await requireCommunityAccess(slug);
 
-  if (!user) redirect("/login");
+  if (!user) redirect(`/login?redirect=/c/${slug}/forum`);
   if (!community) notFound();
-  if (
-    process.env.NEXT_PUBLIC_DISABLE_AUTH !== "true" &&
-    !membership &&
-    !user.is_super_admin &&
-    community.owner_id !== user.id
-  ) {
-    redirect(`/join?community=${slug}`);
+  if (!membership && !user.is_super_admin && community.owner_id !== user.id) {
+    redirect("/dashboard");
   }
 
   const admin = await isCommunityAdmin(community.id, user.id, user.is_super_admin);
