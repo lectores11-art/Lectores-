@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { BookOpen } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,6 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function LoginPage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const rawRedirect = searchParams.get("redirect") || "/dashboard";
   // Only allow internal, single-slash paths to avoid open-redirect attacks
@@ -28,20 +27,25 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
-    const supabase = createClient();
-    const { error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const supabase = createClient();
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    if (authError) {
-      setError(authError.message);
+      if (authError) {
+        setError(authError.message);
+        return;
+      }
+
+      // Hard navigation so production picks up auth cookies before SSR/middleware run.
+      window.location.assign(redirect);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al iniciar sesión");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    router.push(redirect);
-    router.refresh();
   }
 
   return (

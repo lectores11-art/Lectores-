@@ -159,21 +159,42 @@ export async function getCurrentUser() {
   // Session exists but no profile row (e.g. the auth trigger did not run).
   // Create it from the auth user so we never leave an authenticated user
   // without a profile (which would cause a /login <-> /dashboard redirect loop).
-  const serviceClient = await createServiceClient();
-  const { data: created } = await serviceClient
-    .from("profiles")
-    .upsert(
-      {
-        id: user.id,
-        email: user.email ?? "",
-        full_name: (user.user_metadata?.full_name as string | undefined) ?? null,
-      },
-      { onConflict: "id" }
-    )
-    .select("*")
-    .single();
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      const serviceClient = await createServiceClient();
+      const { data: created } = await serviceClient
+        .from("profiles")
+        .upsert(
+          {
+            id: user.id,
+            email: user.email ?? "",
+            full_name: (user.user_metadata?.full_name as string | undefined) ?? null,
+          },
+          { onConflict: "id" }
+        )
+        .select("*")
+        .single();
 
-  return (created as Profile | null) ?? null;
+      if (created) return created as Profile;
+    } catch (err) {
+      console.error("getCurrentUser: profile upsert failed:", err);
+    }
+  } else {
+    console.error(
+      "getCurrentUser: SUPABASE_SERVICE_ROLE_KEY missing — cannot create profile fallback"
+    );
+  }
+
+  // Last resort: never return null when auth session exists (prevents redirect loops).
+  return {
+    id: user.id,
+    email: user.email ?? "",
+    full_name: (user.user_metadata?.full_name as string | undefined) ?? null,
+    avatar_url: null,
+    is_super_admin: false,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  } as Profile;
 }
 
 export async function getMembership(communityId: string, userId: string) {
