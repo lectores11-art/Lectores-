@@ -19,18 +19,16 @@ Automation debe resumir estas reglas, no reinventarlas.
 | Propiedad | Tipo | Uso |
 |---|---|---|
 | `Entregables` | title | nombre de la tarea |
-| `Status` | status | `Not started` → `In progress` → (PR abierto, ver nota) → `Done`/`Revisado` |
+| `Status` | status | `Not started` → `In progress` → `En revicion` (PR abierto) → `Done`/`Revisado` (los pone el usuario al mergear) |
 | `Apto Agente` | checkbox | **único filtro de seguridad**. Si no está marcado, el agente nunca la toca. |
 | `Descripción / Criterios de aceptación` | texto | definition of done. Si está vacío o es ambiguo, tratar como bloqueada (ver abajo). |
 | `PR` | url | el agente completa el link al Pull Request abierto |
 | `Encargado` | person | no lo modifica el agente |
 
-> **Nota sobre "En revisión":** la API de Notion no permite crear opciones
-> nuevas de una propiedad `status` de forma programática. Mientras el usuario
-> no agregue manualmente esa opción desde la UI de Notion, el agente señaliza
-> "PR abierto, esperando merge" dejando `Status = "In progress"` **y** el
-> campo `PR` completo. Si en el futuro se agrega la opción "En revisión" a
-> mano en Notion, el agente debe empezar a usarla en su lugar.
+> **Ojo con el nombre exacto:** la opción de status se llama literalmente
+> `En revicion` (sin tilde, tal como quedó creada en Notion). Los valores de
+> `status` deben coincidir carácter por carácter, así que el agente debe usar
+> exactamente ese string y no "En revisión".
 
 ## Presupuesto por corrida
 
@@ -75,8 +73,9 @@ Automation debe resumir estas reglas, no reinventarlas.
    - Descripción: qué se hizo, por qué, cómo se probó (lint/build/tests), y
      link a la página de Notion de la tarea.
 8. **Actualizar Notion:** completar la propiedad `PR` con el link del Pull
-   Request. Dejar `Status = "In progress"` (ver nota sobre "En revisión"
-   arriba) hasta que el usuario mergee y lo pase a `Done` manualmente.
+   Request y pasar `Status` a `"En revicion"`. Ese estado significa "hay un
+   PR esperando que lo mergees" — el agente no lo toca más después de esto;
+   el usuario lo pasa a `Done` manualmente al mergear.
 9. Pasar a la siguiente tarea de la cola.
 
 ## Cuándo bloquear en vez de improvisar
