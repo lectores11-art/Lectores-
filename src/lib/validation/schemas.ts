@@ -62,7 +62,7 @@ export const meetingCreateSchema = z.object({
   title: z.string().trim().max(200).optional(),
   description: z.string().trim().max(2000).nullable().optional(),
   activeBookId: z.string().uuid().nullable().optional(),
-  scheduledAt: z.string().datetime().optional(),
+  scheduledAt: z.string().min(1).max(50).optional(),
 });
 
 export const meetingTokenSchema = z.object({
