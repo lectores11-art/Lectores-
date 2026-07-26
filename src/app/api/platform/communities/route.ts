@@ -3,21 +3,11 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getCurrentUser, getOrCreateOwnerByEmail } from "@/lib/auth/helpers";
 import { slugify } from "@/lib/utils";
 import { nanoid } from "nanoid";
-
-function apiError(error: unknown, fallback = "Error interno") {
-  if (typeof error === "string") return error;
-  if (error instanceof Error) return error.message || fallback;
-  if (typeof error === "object" && error !== null) {
-    const record = error as {
-      message?: string;
-      details?: string;
-      hint?: string;
-      code?: string;
-    };
-    return record.message || record.details || record.hint || record.code || fallback;
-  }
-  return fallback;
-}
+import {
+  internalErrorResponse,
+  parseJsonBody,
+  platformCommunityCreateSchema,
+} from "@/lib/validation";
 
 export async function POST(request: Request) {
   try {
@@ -26,12 +16,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { name, description, ownerEmail, monthlyPriceCents } = body;
-
-    if (!name || !ownerEmail) {
-      return NextResponse.json({ error: "Nombre y email de dueña requeridos" }, { status: 400 });
-    }
+    const bodyResult = await parseJsonBody(request, platformCommunityCreateSchema);
+    if ("error" in bodyResult) return bodyResult.error;
+    const { name, description, ownerEmail, monthlyPriceCents } = bodyResult.data;
 
     const serviceClient = await createServiceClient();
     const ownerId = await getOrCreateOwnerByEmail(ownerEmail);
@@ -52,7 +39,7 @@ export async function POST(request: Request) {
       .single();
 
     if (communityError) {
-      return NextResponse.json({ error: apiError(communityError) }, { status: 500 });
+      return internalErrorResponse("Error al crear comunidad:", communityError);
     }
 
     const { error: membershipError } = await serviceClient.from("memberships").insert({
@@ -65,7 +52,7 @@ export async function POST(request: Request) {
 
     if (membershipError) {
       await serviceClient.from("communities").delete().eq("id", community.id);
-      return NextResponse.json({ error: apiError(membershipError) }, { status: 500 });
+      return internalErrorResponse("Error al crear membresía:", membershipError);
     }
 
     const { data: invite, error: inviteError } = await serviceClient
@@ -78,13 +65,12 @@ export async function POST(request: Request) {
       .single();
 
     if (inviteError) {
-      return NextResponse.json({ error: apiError(inviteError) }, { status: 500 });
+      return internalErrorResponse("Error al crear invitación:", inviteError);
     }
 
     return NextResponse.json({ community, invite });
   } catch (err) {
-    console.error("POST /api/platform/communities failed:", err);
-    return NextResponse.json({ error: apiError(err) }, { status: 500 });
+    return internalErrorResponse("POST /api/platform/communities failed:", err);
   }
 }
 

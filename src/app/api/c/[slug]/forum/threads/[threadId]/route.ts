@@ -1,14 +1,29 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser, isCommunityAdmin } from "@/lib/auth/helpers";
+import {
+  forumPostCreateSchema,
+  forumThreadPatchSchema,
+  internalErrorResponse,
+  parseData,
+  parseJsonBody,
+  threadParamsSchema,
+} from "@/lib/validation";
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ slug: string; threadId: string }> }
 ) {
-  const { slug, threadId } = await params;
+  const paramsResult = parseData(threadParamsSchema, await params);
+  if ("error" in paramsResult) return paramsResult.error;
+  const { threadId } = paramsResult.data;
+
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+
+  const bodyResult = await parseJsonBody(request, forumThreadPatchSchema);
+  if ("error" in bodyResult) return bodyResult.error;
+  const body = bodyResult.data;
 
   const supabase = await createClient();
   const { data: thread } = await supabase
@@ -20,7 +35,6 @@ export async function PATCH(
   if (!thread) return NextResponse.json({ error: "Hilo no encontrado" }, { status: 404 });
 
   const admin = await isCommunityAdmin(thread.community_id, user.id, user.is_super_admin);
-  const body = await request.json();
 
   if (body.action === "like") {
     const { data: existing } = await supabase
@@ -61,7 +75,10 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ slug: string; threadId: string }> }
 ) {
-  const { threadId } = await params;
+  const paramsResult = parseData(threadParamsSchema, await params);
+  if ("error" in paramsResult) return paramsResult.error;
+  const { threadId } = paramsResult.data;
+
   const supabase = await createClient();
 
   const { data: thread } = await supabase
@@ -83,23 +100,25 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ slug: string; threadId: string }> }
 ) {
-  const { threadId } = await params;
+  const paramsResult = parseData(threadParamsSchema, await params);
+  if ("error" in paramsResult) return paramsResult.error;
+  const { threadId } = paramsResult.data;
+
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
-  const { content } = await request.json();
-  if (!content?.trim()) {
-    return NextResponse.json({ error: "Contenido requerido" }, { status: 400 });
-  }
+  const bodyResult = await parseJsonBody(request, forumPostCreateSchema);
+  if ("error" in bodyResult) return bodyResult.error;
+  const { content } = bodyResult.data;
 
   const supabase = await createClient();
   const { data: post, error } = await supabase
     .from("forum_posts")
-    .insert({ thread_id: threadId, author_id: user.id, content: content.trim() })
+    .insert({ thread_id: threadId, author_id: user.id, content })
     .select("*, author:profiles(id, full_name, avatar_url)")
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return internalErrorResponse("Error al crear respuesta:", error);
 
   const { data: thread } = await supabase
     .from("forum_threads")

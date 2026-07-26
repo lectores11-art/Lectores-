@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { internalErrorResponse, inviteJoinSchema, parseJsonBody } from "@/lib/validation";
 
 export async function POST(request: Request) {
   try {
-    const { token } = await request.json();
-    if (!token) {
-      return NextResponse.json({ error: "Token requerido" }, { status: 400 });
-    }
+    const bodyResult = await parseJsonBody(request, inviteJoinSchema);
+    if ("error" in bodyResult) return bodyResult.error;
+    const { token } = bodyResult.data;
 
     const serviceClient = await createServiceClient();
 
@@ -77,7 +77,7 @@ export async function POST(request: Request) {
       .eq("id", invite.id);
 
     return NextResponse.json({ slug: invite.community.slug });
-  } catch {
-    return NextResponse.json({ error: "Error interno" }, { status: 500 });
+  } catch (err) {
+    return internalErrorResponse("POST /api/invites/join failed:", err);
   }
 }

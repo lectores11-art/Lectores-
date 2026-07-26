@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth/helpers";
+import {
+  internalErrorResponse,
+  parseJsonBody,
+  subscriptionCreateSchema,
+  subscriptionDeleteSchema,
+} from "@/lib/validation";
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY)
@@ -12,10 +18,9 @@ export async function POST(request: Request) {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
-    const { communityId, priceId } = await request.json();
-    if (!communityId) {
-      return NextResponse.json({ error: "communityId requerido" }, { status: 400 });
-    }
+    const bodyResult = await parseJsonBody(request, subscriptionCreateSchema);
+    if ("error" in bodyResult) return bodyResult.error;
+    const { communityId, priceId } = bodyResult.data;
 
     if (!stripe) {
       return NextResponse.json({
@@ -55,45 +60,49 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ url: session.url });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Error de pago" },
-      { status: 500 }
-    );
+    return internalErrorResponse("POST /api/subscriptions failed:", err);
   }
 }
 
 export async function DELETE(request: Request) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  try {
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
-  const { membershipId } = await request.json();
-  const supabase = await createClient();
+    const bodyResult = await parseJsonBody(request, subscriptionDeleteSchema);
+    if ("error" in bodyResult) return bodyResult.error;
+    const { membershipId } = bodyResult.data;
 
-  const { data: membership } = await supabase
-    .from("memberships")
-    .select("*, subscriptions(*)")
-    .eq("id", membershipId)
-    .eq("user_id", user.id)
-    .single();
+    const supabase = await createClient();
 
-  if (!membership) {
-    return NextResponse.json({ error: "Membresía no encontrada" }, { status: 404 });
+    const { data: membership } = await supabase
+      .from("memberships")
+      .select("*, subscriptions(*)")
+      .eq("id", membershipId)
+      .eq("user_id", user.id)
+      .single();
+
+    if (!membership) {
+      return NextResponse.json({ error: "Membresía no encontrada" }, { status: 404 });
+    }
+
+    const subscription = Array.isArray(membership.subscriptions)
+      ? membership.subscriptions[0]
+      : membership.subscriptions;
+
+    if (stripe && subscription?.stripe_subscription_id) {
+      await stripe.subscriptions.update(subscription.stripe_subscription_id, {
+        cancel_at_period_end: true,
+      });
+    }
+
+    await supabase
+      .from("subscriptions")
+      .update({ cancel_at_period_end: true, status: "cancelled" })
+      .eq("membership_id", membershipId);
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    return internalErrorResponse("DELETE /api/subscriptions failed:", err);
   }
-
-  const subscription = Array.isArray(membership.subscriptions)
-    ? membership.subscriptions[0]
-    : membership.subscriptions;
-
-  if (stripe && subscription?.stripe_subscription_id) {
-    await stripe.subscriptions.update(subscription.stripe_subscription_id, {
-      cancel_at_period_end: true,
-    });
-  }
-
-  await supabase
-    .from("subscriptions")
-    .update({ cancel_at_period_end: true, status: "cancelled" })
-    .eq("membership_id", membershipId);
-
-  return NextResponse.json({ success: true });
 }

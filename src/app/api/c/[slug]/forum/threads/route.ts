@@ -1,12 +1,22 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getCommunityBySlug, getCurrentUser } from "@/lib/auth/helpers";
+import {
+  forumThreadCreateSchema,
+  internalErrorResponse,
+  parseData,
+  parseJsonBody,
+  slugParamsSchema,
+} from "@/lib/validation";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
-  const { slug } = await params;
+  const paramsResult = parseData(slugParamsSchema, await params);
+  if ("error" in paramsResult) return paramsResult.error;
+  const { slug } = paramsResult.data;
+
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
@@ -28,17 +38,19 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
-  const { slug } = await params;
+  const paramsResult = parseData(slugParamsSchema, await params);
+  if ("error" in paramsResult) return paramsResult.error;
+  const { slug } = paramsResult.data;
+
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
   const community = await getCommunityBySlug(slug);
   if (!community) return NextResponse.json({ error: "Comunidad no encontrada" }, { status: 404 });
 
-  const { title, content } = await request.json();
-  if (!title?.trim() || !content?.trim()) {
-    return NextResponse.json({ error: "Título y contenido requeridos" }, { status: 400 });
-  }
+  const bodyResult = await parseJsonBody(request, forumThreadCreateSchema);
+  if ("error" in bodyResult) return bodyResult.error;
+  const { title, content } = bodyResult.data;
 
   const supabase = await createClient();
   const { data: thread, error } = await supabase
@@ -46,12 +58,12 @@ export async function POST(
     .insert({
       community_id: community.id,
       author_id: user.id,
-      title: title.trim(),
-      content: content.trim(),
+      title,
+      content,
     })
     .select("*, author:profiles(id, full_name, avatar_url)")
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return internalErrorResponse("Error al crear hilo:", error);
   return NextResponse.json({ thread });
 }
