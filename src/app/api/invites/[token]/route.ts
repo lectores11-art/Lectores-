@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createServiceClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 
 export async function GET(
   _request: Request,
@@ -7,9 +7,9 @@ export async function GET(
 ) {
   try {
     const { token } = await params;
-    const serviceClient = await createServiceClient();
+    const supabase = await createClient();
 
-    const { data: invite, error } = await serviceClient
+    const { data: invite, error } = await supabase
       .from("invites")
       .select("*, community:communities(*)")
       .eq("token", token)

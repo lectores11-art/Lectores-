@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth/helpers";
 
 const stripe = process.env.STRIPE_SECRET_KEY
