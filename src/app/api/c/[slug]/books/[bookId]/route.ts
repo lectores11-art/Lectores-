@@ -14,7 +14,7 @@ export async function GET(
 
   const { data: book, error } = await supabase
     .from("books")
-    .select("*, reading_progress:reading_progress(current_page, progress_percent, user_id)")
+    .select("*")
     .eq("id", bookId)
     .single();
 
@@ -22,20 +22,15 @@ export async function GET(
     return NextResponse.json({ error: "Libro no encontrado" }, { status: 404 });
   }
 
-  // Filter reading progress for the current user server-side
-  const progressRows = Array.isArray(book.reading_progress)
-    ? book.reading_progress
-    : book.reading_progress
-    ? [book.reading_progress]
-    : [];
-
-  const userProgress = progressRows.find(
-    (p: { user_id: string; current_page: number; progress_percent: number }) =>
-      p.user_id === user.id
-  );
+  const { data: userProgress } = await supabase
+    .from("reading_progress")
+    .select("current_page, progress_percent")
+    .eq("book_id", bookId)
+    .eq("user_id", user.id)
+    .maybeSingle();
 
   return NextResponse.json({
-    book: { ...book, reading_progress: undefined },
+    book,
     initialPage: userProgress?.current_page ?? 0,
   });
 }
