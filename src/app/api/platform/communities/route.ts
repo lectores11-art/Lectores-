@@ -33,6 +33,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Nombre y email de dueña requeridos" }, { status: 400 });
     }
 
+    // service_role: super-admin bootstrap — create community, owner membership, and invite.
     const serviceClient = await createServiceClient();
     const ownerId = await getOrCreateOwnerByEmail(ownerEmail);
 

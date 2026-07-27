@@ -40,6 +40,7 @@ export async function createClient() {
   );
 }
 
+/** Bypasses RLS — use only for webhooks, invite bootstrap, or platform admin flows. */
 export async function createServiceClient() {
   const { createClient } = await import("@supabase/supabase-js");
   return createClient(
