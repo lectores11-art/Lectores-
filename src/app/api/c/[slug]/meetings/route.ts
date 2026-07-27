@@ -3,13 +3,23 @@ import { NextResponse } from "next/server";
 import { getCommunityBySlug, getCurrentUser, isCommunityAdmin } from "@/lib/auth/helpers";
 import { createClient } from "@/lib/supabase/server";
 import { nanoid } from "nanoid";
+import {
+  internalErrorResponse,
+  meetingActionSchema,
+  parseData,
+  parseJsonBody,
+  slugParamsSchema,
+} from "@/lib/validation";
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const { slug } = await params;
+    const paramsResult = parseData(slugParamsSchema, await params);
+    if ("error" in paramsResult) return paramsResult.error;
+    const { slug } = paramsResult.data;
+
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
@@ -17,7 +27,9 @@ export async function POST(
     if (!community) return NextResponse.json({ error: "Comunidad no encontrada" }, { status: 404 });
 
     const admin = await isCommunityAdmin(community.id, user.id, user.is_super_admin);
-    const body = await request.json();
+    const bodyResult = await parseJsonBody(request, meetingActionSchema);
+    if ("error" in bodyResult) return bodyResult.error;
+    const body = bodyResult.data;
 
     if (body.action === "create") {
       if (!admin) return NextResponse.json({ error: "No autorizado" }, { status: 403 });
@@ -40,7 +52,7 @@ export async function POST(
         .select()
         .single();
 
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error) return internalErrorResponse("Error al crear reunión:", error);
       return NextResponse.json({ meeting });
     }
 
@@ -114,10 +126,7 @@ export async function POST(
 
     return NextResponse.json({ error: "Acción no válida" }, { status: 400 });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Error interno" },
-      { status: 500 }
-    );
+    return internalErrorResponse("POST /api/c/[slug]/meetings failed:", err);
   }
 }
 
@@ -125,7 +134,10 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
-  const { slug } = await params;
+  const paramsResult = parseData(slugParamsSchema, await params);
+  if ("error" in paramsResult) return paramsResult.error;
+  const { slug } = paramsResult.data;
+
   const community = await getCommunityBySlug(slug);
   if (!community) return NextResponse.json({ error: "Comunidad no encontrada" }, { status: 404 });
 

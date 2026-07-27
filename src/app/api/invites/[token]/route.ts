@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { internalErrorResponse, inviteTokenParamsSchema, parseData } from "@/lib/validation";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ token: string }> }
 ) {
   try {
-    const { token } = await params;
+    const paramsResult = parseData(inviteTokenParamsSchema, await params);
+    if ("error" in paramsResult) return paramsResult.error;
+    const { token } = paramsResult.data;
+
     const supabase = await createClient();
 
     const { data: invite, error } = await supabase
@@ -33,7 +37,7 @@ export async function GET(
     }
 
     return NextResponse.json({ invite });
-  } catch {
-    return NextResponse.json({ error: "Error interno" }, { status: 500 });
+  } catch (err) {
+    return internalErrorResponse("GET /api/invites/[token] failed:", err);
   }
 }

@@ -7,13 +7,23 @@ import {
   paginateText,
   extractTOC,
 } from "@/lib/pdf/paginator";
+import {
+  bookUploadFieldsSchema,
+  internalErrorResponse,
+  parseData,
+  slugParamsSchema,
+  validatePdfFile,
+} from "@/lib/validation";
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const { slug } = await params;
+    const paramsResult = parseData(slugParamsSchema, await params);
+    if ("error" in paramsResult) return paramsResult.error;
+    const { slug } = paramsResult.data;
+
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
@@ -25,22 +35,24 @@ export async function POST(
 
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
-    const title = formData.get("title") as string;
-    const author = formData.get("author") as string | null;
-    const description = formData.get("description") as string | null;
+    const pdfError = validatePdfFile(file);
+    if (pdfError) return pdfError;
 
-    if (!file || !title) {
-      return NextResponse.json({ error: "Archivo y título requeridos" }, { status: 400 });
-    }
+    const fieldsResult = parseData(bookUploadFieldsSchema, {
+      title: formData.get("title"),
+      author: formData.get("author"),
+      description: formData.get("description"),
+    });
+    if ("error" in fieldsResult) return fieldsResult.error;
+    const { title, author, description } = fieldsResult.data;
 
-    const buffer = Buffer.from(await file.arrayBuffer());
+    const buffer = Buffer.from(await file!.arrayBuffer());
     const text = await extractTextFromPdfBuffer(buffer);
     const pages = paginateText(text);
     const toc = extractTOC(pages);
 
     const supabase = await createClient();
 
-    // Ensure the 'books' bucket exists (may not have been created manually)
     const { error: bucketCheckError } = await supabase.storage.getBucket("books");
     if (bucketCheckError) {
       const { error: createBucketError } = await supabase.storage.createBucket("books", {
@@ -49,26 +61,18 @@ export async function POST(
         allowedMimeTypes: ["application/pdf"],
       });
       if (createBucketError) {
-        console.error("No se pudo crear el bucket 'books':", createBucketError.message);
-        return NextResponse.json(
-          { error: `Error en Storage: ${createBucketError.message}` },
-          { status: 500 }
-        );
+        return internalErrorResponse("No se pudo crear el bucket 'books':", createBucketError);
       }
     }
 
-    const storagePath = `${community.id}/${Date.now()}-${file.name}`;
+    const storagePath = `${community.id}/${Date.now()}-${file!.name}`;
 
     const { error: storageError } = await supabase.storage
       .from("books")
       .upload(storagePath, buffer, { contentType: "application/pdf" });
 
     if (storageError) {
-      console.error("Error al subir PDF a storage:", storageError.message);
-      return NextResponse.json(
-        { error: `Error al subir el archivo: ${storageError.message}` },
-        { status: 500 }
-      );
+      return internalErrorResponse("Error al subir PDF a storage:", storageError);
     }
 
     const { data: book, error } = await supabase
@@ -87,13 +91,10 @@ export async function POST(
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return internalErrorResponse("Error al crear libro:", error);
     return NextResponse.json({ book });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Error al procesar PDF" },
-      { status: 500 }
-    );
+    return internalErrorResponse("POST /api/c/[slug]/books failed:", err);
   }
 }
 
@@ -101,7 +102,10 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
-  const { slug } = await params;
+  const paramsResult = parseData(slugParamsSchema, await params);
+  if ("error" in paramsResult) return paramsResult.error;
+  const { slug } = paramsResult.data;
+
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 

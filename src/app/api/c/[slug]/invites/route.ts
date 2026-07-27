@@ -2,13 +2,17 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getCommunityBySlug, getCurrentUser, isCommunityAdmin } from "@/lib/auth/helpers";
 import { nanoid } from "nanoid";
+import { internalErrorResponse, parseData, slugParamsSchema } from "@/lib/validation";
 
 export async function POST(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const { slug } = await params;
+    const paramsResult = parseData(slugParamsSchema, await params);
+    if ("error" in paramsResult) return paramsResult.error;
+    const { slug } = paramsResult.data;
+
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
 
@@ -29,9 +33,9 @@ export async function POST(
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return internalErrorResponse("Error al crear invitación:", error);
     return NextResponse.json({ invite });
-  } catch {
-    return NextResponse.json({ error: "Error interno" }, { status: 500 });
+  } catch (err) {
+    return internalErrorResponse("POST /api/c/[slug]/invites failed:", err);
   }
 }
