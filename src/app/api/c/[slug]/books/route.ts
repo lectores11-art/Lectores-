@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getCommunityBySlug, getCurrentUser, isCommunityAdmin } from "@/lib/auth/helpers";
+import type { ReadingProgress } from "@/lib/types/database";
 import {
   extractTextFromPdfBuffer,
   paginateText,
@@ -110,17 +111,32 @@ export async function GET(
   const supabase = await createClient();
   const { data: books } = await supabase
     .from("books")
-    .select("*, reading_progress:reading_progress(*)")
+    .select("*")
     .eq("community_id", community.id)
     .eq("is_published", true)
     .order("created_at", { ascending: false });
 
-  const booksWithProgress = (books || []).map((book) => {
-    const progress = Array.isArray(book.reading_progress)
-      ? book.reading_progress.find((p: { user_id: string }) => p.user_id === user.id)
-      : book.reading_progress;
-    return { ...book, reading_progress: progress || null };
-  });
+  const bookList = books || [];
+  const bookIds = bookList.map((book) => book.id);
+
+  const progressByBookId = new Map<string, ReadingProgress>();
+
+  if (bookIds.length > 0) {
+    const { data: progressRows } = await supabase
+      .from("reading_progress")
+      .select("*")
+      .eq("user_id", user.id)
+      .in("book_id", bookIds);
+
+    for (const progress of progressRows || []) {
+      progressByBookId.set(progress.book_id, progress);
+    }
+  }
+
+  const booksWithProgress = bookList.map((book) => ({
+    ...book,
+    reading_progress: progressByBookId.get(book.id) ?? null,
+  }));
 
   return NextResponse.json({ books: booksWithProgress });
 }
