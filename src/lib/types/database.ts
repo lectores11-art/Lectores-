@@ -131,6 +131,7 @@ export interface Book {
   total_pages: number;
   table_of_contents: BookTOCItem[];
   is_published: boolean;
+  pipeline_version?: number;
   created_at: string;
   updated_at: string;
   reading_progress?: ReadingProgress;

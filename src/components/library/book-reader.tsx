@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
+  hasLegacyPaginationBug,
   pagesForSpread,
   totalSpreads,
   type PaginatedPage,
@@ -30,6 +31,8 @@ interface BookReaderProps {
   onBookmark?: (page: number) => void;
   compact?: boolean;
   onClose?: () => void;
+  pipelineVersion?: number;
+  legacyWarning?: boolean;
 }
 
 const defaultSettings: ReaderSettings = {
@@ -84,6 +87,8 @@ export function BookReader({
   onBookmark,
   compact = false,
   onClose,
+  pipelineVersion = 0,
+  legacyWarning = false,
 }: BookReaderProps) {
   const [currentPage, setCurrentPage] = useState(initialPage);
   const [settings, setSettings] = useState<ReaderSettings>(defaultSettings);
@@ -151,13 +156,25 @@ export function BookReader({
   const iconBtn =
     "flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-black/5 hover:text-slate-800";
 
+  const showLegacyBanner =
+    legacyWarning ||
+    pipelineVersion < 1 ||
+    hasLegacyPaginationBug(pages) ||
+    totalPageCount > 500;
+
   return (
     <div
       className={cn(
         "reader-shell flex flex-col items-center justify-center",
-        compact ? "h-full p-4" : "min-h-screen p-6"
+        compact ? "h-full overflow-hidden p-4" : "p-6"
       )}
     >
+      {showLegacyBanner && !compact && (
+        <p className="mb-3 max-w-5xl rounded-md border border-amber-300/40 bg-amber-500/10 px-4 py-2 text-center text-sm text-amber-100">
+          Este libro fue procesado con una versión antigua. Borralo y volvé a subir el PDF
+          para ver el texto correctamente.
+        </p>
+      )}
       <div
         className={cn(
           "book-frame w-full",
@@ -187,7 +204,9 @@ export function BookReader({
               )}
             </div>
 
-            <PageContent page={leftPage} fontSize={settings.fontSize} />
+            <div className="book-page-body">
+              <PageContent page={leftPage} fontSize={settings.fontSize} />
+            </div>
 
             {leftPage && (
               <span className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs text-slate-400">
@@ -220,7 +239,7 @@ export function BookReader({
               </button>
             </div>
 
-            <div className="mt-8">
+            <div className="book-page-body mt-8">
               <PageContent page={rightPage} fontSize={settings.fontSize} />
             </div>
 

@@ -35,6 +35,8 @@ body {
 /* ===== Book Reader ===== */
 
 .reader-shell {
+  height: 100vh;
+  overflow: hidden;
   background:
     radial-gradient(120% 80% at 50% 35%, #1b3050 0%, #0c1727 60%, #070f1b 100%);
 }
@@ -65,17 +67,27 @@ body {
 
 .book-page {
   position: relative;
+  display: flex;
+  flex-direction: column;
   padding: 3rem 3.25rem 3.5rem;
   line-height: 1.8;
-  min-height: 76vh;
+  height: calc(100vh - 10rem);
+  max-height: calc(100vh - 10rem);
   background:
     linear-gradient(180deg, #fdfbf4 0%, #f7f3e8 100%);
   color: #2c2a26;
   overflow: hidden;
 }
 
+.book-page-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .book-compact .book-page {
-  min-height: 58vh;
+  height: calc(100% - 3rem);
+  max-height: calc(100% - 3rem);
   padding: 2rem 2.25rem 2.5rem;
   line-height: 1.7;
 }

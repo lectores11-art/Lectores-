@@ -8,12 +8,27 @@ export interface TOCItem {
   pageNumber: number;
 }
 
-const WORDS_PER_PAGE = 280;
+/** Words per reader page — tuned to fit one half-spread without vertical scroll. */
+export const READER_WORDS_PER_PAGE = 120;
+
+/** Bump when extraction/pagination logic changes; stored on each book row. */
+export const PIPELINE_VERSION = 1;
+
+/** Safety cap for content_json size in DB. */
+export const MAX_STORED_PAGES = 1500;
+
+function countWords(text: string): number {
+  const trimmed = text.trim();
+  return trimmed ? trimmed.split(/\s+/).length : 0;
+}
+
+function joinPageParagraphs(paragraphs: string[]): string {
+  return paragraphs.join("\n\n");
+}
 
 function buildParagraphs(fullText: string): string[] {
   const normalized = fullText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
-  // Split into blocks separated by blank lines
   const blocks = normalized.split(/\n[ \t]*\n/);
 
   const paragraphs: string[] = [];
@@ -21,8 +36,6 @@ function buildParagraphs(fullText: string): string[] {
     const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
     if (lines.length === 0) continue;
 
-    // Join wrapped lines within a paragraph. If a line ends with a hyphen,
-    // treat it as a word split across lines and glue without space.
     let paragraph = "";
     for (const line of lines) {
       if (!paragraph) {
@@ -39,6 +52,10 @@ function buildParagraphs(fullText: string): string[] {
   return paragraphs;
 }
 
+/**
+ * Split normalized book text into reader pages. Each page holds up to
+ * READER_WORDS_PER_PAGE words; paragraphs may continue on the next page.
+ */
 export function paginateText(fullText: string): PaginatedPage[] {
   const cleaned = fullText.trim();
 
@@ -48,40 +65,69 @@ export function paginateText(fullText: string): PaginatedPage[] {
 
   const paragraphs = buildParagraphs(cleaned);
   const pages: PaginatedPage[] = [];
-  let currentPage = "";
-  let pageNumber = 0;
+  let pageParagraphs: string[] = [];
+  let pageWordCount = 0;
+
+  function flushPage() {
+    if (pageParagraphs.length === 0) return;
+    pages.push({
+      pageNumber: pages.length,
+      content: joinPageParagraphs(pageParagraphs),
+    });
+    pageParagraphs = [];
+    pageWordCount = 0;
+  }
 
   for (const paragraph of paragraphs) {
-    const trimmed = paragraph.trim();
-    if (!trimmed) continue;
+    const words = paragraph.trim().split(/\s+/).filter(Boolean);
+    let index = 0;
 
-    const words = trimmed.split(/\s+/);
-    let paragraphChunk = "";
+    while (index < words.length) {
+      const spaceLeft = READER_WORDS_PER_PAGE - pageWordCount;
+      if (spaceLeft <= 0) {
+        flushPage();
+        continue;
+      }
 
-    for (const word of words) {
-      const testChunk = paragraphChunk ? `${paragraphChunk} ${word}` : word;
-      const testPage = currentPage
-        ? `${currentPage}\n\n${testChunk}`
-        : testChunk;
-      const wordCount = testPage.split(/\s+/).length;
+      const take = Math.min(spaceLeft, words.length - index);
+      const chunk = words.slice(index, index + take).join(" ");
+      index += take;
 
-      if (wordCount > WORDS_PER_PAGE && currentPage) {
-        pages.push({ pageNumber, content: currentPage.trim() });
-        pageNumber++;
-        currentPage = testChunk;
-        paragraphChunk = testChunk;
-      } else {
-        currentPage = testPage;
-        paragraphChunk = testChunk;
+      pageParagraphs.push(chunk);
+      pageWordCount += take;
+
+      if (pageWordCount >= READER_WORDS_PER_PAGE) {
+        flushPage();
       }
     }
   }
 
-  if (currentPage.trim()) {
-    pages.push({ pageNumber, content: currentPage.trim() });
-  }
+  flushPage();
 
   return pages.length > 0 ? pages : [{ pageNumber: 0, content: cleaned }];
+}
+
+/** Collapse whitespace and drop consecutive duplicate lines (PDF headers/footers). */
+export function normalizeExtractedText(text: string): string {
+  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const lines = normalized.split("\n");
+  const result: string[] = [];
+
+  for (const line of lines) {
+    const collapsed = line.replace(/\s+/g, " ").trim();
+    if (collapsed === "") {
+      if (result.length > 0 && result[result.length - 1] !== "") {
+        result.push("");
+      }
+      continue;
+    }
+    if (result.length > 0 && result[result.length - 1] === collapsed) {
+      continue;
+    }
+    result.push(collapsed);
+  }
+
+  return result.join("\n").trim();
 }
 
 export function extractTOC(pages: PaginatedPage[]): TOCItem[] {
@@ -109,14 +155,12 @@ export function extractTOC(pages: PaginatedPage[]): TOCItem[] {
 
 export async function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> {
   try {
-    // pdf-parse v2 API: new PDFParse({ data }).getText()
     const { PDFParse } = await import("pdf-parse");
     const parser = new PDFParse({ data: new Uint8Array(buffer) });
     try {
       const result = await parser.getText();
-      // Prefer per-page text (keeps page breaks) and fall back to combined text
       if (result.pages && result.pages.length > 0) {
-        return result.pages.map((p) => p.text).join("\n\n");
+        return result.pages.map((p) => p.text).join("\n");
       }
       return result.text || "";
     } finally {
@@ -128,11 +172,30 @@ export async function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> 
   }
 }
 
+/** Detect legacy books processed with the broken paginator (progressive phrase repetition). */
+export function hasLegacyPaginationBug(pages: PaginatedPage[]): boolean {
+  for (const page of pages) {
+    const blocks = page.content.split("\n\n").map((b) => b.trim()).filter(Boolean);
+    if (blocks.length < 2) continue;
+    for (let i = 1; i < blocks.length; i++) {
+      const prev = blocks[i - 1];
+      const curr = blocks[i];
+      if (curr.startsWith(prev) && curr.length > prev.length && prev.length > 0) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function spreadIndex(currentPage: number): number {
   return Math.floor(currentPage / 2);
 }
 
-export function pagesForSpread(pages: PaginatedPage[], spreadIndex: number): [PaginatedPage | null, PaginatedPage | null] {
+export function pagesForSpread(
+  pages: PaginatedPage[],
+  spreadIndex: number
+): [PaginatedPage | null, PaginatedPage | null] {
   const left = pages[spreadIndex * 2] ?? null;
   const right = pages[spreadIndex * 2 + 1] ?? null;
   return [left, right];
@@ -141,3 +204,6 @@ export function pagesForSpread(pages: PaginatedPage[], spreadIndex: number): [Pa
 export function totalSpreads(totalPages: number): number {
   return Math.ceil(totalPages / 2);
 }
+
+// Exported for tests
+export const _test = { countWords, buildParagraphs };

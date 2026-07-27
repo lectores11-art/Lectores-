@@ -80,7 +80,8 @@ export function BookReaderPageClient({
   const toc = (book.table_of_contents as BookTOCItem[]) || [];
 
   return (
-    <BookReader
+    <div className="h-screen overflow-hidden">
+      <BookReader
       key={`${book.id}-${initialPage}`}
       title={book.title}
       author={book.author}
@@ -89,6 +90,8 @@ export function BookReaderPageClient({
       initialPage={initialPage}
       onPageChange={saveProgress}
       onBookmark={saveBookmark}
-    />
+      pipelineVersion={book.pipeline_version ?? 0}
+      />
+    </div>
   );
 }

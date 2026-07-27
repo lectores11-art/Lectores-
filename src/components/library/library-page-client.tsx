@@ -65,9 +65,22 @@ export function LibraryPageClient({ slug, isAdmin }: LibraryPageClientProps) {
       setShowUpload(false);
       await refreshBooks();
     } else {
-      const body = await res.json().catch(() => ({}));
-      setUploadError(body.error || "No se pudo subir el libro. Intentá de nuevo.");
-      console.error("handleUpload error:", body);
+      const raw = await res.text();
+      let body: { error?: string } = {};
+      if (raw) {
+        try {
+          body = JSON.parse(raw) as { error?: string };
+        } catch {
+          body = {};
+        }
+      }
+      const message =
+        body.error ||
+        (res.status >= 500
+          ? "Error del servidor al procesar el PDF. Si el archivo es muy grande, probá de nuevo o revisá la terminal del servidor."
+          : `No se pudo subir el libro (${res.status}).`);
+      setUploadError(message);
+      console.error("handleUpload error:", { status: res.status, body, raw: raw.slice(0, 300) });
     }
     setUploading(false);
   }

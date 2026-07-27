@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getCommunityBySlug, getCurrentUser, isCommunityAdmin } from "@/lib/auth/helpers";
 import type { ReadingProgress } from "@/lib/types/database";
 import {
   extractTextFromPdfBuffer,
-  paginateText,
   extractTOC,
+  MAX_STORED_PAGES,
+  normalizeExtractedText,
+  paginateText,
+  PIPELINE_VERSION,
 } from "@/lib/pdf/paginator";
 import {
   bookUploadFieldsSchema,
@@ -16,6 +19,9 @@ import {
 } from "@/lib/validation";
 
 export const runtime = "nodejs";
+export const maxDuration = 120;
+
+/** Guard against huge JSONB inserts that can hit Postgres statement timeouts. */
 
 export async function POST(
   request: Request,
@@ -49,15 +55,20 @@ export async function POST(
     const { title, author, description } = fieldsResult.data;
 
     const buffer = Buffer.from(await file!.arrayBuffer());
-    const text = await extractTextFromPdfBuffer(buffer);
+    const rawText = await extractTextFromPdfBuffer(buffer);
+    const text = normalizeExtractedText(rawText);
     const pages = paginateText(text);
-    const toc = extractTOC(pages);
-
-    const supabase = await createClient();
+    const storedPages =
+      pages.length > MAX_STORED_PAGES ? pages.slice(0, MAX_STORED_PAGES) : pages;
+    const toc = extractTOC(storedPages);
 
     const storagePath = `${community.id}/${Date.now()}-${file!.name}`;
 
-    const { error: storageError } = await supabase.storage
+    // Admin verified above — service_role for storage + insert avoids missing
+    // storage RLS and slow/forbidden books RLS on large content_json payloads.
+    const serviceClient = await createServiceClient();
+
+    const { error: storageError } = await serviceClient.storage
       .from("books")
       .upload(storagePath, buffer, { contentType: "application/pdf" });
 
@@ -65,7 +76,7 @@ export async function POST(
       return internalErrorResponse("Error al subir PDF a storage:", storageError);
     }
 
-    const { data: book, error } = await supabase
+    const { data: book, error } = await serviceClient
       .from("books")
       .insert({
         community_id: community.id,
@@ -73,10 +84,11 @@ export async function POST(
         author: author || null,
         description: description || null,
         pdf_storage_path: storagePath,
-        content_json: pages,
-        total_pages: pages.length,
+        content_json: storedPages,
+        total_pages: storedPages.length,
         table_of_contents: toc,
         is_published: true,
+        pipeline_version: PIPELINE_VERSION,
       })
       .select()
       .single();
