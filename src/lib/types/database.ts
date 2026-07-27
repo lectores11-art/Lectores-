@@ -112,6 +112,10 @@ export interface Lesson {
 export interface BookPage {
   pageNumber: number;
   content: string;
+  blocks?: Array<{
+    style: "title" | "subtitle" | "list-item" | "heading" | "paragraph";
+    text: string;
+  }>;
 }
 
 export interface BookTOCItem {

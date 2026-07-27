@@ -166,6 +166,32 @@ body {
   text-indent: 0;
 }
 
+.book-title {
+  text-align: center;
+  font-weight: 600;
+  margin: 0.25rem 0 0.75rem;
+  text-indent: 0;
+  color: #2c2a26;
+}
+
+.book-subtitle {
+  text-align: center;
+  font-weight: 600;
+  font-style: italic;
+  letter-spacing: 0.04em;
+  margin: 0 0 1.25rem;
+  text-indent: 0;
+  color: #3d3a34;
+}
+
+.book-list-item {
+  text-align: center;
+  text-indent: 0;
+  margin-bottom: 0.35rem;
+  line-height: 1.55;
+  hyphens: none;
+}
+
 .scrollbar-thin::-webkit-scrollbar {
   width: 6px;
 }

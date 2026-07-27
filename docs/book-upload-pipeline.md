@@ -9,10 +9,10 @@ POST /api/c/[slug]/books
   → validatePdfFile + zod (título, autor, descripción)
   → extractTextFromPdfBuffer (pdf-parse, serverExternalPackages)
   → normalizeExtractedText (espacios, líneas duplicadas consecutivas)
-  → paginateText (hojas de ~120 palabras)
+  → buildBlocks + paginateText (hojas ~80/105 palabras + bloques con estilo)
   → extractTOC
   → Storage: PDF original en bucket `books`
-  → DB: books (content_json, pipeline_version, …)
+  → DB: books (content_json con `blocks[]`, pipeline_version, …)
 ```
 
 ## Constantes (`src/lib/pdf/paginator.ts`)
@@ -22,7 +22,15 @@ POST /api/c/[slug]/books
 | `LEFT_PAGE_WORDS` | 80 | Páginas pares (izquierda): caben con título solo en spread 1 |
 | `RIGHT_PAGE_WORDS` | 105 | Páginas impares (derecha): caben con barra de herramientas |
 | `MAX_STORED_PAGES` | 1500 | Techo de seguridad para JSONB en Postgres |
-| `PIPELINE_VERSION` | 2 | Libros con `pipeline_version < 2` se consideran legacy |
+| `PIPELINE_VERSION` | 3 | Libros con `pipeline_version < 3` se consideran legacy |
+
+## Nivel A — preservación de formato (v3)
+
+- **Extracción:** `getText({ lineEnforce: true })` mantiene saltos de línea del PDF.
+- **Bloques:** `buildBlocks` no fusiona líneas de índice/título; solo une líneas de prosa partidas (guiones, minúscula inicial).
+- **Estilos heurísticos:** `title`, `subtitle`, `list-item` (p. ej. `Libro 1:`), `heading`, `paragraph`.
+- **Lector:** `PageContent` renderiza cada bloque con CSS (centrado para TOC, ítems de lista, etc.).
+- **Persistencia:** cada página en `content_json` incluye `{ pageNumber, content, blocks[] }`.
 
 ## Migraciones Supabase requeridas
 
@@ -40,16 +48,18 @@ Después de subir un PDF en **Biblioteca → Subir y procesar**:
 4. **Páginas razonables** — un libro mediano suele dar ~50–300 hojas, no 1500.
 5. **Texto real** — no el mensaje fallback *"No se pudo extraer el texto del PDF…"*.
 
+6. **Índice legible** — "Tabla de Contenido", título en mayúsculas y entradas `Libro N:` aparecen en líneas separadas y centradas, no como un párrafo único.
+
 ## Libros procesados antes del fix (legacy)
 
-Los libros subidos **antes** de `PIPELINE_VERSION = 1` tienen `content_json` corrupto (bug de paginación). **No se reparan solos.**
+Los libros subidos **antes** de `PIPELINE_VERSION = 3` pueden tener índice fusionado o paginación vieja. **No se reparan solos.**
 
 Acción:
 
 1. Borrar el libro en la biblioteca (o desde Supabase).
 2. Volver a subir el mismo PDF.
 
-El lector muestra un banner amarillo si detecta legacy (`pipeline_version < 1`, >500 páginas, o patrón de repetición progresiva).
+El lector muestra un banner amarillo si detecta legacy (`pipeline_version < 3`, >500 páginas, o patrón de repetición progresiva).
 
 ## Tests automatizados
 
@@ -57,7 +67,7 @@ El lector muestra un banner amarillo si detecta legacy (`pipeline_version < 1`, 
 npm run test
 ```
 
-Cubren `paginateText`, `normalizeExtractedText`, `hasLegacyPaginationBug` y `extractTOC`.
+Cubren `buildBlocks`, `classifyLineStyle`, `paginateText`, `normalizeExtractedText`, `hasLegacyPaginationBug` y `extractTOC`.
 
 ## Configuración Next.js
 

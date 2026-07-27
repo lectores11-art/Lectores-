@@ -21,6 +21,7 @@ import {
 } from "@/lib/pdf/paginator";
 import type { ReaderSettings } from "@/lib/types/database";
 import { Input } from "@/components/ui/input";
+import { PageContent } from "@/components/library/book-reader-blocks";
 
 interface BookReaderProps {
   title: string;
@@ -41,42 +42,6 @@ const defaultSettings: ReaderSettings = {
   fontFamily: "serif",
   theme: "light",
 };
-
-function isHeading(text: string): boolean {
-  const t = text.trim();
-  if (t.length === 0 || t.length > 48) return false;
-  const known =
-    /^(dedicatoria|pr[oó]logo|ep[ií]logo|introducci[oó]n|cap[ií]tulo|prefacio|[ií]ndice|nota|parte)\b/i.test(
-      t
-    );
-  const isUpper = t === t.toUpperCase() && /[A-ZÁÉÍÓÚÑ]/.test(t);
-  return known || isUpper;
-}
-
-function PageContent({
-  page,
-  fontSize,
-}: {
-  page: PaginatedPage | null;
-  fontSize: number;
-}) {
-  if (!page) return null;
-  return (
-    <>
-      {page.content.split("\n\n").map((para, i) =>
-        isHeading(para) ? (
-          <h2 key={i} className="book-heading" style={{ fontSize: fontSize + 3 }}>
-            {para}
-          </h2>
-        ) : (
-          <p key={i} className="book-para" style={{ fontSize }}>
-            {para}
-          </p>
-        )
-      )}
-    </>
-  );
-}
 
 export function BookReader({
   title,
