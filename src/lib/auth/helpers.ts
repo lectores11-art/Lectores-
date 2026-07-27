@@ -102,6 +102,7 @@ async function findAuthUserIdByEmail(
 
 export async function getOrCreateOwnerByEmail(email: string): Promise<string> {
   const normalizedEmail = email.trim().toLowerCase();
+  // service_role: uses auth.admin APIs and cross-user profile lookup for platform onboarding.
   const serviceClient = await createServiceClient();
 
   const { data: existingProfile } = await serviceClient
@@ -161,6 +162,7 @@ export async function getCurrentUser() {
   // without a profile (which would cause a /login <-> /dashboard redirect loop).
   if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
     try {
+      // service_role: fallback when auth trigger did not create the profile row.
       const serviceClient = await createServiceClient();
       const { data: created } = await serviceClient
         .from("profiles")

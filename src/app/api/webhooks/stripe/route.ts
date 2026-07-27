@@ -25,6 +25,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Firma inválida" }, { status: 400 });
   }
 
+  // service_role: Stripe webhooks have no user session; must update memberships/subscriptions.
   const serviceClient = await createServiceClient();
 
   if (event.type === "checkout.session.completed") {
