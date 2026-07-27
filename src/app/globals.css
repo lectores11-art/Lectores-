@@ -85,6 +85,10 @@ body {
   overflow: hidden;
 }
 
+.book-page-body-right {
+  padding-top: 2rem;
+}
+
 .book-compact .book-page {
   height: calc(100% - 3rem);
   max-height: calc(100% - 3rem);

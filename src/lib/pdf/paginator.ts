@@ -8,11 +8,15 @@ export interface TOCItem {
   pageNumber: number;
 }
 
-/** Words per reader page — tuned to fit one half-spread without vertical scroll. */
-export const READER_WORDS_PER_PAGE = 120;
+/** Words per reader half-page — even = left (title chrome), odd = right (toolbar). */
+export const LEFT_PAGE_WORDS = 80;
+export const RIGHT_PAGE_WORDS = 105;
+
+/** @deprecated Use LEFT_PAGE_WORDS / RIGHT_PAGE_WORDS per page index. */
+export const READER_WORDS_PER_PAGE = LEFT_PAGE_WORDS;
 
 /** Bump when extraction/pagination logic changes; stored on each book row. */
-export const PIPELINE_VERSION = 1;
+export const PIPELINE_VERSION = 2;
 
 /** Safety cap for content_json size in DB. */
 export const MAX_STORED_PAGES = 1500;
@@ -52,9 +56,13 @@ function buildParagraphs(fullText: string): string[] {
   return paragraphs;
 }
 
+function wordsLimitForPage(pageIndex: number): number {
+  return pageIndex % 2 === 0 ? LEFT_PAGE_WORDS : RIGHT_PAGE_WORDS;
+}
+
 /**
  * Split normalized book text into reader pages. Each page holds up to
- * READER_WORDS_PER_PAGE words; paragraphs may continue on the next page.
+ * LEFT_PAGE_WORDS or RIGHT_PAGE_WORDS (alternating); paragraphs may continue.
  */
 export function paginateText(fullText: string): PaginatedPage[] {
   const cleaned = fullText.trim();
@@ -83,7 +91,8 @@ export function paginateText(fullText: string): PaginatedPage[] {
     let index = 0;
 
     while (index < words.length) {
-      const spaceLeft = READER_WORDS_PER_PAGE - pageWordCount;
+      const limit = wordsLimitForPage(pages.length);
+      const spaceLeft = limit - pageWordCount;
       if (spaceLeft <= 0) {
         flushPage();
         continue;
@@ -96,7 +105,7 @@ export function paginateText(fullText: string): PaginatedPage[] {
       pageParagraphs.push(chunk);
       pageWordCount += take;
 
-      if (pageWordCount >= READER_WORDS_PER_PAGE) {
+      if (pageWordCount >= limit) {
         flushPage();
       }
     }
@@ -186,6 +195,14 @@ export function hasLegacyPaginationBug(pages: PaginatedPage[]): boolean {
     }
   }
   return false;
+}
+
+/** Verify all words from source text appear in order across paginated pages. */
+export function assertWordPreservation(fullText: string, pages: PaginatedPage[]): boolean {
+  const original = fullText.trim().split(/\s+/).filter(Boolean);
+  const recovered = pages.flatMap((p) => p.content.split(/\s+/).filter(Boolean));
+  if (original.length !== recovered.length) return false;
+  return original.every((word, i) => word === recovered[i]);
 }
 
 export function spreadIndex(currentPage: number): number {

@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import {
   hasLegacyPaginationBug,
   pagesForSpread,
+  PIPELINE_VERSION,
   totalSpreads,
   type PaginatedPage,
   type TOCItem,
@@ -158,7 +159,7 @@ export function BookReader({
 
   const showLegacyBanner =
     legacyWarning ||
-    pipelineVersion < 1 ||
+    pipelineVersion < PIPELINE_VERSION ||
     hasLegacyPaginationBug(pages) ||
     totalPageCount > 500;
 
@@ -195,14 +196,16 @@ export function BookReader({
                 <X className="h-4 w-4" />
               </button>
             )}
-            <div className="mb-6 text-center">
-              <p className="text-sm font-semibold tracking-wide text-slate-700">
-                {title}
-              </p>
-              {author && (
-                <p className="text-xs italic text-slate-500">{author}</p>
-              )}
-            </div>
+            {spreadIdx === 0 && leftPage?.pageNumber === 0 && (
+              <div className="mb-6 text-center">
+                <p className="text-sm font-semibold tracking-wide text-slate-700">
+                  {title}
+                </p>
+                {author && (
+                  <p className="text-xs italic text-slate-500">{author}</p>
+                )}
+              </div>
+            )}
 
             <div className="book-page-body">
               <PageContent page={leftPage} fontSize={settings.fontSize} />
@@ -239,7 +242,7 @@ export function BookReader({
               </button>
             </div>
 
-            <div className="book-page-body mt-8">
+            <div className="book-page-body book-page-body-right">
               <PageContent page={rightPage} fontSize={settings.fontSize} />
             </div>
 

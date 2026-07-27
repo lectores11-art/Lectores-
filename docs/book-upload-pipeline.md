@@ -19,9 +19,10 @@ POST /api/c/[slug]/books
 
 | Constante | Valor | Motivo |
 |-----------|-------|--------|
-| `READER_WORDS_PER_PAGE` | 120 | Cabe en media hoja del spread sin scroll vertical |
+| `LEFT_PAGE_WORDS` | 80 | Páginas pares (izquierda): caben con título solo en spread 1 |
+| `RIGHT_PAGE_WORDS` | 105 | Páginas impares (derecha): caben con barra de herramientas |
 | `MAX_STORED_PAGES` | 1500 | Techo de seguridad para JSONB en Postgres |
-| `PIPELINE_VERSION` | 1 | Libros con `pipeline_version < 1` se consideran legacy |
+| `PIPELINE_VERSION` | 2 | Libros con `pipeline_version < 2` se consideran legacy |
 
 ## Migraciones Supabase requeridas
 

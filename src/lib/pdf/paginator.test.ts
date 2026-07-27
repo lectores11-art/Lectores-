@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertWordPreservation,
   extractTOC,
   hasLegacyPaginationBug,
+  LEFT_PAGE_WORDS,
   normalizeExtractedText,
   paginateText,
-  READER_WORDS_PER_PAGE,
+  RIGHT_PAGE_WORDS,
 } from "./paginator";
 
 describe("paginateText", () => {
@@ -21,17 +23,28 @@ describe("paginateText", () => {
     expect(pages[0].content.split("\n\n")).toHaveLength(1);
   });
 
+  it("preserves every word in order across page boundaries", () => {
+    const words = Array.from({ length: LEFT_PAGE_WORDS + RIGHT_PAGE_WORDS + 50 }, (_, i) => `w${i}`);
+    const text = words.join(" ");
+    const pages = paginateText(text);
+
+    expect(assertWordPreservation(text, pages)).toBe(true);
+    expect(pages[0].content.split(/\s+/).length).toBe(LEFT_PAGE_WORDS);
+    expect(pages[1].content.split(/\s+/).length).toBe(RIGHT_PAGE_WORDS);
+
+    const endPage0 = pages[0].content.split(/\s+/).slice(-1)[0];
+    const startPage1 = pages[1].content.split(/\s+/)[0];
+    expect(endPage0).toBe(`w${LEFT_PAGE_WORDS - 1}`);
+    expect(startPage1).toBe(`w${LEFT_PAGE_WORDS}`);
+  });
+
   it("splits long paragraphs across pages without repeating prior text", () => {
-    const words = Array.from({ length: READER_WORDS_PER_PAGE + 40 }, (_, i) => `w${i}`);
+    const words = Array.from({ length: LEFT_PAGE_WORDS + 40 }, (_, i) => `w${i}`);
     const text = words.join(" ");
     const pages = paginateText(text);
 
     expect(pages.length).toBeGreaterThanOrEqual(2);
-    const allText = pages.map((p) => p.content).join(" ");
-    const joinedWords = allText.split(/\s+/);
-    expect(joinedWords).toHaveLength(words.length);
-    expect(joinedWords[0]).toBe("w0");
-    expect(joinedWords[joinedWords.length - 1]).toBe(`w${words.length - 1}`);
+    expect(assertWordPreservation(text, pages)).toBe(true);
 
     for (const page of pages) {
       const blocks = page.content.split("\n\n");
@@ -54,6 +67,15 @@ describe("paginateText", () => {
     const pages = paginateText(tocLine);
     expect(pages[0].content).toBe(tocLine);
     expect(hasLegacyPaginationBug(pages)).toBe(false);
+  });
+
+  it("uses alternating left/right word limits", () => {
+    const total = LEFT_PAGE_WORDS + RIGHT_PAGE_WORDS + 10;
+    const words = Array.from({ length: total }, (_, i) => `x${i}`);
+    const pages = paginateText(words.join(" "));
+    expect(pages[0].content.split(/\s+/).length).toBe(LEFT_PAGE_WORDS);
+    expect(pages[1].content.split(/\s+/).length).toBe(RIGHT_PAGE_WORDS);
+    expect(pages[2].content.split(/\s+/).length).toBe(10);
   });
 });
 
