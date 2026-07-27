@@ -27,11 +27,20 @@ export async function parseJsonBody<T>(
   return parseData(schema, json);
 }
 
+function isPdfFile(file: File): boolean {
+  if (file.type === "application/pdf") return true;
+  // Some browsers (notably Safari) leave type empty or use octet-stream for PDFs.
+  if (!file.type || file.type === "application/octet-stream") {
+    return file.name.toLowerCase().endsWith(".pdf");
+  }
+  return false;
+}
+
 export function validatePdfFile(file: File | null): NextResponse | null {
   if (!file) {
     return validationErrorResponse();
   }
-  if (file.type !== "application/pdf") {
+  if (!isPdfFile(file)) {
     return validationErrorResponse();
   }
   if (file.size <= 0 || file.size > MAX_PDF_BYTES) {

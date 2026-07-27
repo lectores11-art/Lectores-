@@ -15,6 +15,8 @@ import {
   validatePdfFile,
 } from "@/lib/validation";
 
+export const runtime = "nodejs";
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ slug: string }> }
@@ -52,18 +54,6 @@ export async function POST(
     const toc = extractTOC(pages);
 
     const supabase = await createClient();
-
-    const { error: bucketCheckError } = await supabase.storage.getBucket("books");
-    if (bucketCheckError) {
-      const { error: createBucketError } = await supabase.storage.createBucket("books", {
-        public: false,
-        fileSizeLimit: 52428800,
-        allowedMimeTypes: ["application/pdf"],
-      });
-      if (createBucketError) {
-        return internalErrorResponse("No se pudo crear el bucket 'books':", createBucketError);
-      }
-    }
 
     const storagePath = `${community.id}/${Date.now()}-${file!.name}`;
 
