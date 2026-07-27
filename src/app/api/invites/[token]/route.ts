@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createServiceClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 import { internalErrorResponse, inviteTokenParamsSchema, parseData } from "@/lib/validation";
 
 export async function GET(
@@ -11,9 +11,9 @@ export async function GET(
     if ("error" in paramsResult) return paramsResult.error;
     const { token } = paramsResult.data;
 
-    const serviceClient = await createServiceClient();
+    const supabase = await createClient();
 
-    const { data: invite, error } = await serviceClient
+    const { data: invite, error } = await supabase
       .from("invites")
       .select("*, community:communities(*)")
       .eq("token", token)

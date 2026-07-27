@@ -20,6 +20,7 @@ export async function POST(request: Request) {
     if ("error" in bodyResult) return bodyResult.error;
     const { name, description, ownerEmail, monthlyPriceCents } = bodyResult.data;
 
+    // service_role: super-admin bootstrap — create community, owner membership, and invite.
     const serviceClient = await createServiceClient();
     const ownerId = await getOrCreateOwnerByEmail(ownerEmail);
 

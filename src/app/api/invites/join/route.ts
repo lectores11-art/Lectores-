@@ -8,9 +8,9 @@ export async function POST(request: Request) {
     if ("error" in bodyResult) return bodyResult.error;
     const { token } = bodyResult.data;
 
-    const serviceClient = await createServiceClient();
+    const supabase = await createClient();
 
-    const { data: invite, error: inviteError } = await serviceClient
+    const { data: invite, error: inviteError } = await supabase
       .from("invites")
       .select("*, community:communities(*)")
       .eq("token", token)
@@ -33,7 +33,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Comunidad no encontrada" }, { status: 404 });
     }
 
-    const supabase = await createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -42,7 +41,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 });
     }
 
-    const { data: existing } = await serviceClient
+    const { data: existing } = await supabase
       .from("memberships")
       .select("id, status")
       .eq("user_id", user.id)
@@ -57,12 +56,12 @@ export async function POST(request: Request) {
     }
 
     if (existing) {
-      await serviceClient
+      await supabase
         .from("memberships")
         .update({ status: "active", joined_at: new Date().toISOString() })
         .eq("id", existing.id);
     } else {
-      await serviceClient.from("memberships").insert({
+      await supabase.from("memberships").insert({
         user_id: user.id,
         community_id: invite.community_id,
         role: "member",
@@ -71,6 +70,8 @@ export async function POST(request: Request) {
       });
     }
 
+    // service_role: RLS only lets admins update invites; members cannot bump use_count.
+    const serviceClient = await createServiceClient();
     await serviceClient
       .from("invites")
       .update({ use_count: invite.use_count + 1 })
