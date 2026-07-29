@@ -1,6 +1,6 @@
 import { AccessToken } from "livekit-server-sdk";
 import { NextResponse } from "next/server";
-import { getCommunityBySlug, getCurrentUser, isCommunityAdmin } from "@/lib/auth/helpers";
+import { isCommunityAdmin, requireApiCommunityAccess } from "@/lib/auth/helpers";
 import { createClient } from "@/lib/supabase/server";
 import { nanoid } from "nanoid";
 import {
@@ -20,11 +20,9 @@ export async function POST(
     if ("error" in paramsResult) return paramsResult.error;
     const { slug } = paramsResult.data;
 
-    const user = await getCurrentUser();
-    if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
-
-    const community = await getCommunityBySlug(slug);
-    if (!community) return NextResponse.json({ error: "Comunidad no encontrada" }, { status: 404 });
+    const access = await requireApiCommunityAccess(slug);
+    if (access instanceof NextResponse) return access;
+    const { user, community } = access;
 
     const admin = await isCommunityAdmin(community.id, user.id, user.is_super_admin);
     const bodyResult = await parseJsonBody(request, meetingActionSchema);
@@ -138,8 +136,9 @@ export async function GET(
   if ("error" in paramsResult) return paramsResult.error;
   const { slug } = paramsResult.data;
 
-  const community = await getCommunityBySlug(slug);
-  if (!community) return NextResponse.json({ error: "Comunidad no encontrada" }, { status: 404 });
+  const access = await requireApiCommunityAccess(slug);
+  if (access instanceof NextResponse) return access;
+  const { community } = access;
 
   const supabase = await createClient();
   const { data: meetings } = await supabase

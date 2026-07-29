@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentUser } from "@/lib/auth/helpers";
+import { requireApiCommunityAccess } from "@/lib/auth/helpers";
 import {
   bookParamsSchema,
   internalErrorResponse,
@@ -16,16 +16,28 @@ export async function POST(
   try {
     const paramsResult = parseData(bookParamsSchema, await params);
     if ("error" in paramsResult) return paramsResult.error;
-    const { bookId } = paramsResult.data;
+    const { slug, bookId } = paramsResult.data;
 
-    const user = await getCurrentUser();
-    if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+    const access = await requireApiCommunityAccess(slug);
+    if (access instanceof NextResponse) return access;
+    const { user, community } = access;
 
     const bodyResult = await parseJsonBody(request, readingProgressSchema);
     if ("error" in bodyResult) return bodyResult.error;
     const { currentPage, progressPercent } = bodyResult.data;
 
     const supabase = await createClient();
+
+    const { data: book } = await supabase
+      .from("books")
+      .select("id")
+      .eq("id", bookId)
+      .eq("community_id", community.id)
+      .maybeSingle();
+
+    if (!book) {
+      return NextResponse.json({ error: "Libro no encontrado" }, { status: 404 });
+    }
 
     const { data, error } = await supabase
       .from("reading_progress")
