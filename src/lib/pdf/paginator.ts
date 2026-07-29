@@ -3,6 +3,8 @@ export type TextBlockStyle = "title" | "subtitle" | "list-item" | "heading" | "p
 export interface TextBlock {
   style: TextBlockStyle;
   text: string;
+  align?: "left" | "center" | "right";
+  fontSize?: number;
 }
 
 export interface PaginatedPage {
