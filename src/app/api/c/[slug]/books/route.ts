@@ -11,8 +11,6 @@ import {
   paginateText,
   PIPELINE_VERSION,
 } from "@/lib/pdf/paginator";
-import { extractPositionedTextFromPdfBuffer } from "@/lib/pdf/extract-positioned";
-import { inferLayoutBlocks } from "@/lib/pdf/layout-inference";
 import {
   bookUploadFieldsSchema,
   internalErrorResponse,
@@ -57,8 +55,13 @@ export async function POST(
 
     const buffer = Buffer.from(await file!.arrayBuffer());
 
+    // Lazy-load pdfjs pipeline only on upload — GET /books must not import pdfjs.
     let pages;
     try {
+      const { extractPositionedTextFromPdfBuffer } = await import(
+        "@/lib/pdf/extract-positioned"
+      );
+      const { inferLayoutBlocks } = await import("@/lib/pdf/layout-inference");
       const positioned = await extractPositionedTextFromPdfBuffer(buffer);
       const pageWidth =
         positioned.length > 0

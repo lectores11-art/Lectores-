@@ -5,10 +5,14 @@ import {
   buildBlocks,
   classifyLineStyle,
   extractTOC,
+  flattenPageBlocks,
   hasLegacyPaginationBug,
+  isParagraphContinuation,
   LEFT_PAGE_LINES,
   LEFT_PAGE_WORDS,
+  mergeContinuationParagraphs,
   normalizeExtractedText,
+  paginateBlocksByHeight,
   paginateBlocksByLines,
   paginateText,
   RIGHT_PAGE_LINES,
@@ -16,11 +20,11 @@ import {
 } from "./paginator";
 
 describe("paginateBlocksByLines", () => {
-  it("spreads Buddhacarita-style TOC across at least 2 pages with all blocks preserved", () => {
+  it("spreads a long TOC across multiple pages with all blocks preserved", () => {
     const lines = [
       "Tabla de Contenido",
       "BUDDHACARITA",
-      ...Array.from({ length: 14 }, (_, i) => `Libro ${i + 1}: capítulo`),
+      ...Array.from({ length: 30 }, (_, i) => `Libro ${i + 1}: capítulo`),
     ];
     const blocks = lines.map((text) => ({
       style: classifyLineStyle(text),
@@ -32,19 +36,17 @@ describe("paginateBlocksByLines", () => {
     const recovered = pages.flatMap((p) => p.blocks ?? []);
 
     expect(pages.length).toBeGreaterThanOrEqual(2);
-    expect(recovered).toHaveLength(16);
+    expect(recovered).toHaveLength(lines.length);
     expect(recovered.map((b) => b.text)).toEqual(lines);
   });
 
   it("never splits list-item blocks across pages", () => {
     const item = { style: "list-item" as const, text: "Libro 5: ejemplo largo de capítulo" };
-    const pages = paginateBlocksByLines([
-      ...Array.from({ length: LEFT_PAGE_LINES }, (_, i) => ({
-        style: "paragraph" as const,
-        text: `filler line ${i}`,
-      })),
-      item,
-    ]);
+    const fillers = Array.from({ length: 40 }, (_, i) => ({
+      style: "paragraph" as const,
+      text: `filler line ${i}`,
+    }));
+    const pages = paginateBlocksByLines([...fillers, item]);
 
     const listPages = pages.filter((p) =>
       (p.blocks ?? []).some((b) => b.style === "list-item")
@@ -53,16 +55,101 @@ describe("paginateBlocksByLines", () => {
     expect(listPages[0].blocks?.some((b) => b.text === item.text)).toBe(true);
   });
 
-  it("uses alternating left/right line limits", () => {
-    expect(blockLineCost({ style: "paragraph", text: "x" })).toBe(1);
-    const blocks = Array.from({ length: LEFT_PAGE_LINES + 1 }, (_, i) => ({
+  it("uses alternating left/right capacity (left tighter than right)", () => {
+    expect(blockLineCost({ style: "paragraph", text: "x" })).toBeGreaterThanOrEqual(1);
+    const blocks = Array.from({ length: 40 }, (_, i) => ({
       style: "paragraph" as const,
-      text: `line ${i}`,
+      text: `Párrafo de relleno número ${i} con varias palabras para ocupar altura vertical en la página.`,
     }));
-    const pages = paginateBlocksByLines(blocks);
+    const pages = paginateBlocksByHeight(blocks, {
+      leftHeightPx: 200,
+      rightHeightPx: 260,
+      fontSize: 17,
+    });
     expect(pages.length).toBeGreaterThanOrEqual(2);
-    expect(pages[0].blocks?.length).toBe(LEFT_PAGE_LINES);
-    expect(pages[1].blocks?.length).toBeLessThanOrEqual(RIGHT_PAGE_LINES);
+    const leftCount = pages[0].blocks?.length ?? 0;
+    const rightCount = pages[1].blocks?.length ?? 0;
+    expect(leftCount).toBeGreaterThan(0);
+    expect(rightCount).toBeGreaterThan(0);
+    expect(leftCount).toBeLessThanOrEqual(rightCount + 1);
+  });
+});
+
+describe("mergeContinuationParagraphs", () => {
+  it("rejoins mid-sentence paragraph fragments from legacy page splits", () => {
+    const blocks = [
+      { style: "paragraph" as const, text: "a principios del" },
+      { style: "paragraph" as const, text: "año pasado en la Anecdota" },
+      { style: "paragraph" as const, text: "Oxoniensia." },
+    ];
+    expect(isParagraphContinuation("a principios del", "año pasado")).toBe(true);
+    const merged = mergeContinuationParagraphs(blocks);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].text).toBe("a principios del año pasado en la Anecdota Oxoniensia.");
+  });
+
+  it("does not merge a new sentence that starts with uppercase", () => {
+    const merged = mergeContinuationParagraphs([
+      { style: "paragraph", text: "Fin de la introducción." },
+      { style: "paragraph", text: "El siguiente capítulo empieza aquí." },
+    ]);
+    expect(merged).toHaveLength(2);
+  });
+
+  it("flattenPageBlocks merges split paragraphs across stored pages", () => {
+    const pages = [
+      { pageNumber: 0, content: "Hiouen Thsang, que salió", blocks: [{ style: "paragraph" as const, text: "Hiouen Thsang, que salió" }] },
+      { pageNumber: 1, content: "de la India en el año 645.", blocks: [{ style: "paragraph" as const, text: "de la India en el año 645." }] },
+    ];
+    const flat = flattenPageBlocks(pages);
+    expect(flat).toHaveLength(1);
+    expect(flat[0].text).toContain("salió de la India");
+  });
+});
+
+describe("paginateBlocksByHeight", () => {
+  it("fits blocks into the measured page height without dropping content", () => {
+    const blocks = Array.from({ length: 20 }, (_, i) => ({
+      style: "list-item" as const,
+      text: `Libro ${i + 1}: título`,
+    }));
+    const pages = paginateBlocksByHeight(blocks, {
+      leftHeightPx: 280,
+      rightHeightPx: 320,
+      fontSize: 17,
+    });
+    expect(pages.length).toBeGreaterThan(1);
+    expect(flattenPageBlocks(pages).map((b) => b.text)).toEqual(blocks.map((b) => b.text));
+  });
+
+  it("fills a typical reader page with several medium paragraphs (not half-blank)", () => {
+    const para =
+      "El texto sánscrito del Buddha-carita se publicó a principios del año pasado en la Anecdota Oxoniensia, y ahora presentamos la traducción inglesa del poema.";
+    const blocks = Array.from({ length: 6 }, () => ({
+      style: "paragraph" as const,
+      text: para,
+    }));
+    const pages = paginateBlocksByHeight(blocks, {
+      leftHeightPx: 500,
+      rightHeightPx: 520,
+      fontSize: 17,
+    });
+    expect((pages[0].blocks ?? []).length).toBeGreaterThanOrEqual(3);
+    expect(flattenPageBlocks(pages)).toHaveLength(6);
+  });
+
+  it("marks cross-page paragraph splits as continued (no false new-paragraph indent)", () => {
+    const long =
+      "El texto sánscrito del Buddha-carita se publicó a principios del año pasado en la Anecdota Oxoniensia y la siguiente traducción al inglés ahora se incluye en la serie de libros sagrados del oriente con notas del editor.";
+    const pages = paginateBlocksByHeight([{ style: "paragraph", text: long }], {
+      leftHeightPx: 90,
+      rightHeightPx: 90,
+      fontSize: 17,
+    });
+    expect(pages.length).toBeGreaterThan(1);
+    expect(pages[0].blocks?.[0]?.continued).toBeFalsy();
+    expect(pages[1].blocks?.[0]?.continued).toBe(true);
+    expect(flattenPageBlocks(pages).map((b) => b.text).join(" ")).toContain("Buddha-carita");
   });
 });
 

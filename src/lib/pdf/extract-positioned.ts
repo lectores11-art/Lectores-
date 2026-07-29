@@ -1,3 +1,6 @@
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
+
 export interface PositionedTextItem {
   text: string;
   x: number;
@@ -16,15 +19,50 @@ type TextContentItem = {
   hasEOL?: boolean;
 };
 
+type PdfJsModule = {
+  getDocument: (src: { data: Uint8Array }) => {
+    promise: Promise<{
+      numPages: number;
+      getPage(pageNum: number): Promise<{
+        getViewport(params: { scale: number }): {
+          convertToViewportPoint(x: number, y: number): [number, number];
+        };
+        getTextContent(params: {
+          includeMarkedContent: boolean;
+          disableNormalization: boolean;
+        }): Promise<{ items: unknown[] }>;
+        cleanup(): void;
+      }>;
+      destroy(): Promise<void>;
+    }>;
+  };
+};
+
+/**
+ * Load pdfjs without a static import path — Turbopack cannot resolve the
+ * legacy .mjs subpath when analyzing the module graph.
+ */
+async function loadPdfJs(): Promise<PdfJsModule> {
+  const require = createRequire(import.meta.url);
+  const resolved = require.resolve("pdfjs-dist/legacy/build/pdf.mjs");
+  const href = pathToFileURL(resolved).href;
+  // Hide from bundler static analysis (Turbopack / webpack).
+  const dynamicImport = new Function(
+    "specifier",
+    "return import(specifier)"
+  ) as (specifier: string) => Promise<PdfJsModule>;
+  return dynamicImport(href);
+}
+
 /**
  * Extract text runs with X/Y positions from a PDF buffer using pdf-parse/pdfjs.
- * Does not integrate with upload — used by layout inference (B-02).
+ * Server-only — used by layout inference during upload.
  */
 export async function extractPositionedTextFromPdfBuffer(
   buffer: Buffer
 ): Promise<PositionedTextItem[]> {
   const { PDFParse } = await import("pdf-parse");
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pdfjs = await loadPdfJs();
 
   const data = new Uint8Array(buffer);
   const parser = new PDFParse({ data });

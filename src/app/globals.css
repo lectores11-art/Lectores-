@@ -83,6 +83,8 @@ body {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  /* Reserve space so the absolute page number does not cover the last line */
+  padding-bottom: 1.75rem;
 }
 
 .book-page-body-right {
@@ -148,13 +150,17 @@ body {
 
 /* Reader typography */
 .book-para {
-  margin-bottom: 1.1rem;
+  margin-bottom: 0.85rem;
   text-align: justify;
   text-indent: 1.4rem;
   hyphens: auto;
 }
-.book-para:first-of-type {
+.book-para:first-of-type,
+.book-para-continued {
   text-indent: 0;
+}
+.book-para-continued {
+  margin-top: 0;
 }
 .book-heading {
   text-align: center;
@@ -162,14 +168,14 @@ body {
   font-variant: small-caps;
   letter-spacing: 0.06em;
   font-weight: 600;
-  margin: 0.5rem 0 1.5rem;
+  margin: 0.35rem 0 1rem;
   text-indent: 0;
 }
 
 .book-title {
   text-align: center;
   font-weight: 600;
-  margin: 0.25rem 0 0.75rem;
+  margin: 0.15rem 0 0.55rem;
   text-indent: 0;
   color: #2c2a26;
 }
@@ -179,7 +185,7 @@ body {
   font-weight: 600;
   font-style: italic;
   letter-spacing: 0.04em;
-  margin: 0 0 1.25rem;
+  margin: 0 0 0.85rem;
   text-indent: 0;
   color: #3d3a34;
 }
@@ -187,8 +193,8 @@ body {
 .book-list-item {
   text-align: center;
   text-indent: 0;
-  margin-bottom: 0.35rem;
-  line-height: 1.55;
+  margin-bottom: 0.2rem;
+  line-height: 1.45;
   hyphens: none;
 }
 

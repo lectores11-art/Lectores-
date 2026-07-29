@@ -21,10 +21,11 @@ POST /api/c/[slug]/books
 |-----------|-------|--------|
 | `LEFT_PAGE_WORDS` | 80 | Páginas pares (izquierda): caben con título solo en spread 1 |
 | `RIGHT_PAGE_WORDS` | 105 | Páginas impares (derecha): caben con barra de herramientas |
-| `LEFT_PAGE_LINES` | 28 | Nivel B — presupuesto visual hoja izquierda |
-| `RIGHT_PAGE_LINES` | 32 | Nivel B — presupuesto visual hoja derecha |
+| `LEFT_PAGE_LINES` | 20 | Presupuesto visual hoja izquierda |
+| `RIGHT_PAGE_LINES` | 22 | Presupuesto visual hoja derecha |
+| `CHARS_PER_LINE` | 48 | Ancho real de columna (~half page) |
 | `MAX_STORED_PAGES` | 1500 | Techo de seguridad para JSONB en Postgres |
-| `PIPELINE_VERSION` | 4 | Libros con `pipeline_version < 4` pueden usar paginación legacy |
+| `PIPELINE_VERSION` | 5 | Lector reflow por altura; upload con presupuesto conservador |
 
 ## Nivel A — preservación de formato (v3)
 
@@ -34,21 +35,22 @@ POST /api/c/[slug]/books
 - **Lector:** `PageContent` renderiza cada bloque con CSS (centrado para TOC, ítems de lista, etc.).
 - **Persistencia:** cada página en `content_json` incluye `{ pageNumber, content, blocks[] }`.
 
-## Nivel B — layout-aware (v4)
+## Nivel B — layout-aware (v4/v5)
 
 - **Extracción:** `extractPositionedTextFromPdfBuffer` obtiene `PositionedTextItem[]` con X/Y.
 - **Inferencia:** `inferLayoutBlocks` agrupa por línea, detecta centrado (±15%) y `fontSize` relativo.
-- **Paginación:** `paginateBlocksByLines` usa `LEFT_PAGE_LINES` / `RIGHT_PAGE_LINES` (no palabras).
-- **Regla:** los bloques `list-item` nunca se parten entre páginas.
+- **Paginación upload:** `paginateBlocksByHeight` con presupuesto conservador (14/16 líneas).
+- **Paginación lector (v5):** reflow en cliente midiendo `.book-page-body` con ResizeObserver — **arregla libros ya subidos sin re-subir**.
+- **Regla:** los bloques `list-item` nunca se parten entre páginas; párrafos largos sí.
 - **Upload:** `POST /api/c/[slug]/books` intenta pipeline B y hace fallback a Nivel A si falla.
 
 ### Checklist índice sin recorte (Nivel B)
 
-1. Subir PDF con TOC largo (p. ej. Buddhacarita).
+1. Abrir libro (reflow del lector debería bastar; re-subir opcional para v5 en DB).
 2. Spread 1 muestra `Tabla de Contenido`, título y primeros `Libro N:` sin recorte vertical.
 3. Los `Libro N:` restantes continúan en hoja 2+.
-4. `pipeline_version` del libro = 4.
-5. Re-subir libros procesados con v3 si el índice aún se corta.
+4. Ninguna hoja corta texto a media letra en el borde inferior.
+5. Re-subir actualiza `pipeline_version` a 5.
 
 ## Migraciones Supabase requeridas
 
@@ -70,7 +72,7 @@ Después de subir un PDF en **Biblioteca → Subir y procesar**:
 
 ## Libros procesados antes del fix (legacy)
 
-Los libros subidos **antes** de `PIPELINE_VERSION = 4` pueden tener índice fusionado, paginación por palabras o recorte visual. **No se reparan solos.**
+Los libros subidos **antes** de `PIPELINE_VERSION = 5` pueden tener paginación de servidor demasiado densa. El **lector v5 reflowea en cliente**, así que el recorte debería desaparecer al refrescar. Re-subir sigue siendo recomendable para dejar `pipeline_version = 5` en DB.
 
 Acción:
 

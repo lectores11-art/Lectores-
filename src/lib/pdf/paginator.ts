@@ -5,6 +5,8 @@ export interface TextBlock {
   text: string;
   align?: "left" | "center" | "right";
   fontSize?: number;
+  /** True when this block continues a paragraph split across a page break. */
+  continued?: boolean;
 }
 
 export interface PaginatedPage {
@@ -24,17 +26,21 @@ export const LEFT_PAGE_WORDS = 80;
 export const RIGHT_PAGE_WORDS = 105;
 
 /**
- * Visual line budget per half-page (Level B pipeline v4).
- * Tuned for `.book-page { height: calc(100vh - 10rem); overflow: hidden }`.
+ * Visual line budget per half-page (server-side estimate).
+ * Half-page column ≈ 50–55 chars at 17px; body fits ~20–22 lines on a
+ * typical laptop after padding (tuned against live reader fill).
  */
-export const LEFT_PAGE_LINES = 28;
-export const RIGHT_PAGE_LINES = 32;
+export const LEFT_PAGE_LINES = 20;
+export const RIGHT_PAGE_LINES = 22;
+
+/** Approx characters per wrapped line in a reader half-page. */
+export const CHARS_PER_LINE = 48;
 
 /** @deprecated Use LEFT_PAGE_WORDS / RIGHT_PAGE_WORDS per page index. */
 export const READER_WORDS_PER_PAGE = LEFT_PAGE_WORDS;
 
 /** Bump when extraction/pagination logic changes; stored on each book row. */
-export const PIPELINE_VERSION = 4;
+export const PIPELINE_VERSION = 5;
 
 /** Safety cap for content_json size in DB. */
 export const MAX_STORED_PAGES = 1500;
@@ -146,32 +152,179 @@ function linesLimitForPage(pageIndex: number): number {
   return pageIndex % 2 === 0 ? LEFT_PAGE_LINES : RIGHT_PAGE_LINES;
 }
 
-/** Visual line cost — centered TOC blocks need more vertical space in the reader. */
+/** Visual line cost — includes margins from reader CSS (`.book-para`, titles). */
 export function blockLineCost(block: TextBlock): number {
   switch (block.style) {
     case "title":
       return 3;
     case "subtitle":
     case "heading":
-      return 2;
+      return 3;
     case "list-item":
       return 2;
     case "paragraph": {
       const explicitLines = block.text.split("\n").filter(Boolean).length;
-      const wrapped = Math.ceil(block.text.length / 72);
-      return Math.max(1, explicitLines, wrapped);
+      const wrapped = Math.ceil(block.text.length / CHARS_PER_LINE);
+      // +1 accounts for margin-bottom on .book-para
+      return Math.max(1, explicitLines, wrapped) + 1;
     }
     default:
       return 1;
   }
 }
 
+/** Estimate rendered height in px for a block at the given font size. */
+export function estimateBlockHeightPx(block: TextBlock, fontSize: number): number {
+  // Match globals.css: line-height 1.8, .book-para margin-bottom 0.85rem
+  // Slight inflation (+6%) so we never pack past the visible box.
+  const bodyLine = fontSize * 1.8;
+  const paraMargin = fontSize * 0.85;
+  let raw: number;
+  switch (block.style) {
+    case "title":
+      raw = (fontSize + 4) * 1.3 + fontSize * 0.7;
+      break;
+    case "subtitle":
+      raw = (fontSize + 1) * 1.45 + fontSize * 0.85;
+      break;
+    case "heading":
+      raw = (fontSize + 3) * 1.35 + fontSize * 1.35;
+      break;
+    case "list-item":
+      // line-height 1.45 + margin-bottom 0.2rem
+      raw = fontSize * 1.45 + fontSize * 0.25;
+      break;
+    case "paragraph": {
+      const lines = Math.max(1, Math.ceil(block.text.length / CHARS_PER_LINE));
+      raw = lines * bodyLine + paraMargin;
+      break;
+    }
+    default:
+      raw = bodyLine;
+  }
+  return Math.ceil(raw * 1.06);
+}
+
+/** Flatten stored pages back into a single ordered block stream. */
+export function flattenPageBlocks(pages: PaginatedPage[]): TextBlock[] {
+  return mergeContinuationParagraphs(pages.flatMap((page) => getPageBlocks(page)));
+}
+
 /**
- * Paginate structured blocks by visual line height (Level B).
- * Atomic blocks (especially list-item) are never split across pages.
+ * Detect paragraph chunks that were split mid-sentence (legacy word pagination
+ * or height splits) so we can rejoin them before reflow.
  */
-export function paginateBlocksByLines(blocks: TextBlock[]): PaginatedPage[] {
-  if (blocks.length === 0) {
+export function isParagraphContinuation(prev: string, next: string): boolean {
+  const a = prev.trim();
+  const b = next.trim();
+  if (!a || !b) return false;
+  if (a.endsWith("-")) return true;
+  // Continuation of the same sentence (e.g. "del" + "año pasado...")
+  if (/^[a-záéíóúñüàèìòù]/.test(b)) return true;
+  // Split mid-clause without terminal punctuation (e.g. "...Anecdota" + "Oxoniensia.")
+  if (!/[.!?…]["»')"\]]*$/.test(a)) return true;
+  return false;
+}
+
+/** Rejoin mid-sentence paragraph fragments into single blocks. */
+export function mergeContinuationParagraphs(blocks: TextBlock[]): TextBlock[] {
+  const merged: TextBlock[] = [];
+
+  for (const block of blocks) {
+    const prev = merged[merged.length - 1];
+    const shouldMerge =
+      prev &&
+      prev.style === "paragraph" &&
+      block.style === "paragraph" &&
+      (block.continued === true ||
+        prev.continued === true ||
+        isParagraphContinuation(prev.text, block.text));
+
+    if (shouldMerge && prev) {
+      const joiner = prev.text.endsWith("-") ? "" : " ";
+      const nextText = prev.text.endsWith("-")
+        ? block.text.replace(/^\s+/, "")
+        : block.text;
+      prev.text = `${prev.text.replace(/-$/, "")}${joiner}${nextText}`.replace(/\s+/g, " ").trim();
+      prev.continued = false;
+      continue;
+    }
+
+    merged.push({ ...block, continued: false });
+  }
+
+  return merged;
+}
+
+/**
+ * Split a paragraph so each chunk fits within maxHeightPx.
+ * Non-paragraph blocks are returned as-is (never split).
+ * Chunks after the first are marked `continued` (no indent in the reader).
+ */
+export function splitBlockToFit(
+  block: TextBlock,
+  maxHeightPx: number,
+  fontSize: number
+): TextBlock[] {
+  if (block.style !== "paragraph") return [block];
+  if (estimateBlockHeightPx(block, fontSize) <= maxHeightPx) {
+    return [{ ...block }];
+  }
+
+  const words = block.text.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [block];
+
+  const chunks: TextBlock[] = [];
+  let current: string[] = [];
+
+  for (const word of words) {
+    const trial = [...current, word].join(" ");
+    const trialHeight = estimateBlockHeightPx({ ...block, text: trial }, fontSize);
+    if (trialHeight > maxHeightPx && current.length > 0) {
+      chunks.push({
+        ...block,
+        text: current.join(" "),
+        continued: block.continued === true || chunks.length > 0,
+      });
+      current = [word];
+    } else {
+      current.push(word);
+    }
+  }
+  if (current.length > 0) {
+    chunks.push({
+      ...block,
+      text: current.join(" "),
+      continued: block.continued === true || chunks.length > 0,
+    });
+  }
+  return chunks.length > 0 ? chunks : [block];
+}
+
+export type HeightPaginationOptions = {
+  /** Available content height for even pages (left). */
+  leftHeightPx: number;
+  /** Available content height for odd pages (right). */
+  rightHeightPx: number;
+  fontSize: number;
+};
+
+/**
+ * Paginate by measured/estimated pixel height (reader reflow + safer uploads).
+ * Atomic non-paragraph blocks are never split; paragraphs may split mid-text
+ * with `continued` markers so the reader does not indent mid-sentence.
+ */
+export function paginateBlocksByHeight(
+  blocks: TextBlock[],
+  options: HeightPaginationOptions
+): PaginatedPage[] {
+  const { leftHeightPx, rightHeightPx, fontSize } = options;
+  const minHeight = 80;
+  const minSplitPx = fontSize * 2.5;
+
+  const source = mergeContinuationParagraphs(blocks);
+
+  if (source.length === 0) {
     const fallback = "Este libro no tiene contenido extraíble.";
     return [
       {
@@ -182,9 +335,14 @@ export function paginateBlocksByLines(blocks: TextBlock[]): PaginatedPage[] {
     ];
   }
 
+  function heightForPage(pageIndex: number): number {
+    const raw = pageIndex % 2 === 0 ? leftHeightPx : rightHeightPx;
+    return Math.max(minHeight, raw);
+  }
+
   const pages: PaginatedPage[] = [];
   let pageBlocks: TextBlock[] = [];
-  let lineCount = 0;
+  let usedHeight = 0;
 
   function flushPage() {
     if (pageBlocks.length === 0) return;
@@ -194,31 +352,104 @@ export function paginateBlocksByLines(blocks: TextBlock[]): PaginatedPage[] {
       blocks: [...pageBlocks],
     });
     pageBlocks = [];
-    lineCount = 0;
+    usedHeight = 0;
   }
 
-  for (const block of blocks) {
-    const cost = blockLineCost(block);
-    const limit = linesLimitForPage(pages.length);
-
-    if (cost > limit && pageBlocks.length > 0) {
-      flushPage();
-    }
-
-    if (lineCount + cost > limit && pageBlocks.length > 0) {
-      flushPage();
-    }
-
+  function placeBlock(block: TextBlock) {
     pageBlocks.push(block);
-    lineCount += cost;
-
-    if (lineCount >= linesLimitForPage(pages.length)) {
+    usedHeight += estimateBlockHeightPx(block, fontSize);
+    if (usedHeight >= heightForPage(pages.length)) {
       flushPage();
     }
+  }
+
+  const queue: TextBlock[] = [...source];
+
+  while (queue.length > 0) {
+    const block = queue.shift()!;
+    const limit = heightForPage(pages.length);
+    const spaceLeft = limit - usedHeight;
+    const h = estimateBlockHeightPx(block, fontSize);
+
+    if (h <= spaceLeft) {
+      placeBlock(block);
+      continue;
+    }
+
+    // Empty page but block taller than the page — split paragraphs only.
+    if (pageBlocks.length === 0) {
+      if (block.style === "paragraph") {
+        const pieces = splitBlockToFit(block, limit, fontSize);
+        const first = pieces.shift()!;
+        placeBlock(first);
+        queue.unshift(...pieces);
+      } else {
+        placeBlock(block);
+        flushPage();
+      }
+      continue;
+    }
+
+    // Fill remaining space with the start of a paragraph, continue on next page.
+    if (block.style === "paragraph" && spaceLeft >= minSplitPx) {
+      const pieces = splitBlockToFit(block, spaceLeft, fontSize);
+      const first = pieces[0];
+      const firstH = estimateBlockHeightPx(first, fontSize);
+
+      if (firstH <= spaceLeft && first.text.trim()) {
+        placeBlock(first);
+        flushPage();
+        const restText = pieces
+          .slice(1)
+          .map((p) => p.text)
+          .join(" ")
+          .trim();
+        // splitBlockToFit may return only one piece that is still the full text
+        // when spaceLeft is tiny relative to first word — handle remainder.
+        if (pieces.length === 1) {
+          // First piece consumed words that fit; rebuild remainder from original.
+          const usedWords = first.text.trim().split(/\s+/).filter(Boolean);
+          const allWords = block.text.trim().split(/\s+/).filter(Boolean);
+          const restWords = allWords.slice(usedWords.length);
+          if (restWords.length > 0) {
+            queue.unshift({
+              ...block,
+              text: restWords.join(" "),
+              continued: true,
+            });
+          }
+        } else if (restText) {
+          queue.unshift({
+            ...block,
+            text: restText,
+            continued: true,
+          });
+        }
+        continue;
+      }
+    }
+
+    flushPage();
+    queue.unshift(block);
   }
 
   flushPage();
   return pages;
+}
+
+/**
+ * Paginate structured blocks by visual line height (Level B upload path).
+ * Atomic blocks (especially list-item) are never split across pages.
+ */
+export function paginateBlocksByLines(blocks: TextBlock[]): PaginatedPage[] {
+  // Convert line budgets to a height model shared with the reader (~17px body).
+  const fontSize = 17;
+  const linePx = fontSize * 1.8;
+  return paginateBlocksByHeight(blocks, {
+    leftHeightPx: LEFT_PAGE_LINES * linePx,
+    rightHeightPx: RIGHT_PAGE_LINES * linePx,
+    fontSize,
+  });
 }
 
 /**

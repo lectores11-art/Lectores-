@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Bookmark,
   ChevronLeft,
@@ -12,8 +12,11 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
+  extractTOC,
+  flattenPageBlocks,
   hasLegacyPaginationBug,
   pagesForSpread,
+  paginateBlocksByHeight,
   PIPELINE_VERSION,
   totalSpreads,
   type PaginatedPage,
@@ -62,12 +65,73 @@ export function BookReader({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<number[]>([]);
   const [justBookmarked, setJustBookmarked] = useState(false);
+  const [leftBodyHeight, setLeftBodyHeight] = useState(0);
+  const [rightBodyHeight, setRightBodyHeight] = useState(0);
+  /** Shrinks available height when DOM reports overflow (anti-clip feedback). */
+  const [fitScale, setFitScale] = useState(0.94);
+
+  const leftBodyRef = useRef<HTMLDivElement>(null);
+  const rightBodyRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const left = leftBodyRef.current;
+    const right = rightBodyRef.current;
+    if (!left || !right) return;
+
+    const measure = () => {
+      setLeftBodyHeight(left.clientHeight);
+      setRightBodyHeight(right.clientHeight);
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(left);
+    ro.observe(right);
+    return () => ro.disconnect();
+  }, [compact, settings.fontSize]);
+
+  // Reset density when content or font changes; overflow loop will tighten if needed.
+  useEffect(() => {
+    setFitScale(0.94);
+  }, [pages, settings.fontSize]);
+
+  const sourceBlocks = useMemo(() => flattenPageBlocks(pages), [pages]);
+
+  const fittedPages = useMemo(() => {
+    const left = leftBodyHeight >= 60 ? leftBodyHeight : 520;
+    const right = rightBodyHeight >= 60 ? rightBodyHeight : 560;
+    return paginateBlocksByHeight(sourceBlocks, {
+      leftHeightPx: Math.max(80, Math.floor(left * fitScale)),
+      rightHeightPx: Math.max(80, Math.floor(right * fitScale)),
+      fontSize: settings.fontSize,
+    });
+  }, [sourceBlocks, leftBodyHeight, rightBodyHeight, settings.fontSize, fitScale]);
+
+  const displayToc = useMemo(() => {
+    const rebuilt = extractTOC(fittedPages);
+    return rebuilt.length > 0 ? rebuilt : tableOfContents;
+  }, [fittedPages, tableOfContents]);
 
   const spreadIdx = Math.floor(currentPage / 2);
-  const [leftPage, rightPage] = pagesForSpread(pages, spreadIdx);
-  const totalPageCount = pages.length;
+  const [leftPage, rightPage] = pagesForSpread(fittedPages, spreadIdx);
+  const totalPageCount = fittedPages.length;
   const progressPercent =
     totalPageCount > 0 ? ((currentPage + 1) / totalPageCount) * 100 : 0;
+
+  // If either page of the current spread overflows, tighten fit and reflow.
+  useLayoutEffect(() => {
+    const left = leftBodyRef.current;
+    const right = rightBodyRef.current;
+    if (!left || !right) return;
+
+    const overflows =
+      left.scrollHeight > left.clientHeight + 1 ||
+      right.scrollHeight > right.clientHeight + 1;
+
+    if (overflows) {
+      setFitScale((scale) => Math.max(0.78, Number((scale * 0.96).toFixed(3))));
+    }
+  }, [fittedPages, spreadIdx, settings.fontSize, leftBodyHeight, rightBodyHeight]);
 
   const goToPage = useCallback(
     (page: number) => {
@@ -79,6 +143,13 @@ export function BookReader({
     },
     [totalPageCount, onPageChange]
   );
+
+  // Keep current page in range when reflow changes page count.
+  useEffect(() => {
+    if (totalPageCount > 0 && currentPage >= totalPageCount) {
+      goToPage(totalPageCount - 1);
+    }
+  }, [totalPageCount, currentPage, goToPage]);
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -100,7 +171,7 @@ export function BookReader({
       return;
     }
     const q = searchQuery.toLowerCase();
-    const results = pages
+    const results = fittedPages
       .filter((p) => p.content.toLowerCase().includes(q))
       .map((p) => p.pageNumber);
     setSearchResults(results);
@@ -126,7 +197,7 @@ export function BookReader({
     legacyWarning ||
     pipelineVersion < PIPELINE_VERSION ||
     hasLegacyPaginationBug(pages) ||
-    totalPageCount > 500;
+    pages.length > 500;
 
   return (
     <div
@@ -172,7 +243,7 @@ export function BookReader({
               </div>
             )}
 
-            <div className="book-page-body">
+            <div ref={leftBodyRef} className="book-page-body">
               <PageContent page={leftPage} fontSize={settings.fontSize} />
             </div>
 
@@ -207,7 +278,7 @@ export function BookReader({
               </button>
             </div>
 
-            <div className="book-page-body book-page-body-right">
+            <div ref={rightBodyRef} className="book-page-body book-page-body-right">
               <PageContent page={rightPage} fontSize={settings.fontSize} />
             </div>
 
@@ -225,10 +296,10 @@ export function BookReader({
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
                 Índice
               </p>
-              {tableOfContents.length === 0 ? (
+              {displayToc.length === 0 ? (
                 <p className="text-sm text-slate-400">Sin índice disponible</p>
               ) : (
-                tableOfContents.map((item, i) => (
+                displayToc.map((item, i) => (
                   <button
                     key={i}
                     onClick={() => {

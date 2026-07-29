@@ -43,7 +43,10 @@ function BlockView({
   }
 
   return (
-    <p className="book-para" style={{ fontSize }}>
+    <p
+      className={block.continued ? "book-para book-para-continued" : "book-para"}
+      style={{ fontSize }}
+    >
       {block.text}
     </p>
   );

@@ -115,6 +115,9 @@ export interface BookPage {
   blocks?: Array<{
     style: "title" | "subtitle" | "list-item" | "heading" | "paragraph";
     text: string;
+    align?: "left" | "center" | "right";
+    fontSize?: number;
+    continued?: boolean;
   }>;
 }
 
