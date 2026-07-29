@@ -82,7 +82,7 @@ export function BookReaderPageClient({
   return (
     <div className="h-screen overflow-hidden">
       <BookReader
-      key={`${book.id}-${initialPage}`}
+      key={book.id}
       title={book.title}
       author={book.author}
       pages={pages}

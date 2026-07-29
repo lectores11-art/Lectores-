@@ -82,7 +82,10 @@ body {
 .book-page-body {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  /* Auto as safety if a single block still overflows; packing uses real DOM heights. */
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
   /* Reserve space so the absolute page number does not cover the last line */
   padding-bottom: 1.75rem;
 }

@@ -310,6 +310,84 @@ export type HeightPaginationOptions = {
 };
 
 /**
+ * Pack already-measured blocks into pages without exceeding page height.
+ * Never drops content. Does not split blocks — callers must pre-split any
+ * block taller than a full page (see reader DOM measure pass).
+ * If a block does not fit the remaining space, it starts on the next page.
+ */
+export function packBlocksWithMeasuredHeights(
+  blocks: TextBlock[],
+  heights: number[],
+  options: Pick<HeightPaginationOptions, "leftHeightPx" | "rightHeightPx">
+): PaginatedPage[] {
+  const { leftHeightPx, rightHeightPx } = options;
+  const minHeight = 80;
+
+  if (blocks.length === 0) {
+    const fallback = "Este libro no tiene contenido extraíble.";
+    return [
+      {
+        pageNumber: 0,
+        content: fallback,
+        blocks: [{ style: "paragraph", text: fallback }],
+      },
+    ];
+  }
+
+  if (blocks.length !== heights.length) {
+    throw new Error(
+      `packBlocksWithMeasuredHeights: blocks (${blocks.length}) != heights (${heights.length})`
+    );
+  }
+
+  function heightForPage(pageIndex: number): number {
+    const raw = pageIndex % 2 === 0 ? leftHeightPx : rightHeightPx;
+    return Math.max(minHeight, raw);
+  }
+
+  const pages: PaginatedPage[] = [];
+  let pageBlocks: TextBlock[] = [];
+  let usedHeight = 0;
+
+  function flushPage() {
+    if (pageBlocks.length === 0) return;
+    pages.push({
+      pageNumber: pages.length,
+      content: serializeBlocks(pageBlocks),
+      blocks: [...pageBlocks],
+    });
+    pageBlocks = [];
+    usedHeight = 0;
+  }
+
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
+    const h = Math.max(0, heights[i] ?? 0);
+    const limit = heightForPage(pages.length);
+
+    if (pageBlocks.length === 0) {
+      pageBlocks.push(block);
+      usedHeight = h;
+      // Alone on the page and already fills it — advance (may slightly overflow; CSS safety).
+      if (h >= limit) flushPage();
+      continue;
+    }
+
+    if (usedHeight + h > limit) {
+      flushPage();
+      i -= 1;
+      continue;
+    }
+
+    pageBlocks.push(block);
+    usedHeight += h;
+  }
+
+  flushPage();
+  return pages;
+}
+
+/**
  * Paginate by measured/estimated pixel height (reader reflow + safer uploads).
  * Atomic non-paragraph blocks are never split; paragraphs may split mid-text
  * with `continued` markers so the reader does not indent mid-sentence.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bookmark,
   ChevronLeft,
@@ -13,11 +13,11 @@ import {
 import { cn } from "@/lib/utils";
 import {
   extractTOC,
-  flattenPageBlocks,
   hasLegacyPaginationBug,
+  mergeContinuationParagraphs,
   pagesForSpread,
-  paginateBlocksByHeight,
   PIPELINE_VERSION,
+  getPageBlocks,
   totalSpreads,
   type PaginatedPage,
   type TOCItem,
@@ -46,6 +46,18 @@ const defaultSettings: ReaderSettings = {
   theme: "light",
 };
 
+/** Normalize continued fragments within each stored page (display only — no reflow). */
+function normalizePages(pages: PaginatedPage[]): PaginatedPage[] {
+  return pages.map((page) => {
+    const blocks = mergeContinuationParagraphs(getPageBlocks(page));
+    return {
+      ...page,
+      blocks,
+      content: blocks.map((b) => b.text).join("\n\n"),
+    };
+  });
+}
+
 export function BookReader({
   title,
   author,
@@ -59,83 +71,31 @@ export function BookReader({
   pipelineVersion = 0,
   legacyWarning = false,
 }: BookReaderProps) {
-  const [currentPage, setCurrentPage] = useState(initialPage);
+  const [currentPage, setCurrentPage] = useState(() => Math.floor(initialPage / 2) * 2);
   const [settings, setSettings] = useState<ReaderSettings>(defaultSettings);
   const [panel, setPanel] = useState<"toc" | "settings" | "search" | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<number[]>([]);
   const [justBookmarked, setJustBookmarked] = useState(false);
-  const [leftBodyHeight, setLeftBodyHeight] = useState(0);
-  const [rightBodyHeight, setRightBodyHeight] = useState(0);
-  /** Shrinks available height when DOM reports overflow (anti-clip feedback). */
-  const [fitScale, setFitScale] = useState(0.94);
 
-  const leftBodyRef = useRef<HTMLDivElement>(null);
-  const rightBodyRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const left = leftBodyRef.current;
-    const right = rightBodyRef.current;
-    if (!left || !right) return;
-
-    const measure = () => {
-      setLeftBodyHeight(left.clientHeight);
-      setRightBodyHeight(right.clientHeight);
-    };
-
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(left);
-    ro.observe(right);
-    return () => ro.disconnect();
-  }, [compact, settings.fontSize]);
-
-  // Reset density when content or font changes; overflow loop will tighten if needed.
-  useEffect(() => {
-    setFitScale(0.94);
-  }, [pages, settings.fontSize]);
-
-  const sourceBlocks = useMemo(() => flattenPageBlocks(pages), [pages]);
-
-  const fittedPages = useMemo(() => {
-    const left = leftBodyHeight >= 60 ? leftBodyHeight : 520;
-    const right = rightBodyHeight >= 60 ? rightBodyHeight : 560;
-    return paginateBlocksByHeight(sourceBlocks, {
-      leftHeightPx: Math.max(80, Math.floor(left * fitScale)),
-      rightHeightPx: Math.max(80, Math.floor(right * fitScale)),
-      fontSize: settings.fontSize,
-    });
-  }, [sourceBlocks, leftBodyHeight, rightBodyHeight, settings.fontSize, fitScale]);
+  // Stable stored pages — never re-paginate on the client (that caused skips / blank screens).
+  const displayPages = useMemo(() => normalizePages(pages), [pages]);
 
   const displayToc = useMemo(() => {
-    const rebuilt = extractTOC(fittedPages);
+    const rebuilt = extractTOC(displayPages);
     return rebuilt.length > 0 ? rebuilt : tableOfContents;
-  }, [fittedPages, tableOfContents]);
+  }, [displayPages, tableOfContents]);
 
   const spreadIdx = Math.floor(currentPage / 2);
-  const [leftPage, rightPage] = pagesForSpread(fittedPages, spreadIdx);
-  const totalPageCount = fittedPages.length;
+  const [leftPage, rightPage] = pagesForSpread(displayPages, spreadIdx);
+  const totalPageCount = displayPages.length;
   const progressPercent =
     totalPageCount > 0 ? ((currentPage + 1) / totalPageCount) * 100 : 0;
 
-  // If either page of the current spread overflows, tighten fit and reflow.
-  useLayoutEffect(() => {
-    const left = leftBodyRef.current;
-    const right = rightBodyRef.current;
-    if (!left || !right) return;
-
-    const overflows =
-      left.scrollHeight > left.clientHeight + 1 ||
-      right.scrollHeight > right.clientHeight + 1;
-
-    if (overflows) {
-      setFitScale((scale) => Math.max(0.78, Number((scale * 0.96).toFixed(3))));
-    }
-  }, [fittedPages, spreadIdx, settings.fontSize, leftBodyHeight, rightBodyHeight]);
-
   const goToPage = useCallback(
     (page: number) => {
-      const clamped = Math.max(0, Math.min(page, totalPageCount - 1));
+      const even = Math.floor(page / 2) * 2;
+      const clamped = Math.max(0, Math.min(even, Math.max(0, totalPageCount - 1)));
       setCurrentPage(clamped);
       const percent =
         totalPageCount > 0 ? ((clamped + 1) / totalPageCount) * 100 : 0;
@@ -144,7 +104,14 @@ export function BookReader({
     [totalPageCount, onPageChange]
   );
 
-  // Keep current page in range when reflow changes page count.
+  const goNextSpread = useCallback(() => {
+    goToPage(spreadIdx * 2 + 2);
+  }, [goToPage, spreadIdx]);
+
+  const goPrevSpread = useCallback(() => {
+    goToPage(spreadIdx * 2 - 2);
+  }, [goToPage, spreadIdx]);
+
   useEffect(() => {
     if (totalPageCount > 0 && currentPage >= totalPageCount) {
       goToPage(totalPageCount - 1);
@@ -155,15 +122,15 @@ export function BookReader({
     function handleKey(e: KeyboardEvent) {
       if (e.key === "ArrowRight" || e.key === " ") {
         e.preventDefault();
-        goToPage(currentPage + 2);
+        goNextSpread();
       } else if (e.key === "ArrowLeft") {
         e.preventDefault();
-        goToPage(currentPage - 2);
+        goPrevSpread();
       }
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [currentPage, goToPage]);
+  }, [goNextSpread, goPrevSpread]);
 
   function handleSearch() {
     if (!searchQuery.trim()) {
@@ -171,7 +138,7 @@ export function BookReader({
       return;
     }
     const q = searchQuery.toLowerCase();
-    const results = fittedPages
+    const results = displayPages
       .filter((p) => p.content.toLowerCase().includes(q))
       .map((p) => p.pageNumber);
     setSearchResults(results);
@@ -232,18 +199,21 @@ export function BookReader({
                 <X className="h-4 w-4" />
               </button>
             )}
-            {spreadIdx === 0 && leftPage?.pageNumber === 0 && (
-              <div className="mb-6 text-center">
-                <p className="text-sm font-semibold tracking-wide text-slate-700">
-                  {title}
-                </p>
-                {author && (
-                  <p className="text-xs italic text-slate-500">{author}</p>
-                )}
-              </div>
-            )}
+            {/* Fixed chrome height so the body column does not jump between spreads. */}
+            <div className="mb-6 min-h-[2.75rem] text-center">
+              {spreadIdx === 0 && leftPage?.pageNumber === 0 ? (
+                <>
+                  <p className="text-sm font-semibold tracking-wide text-slate-700">
+                    {title}
+                  </p>
+                  {author && (
+                    <p className="text-xs italic text-slate-500">{author}</p>
+                  )}
+                </>
+              ) : null}
+            </div>
 
-            <div ref={leftBodyRef} className="book-page-body">
+            <div className="book-page-body">
               <PageContent page={leftPage} fontSize={settings.fontSize} />
             </div>
 
@@ -278,7 +248,7 @@ export function BookReader({
               </button>
             </div>
 
-            <div ref={rightBodyRef} className="book-page-body book-page-body-right">
+            <div className="book-page-body book-page-body-right">
               <PageContent page={rightPage} fontSize={settings.fontSize} />
             </div>
 
@@ -290,7 +260,6 @@ export function BookReader({
             <div className="page-curl page-curl-right" />
           </div>
 
-          {/* Floating panels */}
           {panel === "toc" && (
             <div className="absolute right-3 top-12 z-10 max-h-[70%] w-64 overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 shadow-xl scrollbar-thin">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -412,11 +381,10 @@ export function BookReader({
           )}
         </div>
 
-        {/* Progress slider + page indicator inside the cover */}
         <div className="flex items-center gap-3 px-3 pt-3">
           <button
-            onClick={() => goToPage(currentPage - 2)}
-            disabled={currentPage <= 0}
+            onClick={goPrevSpread}
+            disabled={spreadIdx <= 0}
             className="flex h-7 w-7 items-center justify-center rounded-full bg-white/25 text-white transition hover:bg-white/40 disabled:opacity-30"
             aria-label="Anterior"
           >
@@ -426,19 +394,20 @@ export function BookReader({
           <input
             type="range"
             min={0}
-            max={Math.max(0, totalPageCount - 1)}
-            value={currentPage}
-            onChange={(e) => goToPage(Number(e.target.value))}
+            max={Math.max(0, totalSpreads(totalPageCount) - 1)}
+            value={spreadIdx}
+            onChange={(e) => goToPage(Number(e.target.value) * 2)}
             className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-white/30 accent-white"
           />
 
-          <span className="min-w-[64px] text-center text-xs font-medium text-white/90">
-            {currentPage + 1} de {totalPageCount}
+          <span className="min-w-[72px] text-center text-xs font-medium text-white/90">
+            {leftPage ? leftPage.pageNumber + 1 : currentPage + 1}
+            {rightPage ? `–${rightPage.pageNumber + 1}` : ""} de {totalPageCount}
           </span>
 
           <button
-            onClick={() => goToPage(currentPage + 2)}
-            disabled={currentPage >= totalPageCount - 1}
+            onClick={goNextSpread}
+            disabled={spreadIdx >= totalSpreads(totalPageCount) - 1}
             className="flex h-7 w-7 items-center justify-center rounded-full bg-white/25 text-white transition hover:bg-white/40 disabled:opacity-30"
             aria-label="Siguiente"
           >

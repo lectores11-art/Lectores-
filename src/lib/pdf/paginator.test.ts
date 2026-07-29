@@ -12,6 +12,7 @@ import {
   LEFT_PAGE_WORDS,
   mergeContinuationParagraphs,
   normalizeExtractedText,
+  packBlocksWithMeasuredHeights,
   paginateBlocksByHeight,
   paginateBlocksByLines,
   paginateText,
@@ -104,6 +105,40 @@ describe("mergeContinuationParagraphs", () => {
     const flat = flattenPageBlocks(pages);
     expect(flat).toHaveLength(1);
     expect(flat[0].text).toContain("salió de la India");
+  });
+});
+
+describe("packBlocksWithMeasuredHeights", () => {
+  it("keeps sequential content across pages without dropping blocks", () => {
+    const blocks = Array.from({ length: 8 }, (_, i) => ({
+      style: "paragraph" as const,
+      text: `bloque ${i}`,
+    }));
+    const heights = blocks.map(() => 40);
+    const pages = packBlocksWithMeasuredHeights(blocks, heights, {
+      leftHeightPx: 100,
+      rightHeightPx: 100,
+    });
+    expect(pages.length).toBe(4);
+    expect(pages.flatMap((p) => (p.blocks ?? []).map((b) => b.text))).toEqual(
+      blocks.map((b) => b.text)
+    );
+    // Page 2 must continue page 1 (no skip).
+    expect(pages[0].blocks?.map((b) => b.text)).toEqual(["bloque 0", "bloque 1"]);
+    expect(pages[1].blocks?.map((b) => b.text)).toEqual(["bloque 2", "bloque 3"]);
+  });
+
+  it("moves a block that does not fit to the next page (no clip)", () => {
+    const blocks = [
+      { style: "paragraph" as const, text: "corto" },
+      { style: "paragraph" as const, text: "largo" },
+    ];
+    const pages = packBlocksWithMeasuredHeights(blocks, [40, 80], {
+      leftHeightPx: 100,
+      rightHeightPx: 100,
+    });
+    expect(pages[0].blocks?.map((b) => b.text)).toEqual(["corto"]);
+    expect(pages[1].blocks?.map((b) => b.text)).toEqual(["largo"]);
   });
 });
 

@@ -1,7 +1,7 @@
 import type { TextBlock, TextBlockStyle } from "@/lib/pdf/paginator";
 import { getPageBlocks, type PaginatedPage } from "@/lib/pdf/paginator";
 
-function BlockView({
+export function BlockView({
   block,
   fontSize,
 }: {
