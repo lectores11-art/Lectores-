@@ -56,26 +56,35 @@ export async function POST(request: Request) {
     }
 
     if (existing) {
-      await supabase
+      const { error: updateError } = await supabase
         .from("memberships")
         .update({ status: "active", joined_at: new Date().toISOString() })
         .eq("id", existing.id);
+      if (updateError) {
+        return internalErrorResponse("Error al activar membresía:", updateError);
+      }
     } else {
-      await supabase.from("memberships").insert({
+      const { error: insertError } = await supabase.from("memberships").insert({
         user_id: user.id,
         community_id: invite.community_id,
         role: "member",
         status: "active",
         joined_at: new Date().toISOString(),
       });
+      if (insertError) {
+        return internalErrorResponse("Error al crear membresía:", insertError);
+      }
     }
 
     // service_role: RLS only lets admins update invites; members cannot bump use_count.
     const serviceClient = await createServiceClient();
-    await serviceClient
+    const { error: useCountError } = await serviceClient
       .from("invites")
       .update({ use_count: invite.use_count + 1 })
       .eq("id", invite.id);
+    if (useCountError) {
+      return internalErrorResponse("Error al actualizar uso de invitación:", useCountError);
+    }
 
     return NextResponse.json({ slug: invite.community.slug });
   } catch (err) {
