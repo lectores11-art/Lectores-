@@ -6,6 +6,7 @@ import { ArrowLeft, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { useDetailPanel } from "@/components/layout/detail-panel-context";
 import { formatRelativeTime } from "@/lib/utils";
 import type { ForumPost, ForumThread, Profile } from "@/lib/types/database";
 
@@ -14,6 +15,11 @@ export function ThreadDetailClient({ slug, threadId }: { slug: string; threadId:
   const [posts, setPosts] = useState<(ForumPost & { author?: Profile })[]>([]);
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
+  const { setDetail, setSearchPlaceholder } = useDetailPanel();
+
+  useEffect(() => {
+    setSearchPlaceholder("Buscar en el hilo…");
+  }, [setSearchPlaceholder]);
 
   useEffect(() => {
     loadThread();
@@ -25,6 +31,18 @@ export function ThreadDetailClient({ slug, threadId }: { slug: string; threadId:
     setThread(data.thread);
     setPosts(data.posts || []);
     setLoading(false);
+    if (data.thread) {
+      setDetail({
+        kind: "thread",
+        title: data.thread.title,
+        subtitle: data.thread.author?.full_name || "Usuario",
+        description: data.thread.content,
+        meta: [
+          { label: "Likes", value: String(data.thread.like_count) },
+          { label: "Respuestas", value: String((data.posts || []).length) },
+        ],
+      });
+    }
   }
 
   async function submitReply(e: React.FormEvent) {
@@ -49,45 +67,45 @@ export function ThreadDetailClient({ slug, threadId }: { slug: string; threadId:
     loadThread();
   }
 
-  if (loading) return <div className="p-6 text-slate-500">Cargando...</div>;
-  if (!thread) return <div className="p-6 text-red-500">Hilo no encontrado</div>;
+  if (loading) return <div className="p-6 text-muted">Cargando...</div>;
+  if (!thread) return <div className="p-6 text-red-600">Hilo no encontrado</div>;
 
   return (
-    <div className="p-6">
+    <div className="p-4 lg:p-6">
       <Link
         href={`/c/${slug}/forum`}
-        className="mb-4 inline-flex items-center gap-1 text-sm text-sky-600 hover:underline"
+        className="mb-4 inline-flex items-center gap-1 text-sm font-semibold text-accent hover:underline"
       >
         <ArrowLeft className="h-4 w-4" /> Volver al foro
       </Link>
 
-      <Card className="mb-6">
+      <Card className="mb-6 hard-shadow-sm">
         <CardContent className="pt-6">
-          <h1 className="text-xl font-bold text-slate-900">{thread.title}</h1>
-          <p className="mt-1 text-xs text-slate-500">
+          <h1 className="text-xl font-bold">{thread.title}</h1>
+          <p className="mt-1 text-xs text-muted">
             {thread.author?.full_name} · {formatRelativeTime(thread.created_at)}
           </p>
-          <p className="mt-4 whitespace-pre-wrap text-slate-700">{thread.content}</p>
+          <p className="mt-4 whitespace-pre-wrap text-foreground/90">{thread.content}</p>
           <Button variant="ghost" size="sm" className="mt-3" onClick={toggleLike}>
-            <Heart className="mr-1 h-4 w-4" /> {thread.like_count}
+            <Heart className="h-4 w-4" /> {thread.like_count}
           </Button>
         </CardContent>
       </Card>
 
       <div className="mb-6 space-y-3">
         {posts.map((post) => (
-          <Card key={post.id}>
+          <Card key={post.id} className="hard-shadow-sm">
             <CardContent className="pt-4">
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-muted">
                 {post.author?.full_name} · {formatRelativeTime(post.created_at)}
               </p>
-              <p className="mt-2 whitespace-pre-wrap text-slate-700">{post.content}</p>
+              <p className="mt-2 whitespace-pre-wrap text-foreground/90">{post.content}</p>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      <Card>
+      <Card className="hard-shadow-sm">
         <CardContent className="pt-6">
           <form onSubmit={submitReply} className="space-y-3">
             <Textarea

@@ -35,11 +35,11 @@ export default async function DashboardPage() {
 
     return (
       <DashboardLayout user={user}>
-        <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-slate-900">Panel de plataforma</h2>
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-2xl font-bold tracking-tight">Panel de plataforma</h2>
           <Button asChild>
             <Link href="/platform/admin">
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus className="h-4 w-4" />
               Nueva comunidad
             </Link>
           </Button>
@@ -58,12 +58,12 @@ export default async function DashboardPage() {
 
   return (
     <DashboardLayout user={user}>
-      <h2 className="mb-6 text-2xl font-bold text-slate-900">Mis comunidades</h2>
+      <h2 className="mb-6 text-2xl font-bold tracking-tight">Mis comunidades</h2>
       {userCommunities.length === 0 ? (
-        <Card>
+        <Card className="hard-shadow-sm">
           <CardContent className="py-12 text-center">
-            <p className="text-slate-500">
-              Aún no perteneces a ninguna comunidad. Usa el link de invitación que te compartió la
+            <p className="text-muted">
+              Aún no pertenecés a ninguna comunidad. Usá el link de invitación que te compartió la
               administradora.
             </p>
           </CardContent>
@@ -88,17 +88,17 @@ function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
+    <div className="min-h-screen bg-background">
+      <header className="border-b-2 border-foreground bg-band">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-500 text-white">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center border-2 border-foreground bg-surface hard-shadow-sm">
               <BookOpen className="h-4 w-4" />
             </div>
-            <span className="font-semibold">Lectores</span>
+            <span className="font-bold">Lectores</span>
           </div>
           <div className="flex items-center gap-4">
-            <p className="text-sm text-slate-600">{user.full_name || user.email}</p>
+            <p className="text-sm font-medium">{user.full_name || user.email}</p>
             <LogoutButton />
           </div>
         </div>
@@ -117,17 +117,26 @@ function CommunityGrid({
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {communities.map(({ community, isAdmin }) => (
         <Link key={community.id} href={`/c/${community.slug}/forum`}>
-          <Card className="transition-shadow hover:shadow-md">
+          <Card className="h-full hard-shadow-sm hard-shadow-hover transition-transform">
             <CardHeader>
-              <div
-                className="mb-2 flex h-10 w-10 items-center justify-center rounded-lg text-white"
-                style={{ backgroundColor: community.accent_color }}
-              >
-                <BookOpen className="h-5 w-5" />
+              <div className="mb-2 flex items-center gap-2">
+                <div className="flex h-10 w-10 items-center justify-center border-2 border-foreground bg-band">
+                  <BookOpen className="h-5 w-5" />
+                </div>
+                {community.accent_color ? (
+                  <span
+                    className="h-3 w-3 border border-foreground"
+                    style={{ backgroundColor: community.accent_color }}
+                    aria-hidden
+                  />
+                ) : null}
               </div>
               <CardTitle className="text-lg">{community.name}</CardTitle>
               <CardDescription>
-                {isAdmin ? "Administradora" : "Miembro"} · {community.description?.slice(0, 60)}
+                {isAdmin ? "Administradora" : "Miembro"}
+                {community.description
+                  ? ` · ${community.description.slice(0, 60)}`
+                  : ""}
               </CardDescription>
             </CardHeader>
           </Card>

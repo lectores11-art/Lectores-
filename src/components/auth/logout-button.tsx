@@ -28,7 +28,7 @@ export function LogoutButton({ className }: { className?: string }) {
       onClick={handleLogout}
       disabled={loading}
       className={cn(
-        "flex items-center gap-2 text-xs text-slate-500 transition-colors hover:text-sky-600 disabled:opacity-50",
+        "flex items-center gap-2 text-xs text-muted transition-colors hover:text-accent disabled:opacity-50",
         className
       )}
     >

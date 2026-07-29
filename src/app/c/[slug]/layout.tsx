@@ -1,6 +1,6 @@
 import { redirect, notFound } from "next/navigation";
 import { requireCommunityAccess, isCommunityAdmin } from "@/lib/auth/helpers";
-import { CommunitySidebar } from "@/components/layout/community-sidebar";
+import { CommunityShell } from "@/components/layout/community-shell";
 
 export default async function CommunityLayout({
   children,
@@ -21,9 +21,8 @@ export default async function CommunityLayout({
   const admin = await isCommunityAdmin(community.id, user.id, user.is_super_admin);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white">
-      <CommunitySidebar community={community} user={user} isAdmin={admin} />
-      <main className="flex-1 overflow-y-auto">{children}</main>
-    </div>
+    <CommunityShell community={community} user={user} isAdmin={admin}>
+      {children}
+    </CommunityShell>
   );
 }

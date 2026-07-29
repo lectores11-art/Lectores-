@@ -1,35 +1,73 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #0f172a;
-  --accent: #0ea5e9;
-  --accent-light: #e0f2fe;
-  --muted: #64748b;
-  --border: #e2e8f0;
-  --sidebar: #f8fafc;
+  --background: #f5e8d6;
+  --foreground: #111111;
+  --surface: #fff8ee;
+  --band: #f5c518;
+  --accent: #e85d2a;
+  --accent-light: #fce8df;
+  --muted: #6b5e52;
+  --border: #111111;
+  --sidebar: #f5e8d6;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-band: var(--band);
   --color-accent: var(--accent);
   --color-accent-light: var(--accent-light);
   --color-muted: var(--muted);
   --color-border: var(--border);
   --color-sidebar: var(--sidebar);
-  --font-sans: var(--font-inter);
+  --font-sans: var(--font-space-grotesk);
   --font-serif: var(--font-literata);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-inter), system-ui, sans-serif;
+  font-family: var(--font-space-grotesk), system-ui, sans-serif;
 }
 
 .reader-serif {
   font-family: var(--font-literata), Georgia, "Times New Roman", serif;
+}
+
+/* Hard neo-brutalist shadow */
+.hard-shadow {
+  box-shadow: 4px 4px 0 0 var(--foreground);
+}
+
+.hard-shadow-sm {
+  box-shadow: 2px 2px 0 0 var(--foreground);
+}
+
+.hard-shadow-hover {
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.hard-shadow-hover:hover:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 0 var(--foreground);
+}
+
+.hard-shadow-hover:active:not(:disabled) {
+  transform: translate(4px, 4px);
+  box-shadow: 0 0 0 0 var(--foreground);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hard-shadow-hover,
+  .hard-shadow-hover:hover:not(:disabled),
+  .hard-shadow-hover:active:not(:disabled) {
+    transition: none;
+    transform: none;
+  }
 }
 
 /* ===== Book Reader ===== */
@@ -205,14 +243,6 @@ body {
   width: 6px;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
-}
-
-.scrollbar-thin::-webkit-scrollbar {
-  width: 6px;
-}
-.scrollbar-thin::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
+  background: var(--muted);
+  border-radius: 0;
 }

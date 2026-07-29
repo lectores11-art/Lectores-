@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useDetailPanel } from "@/components/layout/detail-panel-context";
 
 export function CommunityAdminClient({ slug }: { slug: string }) {
   const [invites, setInvites] = useState<{ token: string; use_count: number; max_uses: number | null }[]>([]);
@@ -13,10 +14,18 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
   const [copied, setCopied] = useState(false);
   const [inviteError, setInviteError] = useState("");
   const [creatingInvite, setCreatingInvite] = useState(false);
+  const { setDetail, setSearchPlaceholder } = useDetailPanel();
 
   useEffect(() => {
-    // Invites loaded on demand when created
-  }, [slug]);
+    setSearchPlaceholder("Buscar en admin…");
+    setDetail({
+      kind: "admin",
+      title: "Panel admin",
+      description:
+        "Generá links de invitación y saltá a las secciones de contenido de la comunidad.",
+      meta: [{ label: "Invites", value: String(invites.length) }],
+    });
+  }, [invites.length, setDetail, setSearchPlaceholder]);
 
   async function createInvite() {
     setCreatingInvite(true);
@@ -40,28 +49,28 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
   }
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Panel de administración</h1>
-        <p className="text-sm text-slate-500">Gestiona tu comunidad</p>
+    <div className="p-4 lg:p-6">
+      <div className="mb-5">
+        <h1 className="text-2xl font-bold tracking-tight">Panel de administración</h1>
+        <p className="text-sm text-muted">Gestioná tu comunidad</p>
       </div>
 
       <div className="mx-auto max-w-2xl space-y-6">
-        <Card>
+        <Card className="hard-shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <LinkIcon className="h-5 w-5 text-sky-500" />
+              <LinkIcon className="h-5 w-5 text-accent" />
               Links de invitación
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm text-slate-600">
-              Comparte este link con tus lectoras. Solo quienes tengan el link podrán unirse.
+            <p className="text-sm text-muted">
+              Compartí este link con tus lectoras. Solo quienes tengan el link podrán unirse.
             </p>
             <Button onClick={createInvite} disabled={creatingInvite}>
               {creatingInvite ? "Generando..." : "Generar nuevo link"}
             </Button>
-            {inviteError && <p className="text-sm text-red-500">{inviteError}</p>}
+            {inviteError && <p className="text-sm text-red-600">{inviteError}</p>}
             {newInviteUrl && (
               <div className="flex gap-2">
                 <Input value={newInviteUrl} readOnly />
@@ -74,10 +83,10 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hard-shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-sky-500" />
+              <Users className="h-5 w-5 text-accent" />
               Acciones rápidas
             </CardTitle>
           </CardHeader>
@@ -97,7 +106,7 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hard-shadow-sm">
           <CardHeader>
             <CardTitle>Configuración de la comunidad</CardTitle>
           </CardHeader>
@@ -105,8 +114,8 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
             <form className="space-y-4">
               <div className="space-y-2">
                 <Label>Color de acento</Label>
-                <Input type="color" defaultValue="#0ea5e9" disabled />
-                <p className="text-xs text-slate-500">Editable en próxima versión</p>
+                <Input type="color" defaultValue="#E85D2A" disabled />
+                <p className="text-xs text-muted">Editable en próxima versión</p>
               </div>
             </form>
           </CardContent>

@@ -65,34 +65,34 @@ export function PlatformAdminClient() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
+    <div className="min-h-screen bg-background">
+      <header className="border-b-2 border-foreground bg-band">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-500 text-white">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center border-2 border-foreground bg-surface hard-shadow-sm">
               <BookOpen className="h-4 w-4" />
             </div>
-            <span className="font-semibold">Lectores · Super Admin</span>
+            <span className="font-bold">Lectores · Super Admin</span>
           </div>
-          <Link href="/dashboard" className="text-sm text-sky-600 hover:underline">
+          <Link href="/dashboard" className="text-sm font-semibold text-foreground hover:text-accent">
             Volver
           </Link>
         </div>
       </header>
 
       <main className="mx-auto max-w-5xl px-6 py-8">
-        <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Comunidades</h1>
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl font-bold tracking-tight">Comunidades</h1>
           <Button onClick={() => setShowForm(!showForm)}>
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="h-4 w-4" />
             Nueva comunidad
           </Button>
         </div>
 
         {lastInviteUrl && (
-          <Card className="mb-6 border-sky-200 bg-sky-50">
+          <Card className="mb-6 border-2 border-foreground bg-band hard-shadow-sm">
             <CardContent className="pt-6">
-              <p className="mb-2 text-sm font-medium text-sky-800">
+              <p className="mb-2 text-sm font-bold">
                 Comunidad creada. Link de invitación:
               </p>
               <div className="flex gap-2">
@@ -109,7 +109,7 @@ export function PlatformAdminClient() {
         )}
 
         {showForm && (
-          <Card className="mb-6">
+          <Card className="mb-6 hard-shadow-sm">
             <CardHeader>
               <CardTitle>Crear comunidad</CardTitle>
             </CardHeader>
@@ -126,16 +126,16 @@ export function PlatformAdminClient() {
                 <div className="space-y-2">
                   <Label>Email de la dueña (influencer)</Label>
                   <Input name="ownerEmail" type="email" required placeholder="duena@ejemplo.com" />
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-muted">
                     Se creará automáticamente en Supabase. Si falla, ejecutá{" "}
-                    <code className="rounded bg-slate-100 px-1">002_fix_auth_trigger.sql</code> en Supabase.
+                    <code className="border border-foreground bg-surface px-1">002_fix_auth_trigger.sql</code> en Supabase.
                   </p>
                 </div>
                 <div className="space-y-2">
                   <Label>Precio mensual (USD)</Label>
                   <Input name="price" type="number" min="0" step="0.01" defaultValue="29" />
                 </div>
-                {error && <p className="text-sm text-red-500">{error}</p>}
+                {error && <p className="text-sm text-red-600">{error}</p>}
                 <Button type="submit" disabled={creating}>
                   {creating ? "Creando..." : "Crear comunidad + link"}
                 </Button>
@@ -146,10 +146,10 @@ export function PlatformAdminClient() {
 
         <div className="grid gap-4 sm:grid-cols-2">
           {communities.map((c) => (
-            <Card key={c.id}>
+            <Card key={c.id} className="hard-shadow-sm">
               <CardHeader>
                 <CardTitle className="text-lg">{c.name}</CardTitle>
-                <p className="text-sm text-slate-500">/{c.slug}</p>
+                <p className="text-sm text-muted">/{c.slug}</p>
               </CardHeader>
               <CardContent>
                 <Button variant="outline" size="sm" asChild>

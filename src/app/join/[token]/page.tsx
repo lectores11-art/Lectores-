@@ -92,17 +92,17 @@ export default function JoinPage({ params }: { params: Promise<{ token: string }
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="text-slate-500">Cargando invitación...</p>
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <p className="text-muted">Cargando invitación...</p>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-      <Card className="w-full max-w-md">
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <Card className="w-full max-w-md hard-shadow">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-sky-500 text-white">
+          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center border-2 border-foreground bg-band">
             <BookOpen className="h-6 w-6" />
           </div>
           {community ? (
@@ -117,10 +117,10 @@ export default function JoinPage({ params }: { params: Promise<{ token: string }
           )}
         </CardHeader>
         <CardContent className="space-y-4">
-          {error && <p className="text-center text-sm text-red-500">{error}</p>}
+          {error && <p className="text-center text-sm text-red-600">{error}</p>}
 
           {joining && (
-            <p className="text-center text-sm text-slate-500">Entrando a la comunidad...</p>
+            <p className="text-center text-sm text-muted">Entrando a la comunidad...</p>
           )}
 
           {needsAuth && community && !joining && (

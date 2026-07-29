@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Heart, MessageSquare, Pin, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { useDetailPanel } from "@/components/layout/detail-panel-context";
 import { formatRelativeTime } from "@/lib/utils";
 import type { ForumThread, Profile } from "@/lib/types/database";
 
@@ -23,6 +24,11 @@ export function ForumPageClient({ slug, isAdmin }: ForumPageClientProps) {
   const [content, setContent] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const { setDetail, searchQuery, setSearchPlaceholder } = useDetailPanel();
+
+  useEffect(() => {
+    setSearchPlaceholder("Buscar hilos o autores…");
+  }, [setSearchPlaceholder]);
 
   useEffect(() => {
     loadThreads();
@@ -33,6 +39,24 @@ export function ForumPageClient({ slug, isAdmin }: ForumPageClientProps) {
     const data = await res.json();
     setThreads(data.threads || []);
     setLoading(false);
+  }
+
+  function selectThread(thread: ForumThread & { author?: Profile }) {
+    setDetail({
+      kind: "thread",
+      title: thread.title,
+      subtitle: thread.author?.full_name || "Usuario",
+      description: thread.content,
+      meta: [
+        { label: "Publicado", value: formatRelativeTime(thread.created_at) },
+        { label: "Likes", value: String(thread.like_count) },
+        { label: "Respuestas", value: String(thread.reply_count) },
+      ],
+      primaryAction: {
+        label: "Abrir hilo",
+        href: `/c/${slug}/forum/${thread.id}`,
+      },
+    });
   }
 
   async function createThread(e: React.FormEvent) {
@@ -65,18 +89,29 @@ export function ForumPageClient({ slug, isAdmin }: ForumPageClientProps) {
     loadThreads();
   }
 
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return threads;
+    return threads.filter(
+      (t) =>
+        t.title.toLowerCase().includes(q) ||
+        t.content.toLowerCase().includes(q) ||
+        (t.author?.full_name || "").toLowerCase().includes(q)
+    );
+  }, [threads, searchQuery]);
+
   return (
-    <div className="p-6">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="p-4 lg:p-6">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Foro</h1>
-          <p className="text-sm text-slate-500">Discusiones de la comunidad</p>
+          <h1 className="text-2xl font-bold tracking-tight">Foro</h1>
+          <p className="text-sm text-muted">Discusiones de la comunidad</p>
         </div>
         <Button onClick={() => setShowForm(!showForm)}>Nuevo hilo</Button>
       </div>
 
       {showForm && (
-        <Card className="mb-6">
+        <Card className="mb-6 hard-shadow-sm">
           <CardContent className="pt-6">
             <form onSubmit={createThread} className="space-y-4">
               <Input
@@ -93,7 +128,7 @@ export function ForumPageClient({ slug, isAdmin }: ForumPageClientProps) {
                 rows={4}
               />
               {submitError && (
-                <p className="text-sm text-red-500">{submitError}</p>
+                <p className="text-sm text-red-600">{submitError}</p>
               )}
               <div className="flex gap-2">
                 <Button type="submit" disabled={submitting}>
@@ -109,48 +144,58 @@ export function ForumPageClient({ slug, isAdmin }: ForumPageClientProps) {
       )}
 
       {loading ? (
-        <p className="text-slate-500">Cargando hilos...</p>
-      ) : threads.length === 0 ? (
+        <p className="text-muted">Cargando hilos...</p>
+      ) : filtered.length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center text-slate-500">
-            Aún no hay hilos. ¡Sé la primera en publicar!
+          <CardContent className="py-12 text-center text-muted">
+            {threads.length === 0
+              ? "Aún no hay hilos. ¡Sé la primera en publicar!"
+              : "Ningún hilo coincide con la búsqueda."}
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-3">
-          {threads.map((thread) => (
-            <Card key={thread.id} className="transition-shadow hover:shadow-sm">
+          {filtered.map((thread) => (
+            <Card
+              key={thread.id}
+              className="cursor-pointer transition-transform hard-shadow-hover hard-shadow-sm"
+              onClick={() => selectThread(thread)}
+            >
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
                     <div className="mb-1 flex items-center gap-2">
                       {thread.is_pinned && (
-                        <Pin className="h-3.5 w-3.5 text-sky-500" />
+                        <Pin className="h-3.5 w-3.5 text-accent" />
                       )}
                       {thread.is_featured && (
-                        <Star className="h-3.5 w-3.5 text-amber-500" />
+                        <Star className="h-3.5 w-3.5 text-band" />
                       )}
                       <Link
                         href={`/c/${slug}/forum/${thread.id}`}
-                        className="font-semibold text-slate-900 hover:text-sky-600"
+                        onClick={(e) => e.stopPropagation()}
+                        className="font-bold hover:text-accent"
                       >
                         {thread.title}
                       </Link>
                     </div>
-                    <p className="line-clamp-2 text-sm text-slate-600">{thread.content}</p>
+                    <p className="line-clamp-2 text-sm text-muted">{thread.content}</p>
                   </div>
                   {isAdmin && (
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => togglePin(thread.id, thread.is_pinned)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        togglePin(thread.id, thread.is_pinned);
+                      }}
                     >
                       {thread.is_pinned ? "Desfijar" : "Fijar"}
                     </Button>
                   )}
                 </div>
               </CardHeader>
-              <CardContent className="flex items-center gap-4 text-xs text-slate-500">
+              <CardContent className="flex items-center gap-4 text-xs text-muted">
                 <span>{thread.author?.full_name || "Usuario"}</span>
                 <span>{formatRelativeTime(thread.created_at)}</span>
                 <span className="flex items-center gap-1">

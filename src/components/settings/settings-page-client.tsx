@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
+import { useDetailPanel } from "@/components/layout/detail-panel-context";
 import type { Membership, Profile } from "@/lib/types/database";
 
 export function SettingsPageClient({
@@ -20,6 +20,27 @@ export function SettingsPageClient({
   const [membership, setMembership] = useState<Membership | null>(null);
   const [message, setMessage] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const { setDetail, setSearchPlaceholder } = useDetailPanel();
+
+  useEffect(() => {
+    setSearchPlaceholder("Buscar en cuenta…");
+    setDetail({
+      kind: "account",
+      title: user.full_name || "Tu cuenta",
+      subtitle: user.email,
+      description:
+        "Desde aquí podés actualizar tu perfil, cambiar la contraseña y gestionar la suscripción de esta comunidad.",
+      meta: [
+        {
+          label: "Estado",
+          value:
+            membership?.status === "active"
+              ? "Activa"
+              : membership?.status || "—",
+        },
+      ],
+    });
+  }, [user, membership, setDetail, setSearchPlaceholder]);
 
   useEffect(() => {
     loadMembership();
@@ -82,20 +103,20 @@ export function SettingsPageClient({
   }
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Mi cuenta</h1>
-        <p className="text-sm text-slate-500">Gestiona tu perfil y suscripción</p>
+    <div className="p-4 lg:p-6">
+      <div className="mb-5">
+        <h1 className="text-2xl font-bold tracking-tight">Mi cuenta</h1>
+        <p className="text-sm text-muted">Gestioná tu perfil y suscripción</p>
       </div>
 
       {message && (
-        <div className="mb-4 rounded-lg bg-sky-50 px-4 py-2 text-sm text-sky-700">
+        <div className="mb-4 border-2 border-foreground bg-band px-4 py-2 text-sm font-semibold">
           {message}
         </div>
       )}
 
       <div className="mx-auto max-w-2xl space-y-6">
-        <Card>
+        <Card className="hard-shadow-sm">
           <CardHeader>
             <CardTitle>Perfil</CardTitle>
             <CardDescription>Información de tu cuenta</CardDescription>
@@ -118,10 +139,10 @@ export function SettingsPageClient({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hard-shadow-sm">
           <CardHeader>
             <CardTitle>Contraseña</CardTitle>
-            <CardDescription>Cambia tu contraseña de acceso</CardDescription>
+            <CardDescription>Cambiá tu contraseña de acceso</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={changePassword} className="space-y-4">
@@ -140,12 +161,12 @@ export function SettingsPageClient({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hard-shadow-sm">
           <CardHeader>
             <CardTitle>Suscripción</CardTitle>
             <CardDescription>
               Estado:{" "}
-              <span className="font-medium text-slate-900">
+              <span className="font-bold text-foreground">
                 {membership?.status === "active" ? "Activa" : membership?.status || "—"}
               </span>
             </CardDescription>

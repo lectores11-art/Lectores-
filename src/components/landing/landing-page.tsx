@@ -4,60 +4,67 @@ import { Button } from "@/components/ui/button";
 
 export function LandingPage() {
   return (
-    <div className="min-h-screen bg-white">
-      <header className="border-b border-slate-100">
+    <div className="min-h-screen bg-background">
+      <header className="border-b-2 border-foreground bg-band">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-500 text-white">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center border-2 border-foreground bg-surface hard-shadow-sm">
               <BookOpen className="h-5 w-5" />
             </div>
-            <span className="text-lg font-semibold text-slate-900">Lectores</span>
+            <span className="text-xl font-bold tracking-tight">Lectores</span>
           </div>
-          <div className="flex items-center gap-3">
-            <Button asChild>
-              <Link href="/login">Iniciar sesión</Link>
-            </Button>
-          </div>
+          <Button asChild>
+            <Link href="/login">Iniciar sesión</Link>
+          </Button>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 py-20">
-        <div className="mx-auto max-w-2xl text-center">
-          <h1 className="text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">
-            Tu comunidad de lectura,{" "}
-            <span className="text-sky-500">privada y exclusiva</span>
-          </h1>
-          <p className="mt-6 text-lg text-slate-600">
-            Foro, classroom, biblioteca con lector de libros, salas en vivo y calendario.
-            Acceso solo por invitación.
-          </p>
-          <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-            <Button size="lg" asChild>
-              <Link href="/login">Iniciar sesión</Link>
-            </Button>
-          </div>
-          <p className="mt-4 text-sm text-slate-500">
-            El acceso es solo por invitación de tu comunidad.
-          </p>
-        </div>
-
-        <div className="mt-24 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-          {[
-            { title: "Foro", desc: "Hilos, comentarios y likes entre lectoras" },
-            { title: "Biblioteca", desc: "Lector de libros con progreso personal" },
-            { title: "Sala en vivo", desc: "Video, chat y lectura simultánea" },
-            { title: "Classroom", desc: "Grabaciones y lecciones organizadas" },
-            { title: "Calendario", desc: "Eventos y reuniones del mes" },
-            { title: "Privacidad", desc: "Comunidades 100% aisladas por invitación" },
-          ].map((item) => (
-            <div
-              key={item.title}
-              className="rounded-xl border border-slate-200 p-6 transition-shadow hover:shadow-md"
-            >
-              <h3 className="font-semibold text-slate-900">{item.title}</h3>
-              <p className="mt-2 text-sm text-slate-600">{item.desc}</p>
+      <main className="mx-auto max-w-6xl px-6 py-16 lg:py-24">
+        <div className="grid items-center gap-12 lg:grid-cols-2">
+          <div>
+            <p className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-muted">
+              Comunidades privadas
+            </p>
+            <h1 className="text-4xl font-bold leading-[1.1] tracking-tight sm:text-5xl lg:text-6xl">
+              Lectores
+            </h1>
+            <p className="mt-5 max-w-md text-lg text-muted">
+              Foro, biblioteca, classroom y sala en vivo. Acceso solo por invitación.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Button size="lg" asChild>
+                <Link href="/login">Iniciar sesión</Link>
+              </Button>
+              <Button size="lg" variant="outline" asChild>
+                <Link href="/login">Ya tengo cuenta</Link>
+              </Button>
             </div>
-          ))}
+            <p className="mt-4 text-sm text-muted">
+              Si te invitaron, abrí el link de tu comunidad para registrarte.
+            </p>
+          </div>
+
+          <div className="border-2 border-foreground bg-surface p-4 hard-shadow lg:p-6">
+            <div className="mb-4 border-2 border-foreground bg-band px-4 py-3">
+              <p className="text-sm font-semibold">Buscar título, autor o tema…</p>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              {["Foro", "Biblioteca", "Sala", "Classroom", "Agenda", "Invite"].map(
+                (label, i) => (
+                  <div
+                    key={label}
+                    className="flex aspect-[3/4] flex-col justify-between border-2 border-foreground bg-background p-3"
+                    style={{
+                      backgroundColor: i % 2 === 0 ? "var(--band)" : "var(--accent-light)",
+                    }}
+                  >
+                    <BookOpen className="h-5 w-5" />
+                    <span className="text-xs font-bold uppercase tracking-wide">{label}</span>
+                  </div>
+                )
+              )}
+            </div>
+          </div>
         </div>
       </main>
     </div>

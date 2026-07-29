@@ -13,6 +13,7 @@ import { BookReader } from "@/components/library/book-reader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useDetailPanel } from "@/components/layout/detail-panel-context";
 import type { Book, BookPage, BookTOCItem, Meeting, MeetingChatMessage } from "@/lib/types/database";
 
 interface MeetingRoomClientProps {
@@ -21,6 +22,7 @@ interface MeetingRoomClientProps {
 }
 
 export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
+  const { setDetail, setSearchPlaceholder } = useDetailPanel();
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [activeMeeting, setActiveMeeting] = useState<Meeting | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -33,6 +35,10 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
   const [chatMessages, setChatMessages] = useState<MeetingChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setSearchPlaceholder("Buscar reuniones…");
+  }, [setSearchPlaceholder]);
 
   useEffect(() => {
     loadMeetings();
@@ -49,6 +55,25 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
     const res = await fetch(`/api/c/${slug}/books`);
     const data = await res.json();
     setBooks(data.books || []);
+  }
+
+  function selectMeeting(meeting: Meeting) {
+    setDetail({
+      kind: "meeting",
+      title: meeting.title,
+      subtitle:
+        meeting.status === "live"
+          ? "En vivo"
+          : meeting.status === "ended"
+            ? "Finalizada"
+            : "Programada",
+      description: "Sala de video con lectura compartida y chat en vivo.",
+      meta: [{ label: "Estado", value: meeting.status }],
+      primaryAction: {
+        label: "Entrar a la sala",
+        onClick: () => joinMeeting(meeting),
+      },
+    });
   }
 
   async function joinMeeting(meeting: Meeting) {
@@ -296,37 +321,41 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
   }
 
   return (
-    <div className="p-6">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="p-4 lg:p-6">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Sala de reuniones</h1>
-          <p className="text-sm text-slate-500">Video en vivo con lectura y chat</p>
+          <h1 className="text-2xl font-bold tracking-tight">Sala de reuniones</h1>
+          <p className="text-sm text-muted">Video en vivo con lectura y chat</p>
         </div>
         {isAdmin && <Button onClick={createMeeting}>Crear reunión</Button>}
       </div>
 
       {meetings.length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center text-slate-500">
+          <CardContent className="py-12 text-center text-muted">
             No hay reuniones programadas.
-            {isAdmin && " Crea una para comenzar."}
+            {isAdmin && " Creá una para comenzar."}
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {meetings.map((meeting) => (
-            <Card key={meeting.id}>
+            <Card
+              key={meeting.id}
+              className="cursor-pointer hard-shadow-sm hard-shadow-hover"
+              onClick={() => selectMeeting(meeting)}
+            >
               <CardHeader>
                 <CardTitle className="text-lg">{meeting.title}</CardTitle>
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted">
                   Estado:{" "}
                   <span
                     className={
                       meeting.status === "live"
-                        ? "text-green-600"
+                        ? "font-bold text-green-700"
                         : meeting.status === "ended"
-                          ? "text-slate-400"
-                          : "text-sky-600"
+                          ? "text-muted"
+                          : "font-bold text-accent"
                     }
                   >
                     {meeting.status === "live"
@@ -338,8 +367,13 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
                 </p>
               </CardHeader>
               <CardContent>
-                <Button onClick={() => joinMeeting(meeting)}>
-                  <Video className="mr-2 h-4 w-4" />
+                <Button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    joinMeeting(meeting);
+                  }}
+                >
+                  <Video className="h-4 w-4" />
                   Entrar a la sala
                 </Button>
               </CardContent>

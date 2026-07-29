@@ -6,7 +6,7 @@ const Avatar = React.forwardRef<HTMLDivElement, React.ComponentProps<"div">>(
     <div
       ref={ref}
       className={cn(
-        "relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full bg-sky-100",
+        "relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full border-2 border-foreground bg-accent-light",
         className
       )}
       {...props}
@@ -19,7 +19,7 @@ const AvatarImage = React.forwardRef<
   HTMLImageElement,
   React.ComponentProps<"img">
 >(({ className, ...props }, ref) => (
-  <img ref={ref} className={cn("aspect-square h-full w-full object-cover", className)} {...props} />
+  <img ref={ref} alt="" className={cn("aspect-square h-full w-full object-cover", className)} {...props} />
 ));
 AvatarImage.displayName = "AvatarImage";
 
@@ -28,7 +28,7 @@ const AvatarFallback = React.forwardRef<HTMLDivElement, React.ComponentProps<"di
     <div
       ref={ref}
       className={cn(
-        "flex h-full w-full items-center justify-center rounded-full bg-sky-100 text-sm font-medium text-sky-700",
+        "flex h-full w-full items-center justify-center rounded-full bg-accent-light text-sm font-bold text-foreground",
         className
       )}
       {...props}

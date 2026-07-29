@@ -8,6 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { useDetailPanel } from "@/components/layout/detail-panel-context";
+import { cn } from "@/lib/utils";
 import type { Course, Lesson } from "@/lib/types/database";
 
 export function ClassroomPageClient({
@@ -22,6 +24,11 @@ export function ClassroomPageClient({
   const [courses, setCourses] = useState<(Course & { lessons?: Lesson[] })[]>([]);
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const { setDetail, setSearchPlaceholder } = useDetailPanel();
+
+  useEffect(() => {
+    setSearchPlaceholder("Buscar cursos o lecciones…");
+  }, [setSearchPlaceholder]);
 
   useEffect(() => {
     loadCourses();
@@ -37,6 +44,23 @@ export function ClassroomPageClient({
       .order("sort_order");
 
     setCourses(data || []);
+  }
+
+  function pickLesson(lesson: Lesson, courseTitle?: string) {
+    setSelectedLesson(lesson);
+    setDetail({
+      kind: "lesson",
+      title: lesson.title,
+      subtitle: courseTitle,
+      description: lesson.video_url
+        ? "Lección con video disponible."
+        : "Video no disponible todavía.",
+      meta: [{ label: "Tipo", value: "Lección" }],
+      primaryAction: {
+        label: "Ver en el aula",
+        onClick: () => setSelectedLesson(lesson),
+      },
+    });
   }
 
   async function createCourse(e: React.FormEvent<HTMLFormElement>) {
@@ -70,11 +94,11 @@ export function ClassroomPageClient({
   }
 
   return (
-    <div className="p-6">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="p-4 lg:p-6">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Classroom</h1>
-          <p className="text-sm text-slate-500">Grabaciones y lecciones</p>
+          <h1 className="text-2xl font-bold tracking-tight">Classroom</h1>
+          <p className="text-sm text-muted">Grabaciones y lecciones</p>
         </div>
         {isAdmin && (
           <Button onClick={() => setShowForm(!showForm)}>Nuevo curso</Button>
@@ -82,7 +106,7 @@ export function ClassroomPageClient({
       </div>
 
       {showForm && isAdmin && (
-        <Card className="mb-6">
+        <Card className="mb-6 hard-shadow-sm">
           <CardContent className="pt-6">
             <form onSubmit={createCourse} className="space-y-4">
               <div className="space-y-2">
@@ -111,16 +135,16 @@ export function ClassroomPageClient({
         <div className="space-y-4 lg:col-span-1">
           {courses.length === 0 ? (
             <Card>
-              <CardContent className="py-8 text-center text-slate-500">
+              <CardContent className="py-8 text-center text-muted">
                 No hay cursos aún
               </CardContent>
             </Card>
           ) : (
             courses.map((course) => (
-              <Card key={course.id}>
+              <Card key={course.id} className="hard-shadow-sm">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
-                    <GraduationCap className="h-4 w-4 text-sky-500" />
+                    <GraduationCap className="h-4 w-4 text-accent" />
                     {course.title}
                   </CardTitle>
                 </CardHeader>
@@ -130,12 +154,14 @@ export function ClassroomPageClient({
                     .map((lesson) => (
                       <button
                         key={lesson.id}
-                        onClick={() => setSelectedLesson(lesson)}
-                        className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                        type="button"
+                        onClick={() => pickLesson(lesson, course.title)}
+                        className={cn(
+                          "flex w-full items-center gap-2 rounded-sm border-2 px-3 py-2 text-left text-sm font-medium transition-colors",
                           selectedLesson?.id === lesson.id
-                            ? "bg-sky-50 text-sky-700"
-                            : "hover:bg-slate-50"
-                        }`}
+                            ? "border-foreground bg-accent text-white"
+                            : "border-transparent hover:border-foreground hover:bg-accent-light"
+                        )}
                       >
                         <Play className="h-3 w-3" />
                         {lesson.title}
@@ -149,13 +175,13 @@ export function ClassroomPageClient({
 
         <div className="lg:col-span-2">
           {selectedLesson ? (
-            <Card>
+            <Card className="hard-shadow-sm">
               <CardHeader>
                 <CardTitle>{selectedLesson.title}</CardTitle>
               </CardHeader>
               <CardContent>
                 {selectedLesson.video_url ? (
-                  <div className="aspect-video overflow-hidden rounded-lg bg-black">
+                  <div className="aspect-video overflow-hidden border-2 border-foreground bg-black">
                     {selectedLesson.video_url.includes("youtube") ||
                     selectedLesson.video_url.includes("vimeo") ||
                     selectedLesson.video_url.includes("mux") ? (
@@ -170,18 +196,18 @@ export function ClassroomPageClient({
                     )}
                   </div>
                 ) : (
-                  <p className="text-slate-500">Video no disponible</p>
+                  <p className="text-muted">Video no disponible</p>
                 )}
                 <div className="mt-4">
                   <Progress value={0} />
-                  <p className="mt-1 text-xs text-slate-500">Progreso de la lección</p>
+                  <p className="mt-1 text-xs text-muted">Progreso de la lección</p>
                 </div>
               </CardContent>
             </Card>
           ) : (
             <Card>
-              <CardContent className="flex h-64 items-center justify-center text-slate-500">
-                Selecciona una lección para ver el video
+              <CardContent className="flex h-64 items-center justify-center text-muted">
+                Seleccioná una lección para ver el video
               </CardContent>
             </Card>
           )}

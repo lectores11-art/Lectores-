@@ -18,6 +18,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useDetailPanel } from "@/components/layout/detail-panel-context";
+import { cn } from "@/lib/utils";
 import type { CalendarEvent } from "@/lib/types/database";
 
 export function CalendarPageClient({
@@ -31,6 +33,11 @@ export function CalendarPageClient({
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const { setDetail, setSearchPlaceholder } = useDetailPanel();
+
+  useEffect(() => {
+    setSearchPlaceholder("Buscar eventos…");
+  }, [setSearchPlaceholder]);
 
   useEffect(() => {
     loadEvents();
@@ -50,6 +57,48 @@ export function CalendarPageClient({
       .order("starts_at");
 
     setEvents(data || []);
+  }
+
+  function pickDate(day: Date) {
+    setSelectedDate(day);
+    const dayEvts = events.filter((e) => isSameDay(new Date(e.starts_at), day));
+    if (dayEvts.length === 0) {
+      setDetail({
+        kind: "day",
+        title: format(day, "d MMMM yyyy", { locale: es }),
+        description: "Sin eventos este día.",
+      });
+      return;
+    }
+    const first = dayEvts[0];
+    setDetail({
+      kind: "event",
+      title: first.title,
+      subtitle: format(day, "d MMMM yyyy", { locale: es }),
+      description:
+        dayEvts.length > 1
+          ? `${dayEvts.length} eventos. Primero: ${first.description || first.title}`
+          : first.description || undefined,
+      meta: [
+        { label: "Hora", value: format(new Date(first.starts_at), "HH:mm") },
+        { label: "Tipo", value: first.event_type },
+        ...(dayEvts.length > 1
+          ? [{ label: "Total", value: String(dayEvts.length) }]
+          : []),
+      ],
+    });
+  }
+
+  function pickEvent(event: CalendarEvent) {
+    setDetail({
+      kind: "event",
+      title: event.title,
+      subtitle: format(new Date(event.starts_at), "d MMMM yyyy · HH:mm", {
+        locale: es,
+      }),
+      description: event.description || undefined,
+      meta: [{ label: "Tipo", value: event.event_type }],
+    });
   }
 
   async function createEvent(e: React.FormEvent<HTMLFormElement>) {
@@ -84,11 +133,11 @@ export function CalendarPageClient({
     : [];
 
   return (
-    <div className="p-6">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="p-4 lg:p-6">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Calendario</h1>
-          <p className="text-sm text-slate-500">Eventos del mes</p>
+          <h1 className="text-2xl font-bold tracking-tight">Calendario</h1>
+          <p className="text-sm text-muted">Eventos del mes</p>
         </div>
         {isAdmin && (
           <Button onClick={() => setShowForm(!showForm)}>Nuevo evento</Button>
@@ -96,7 +145,7 @@ export function CalendarPageClient({
       </div>
 
       {showForm && isAdmin && (
-        <Card className="mb-6">
+        <Card className="mb-6 hard-shadow-sm">
           <CardContent className="pt-6">
             <form onSubmit={createEvent} className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
@@ -111,7 +160,7 @@ export function CalendarPageClient({
                 <Label>Tipo</Label>
                 <select
                   name="eventType"
-                  className="flex h-10 w-full rounded-lg border border-slate-200 px-3 text-sm"
+                  className="flex h-10 w-full rounded-sm border-2 border-foreground bg-surface px-3 text-sm"
                 >
                   <option value="meeting">Reunión</option>
                   <option value="deadline">Fecha límite</option>
@@ -132,9 +181,11 @@ export function CalendarPageClient({
       )}
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-2 hard-shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>{format(currentMonth, "MMMM yyyy", { locale: es })}</CardTitle>
+            <CardTitle className="capitalize">
+              {format(currentMonth, "MMMM yyyy", { locale: es })}
+            </CardTitle>
             <div className="flex gap-1">
               <Button
                 variant="outline"
@@ -153,9 +204,11 @@ export function CalendarPageClient({
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-slate-500">
+            <div className="grid grid-cols-7 gap-1 text-center text-xs font-bold uppercase tracking-wide text-muted">
               {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((d) => (
-                <div key={d} className="py-2">{d}</div>
+                <div key={d} className="py-2">
+                  {d}
+                </div>
               ))}
             </div>
             <div className="grid grid-cols-7 gap-1">
@@ -170,18 +223,25 @@ export function CalendarPageClient({
                 return (
                   <button
                     key={day.toISOString()}
-                    onClick={() => setSelectedDate(day)}
-                    className={`relative rounded-lg p-2 text-sm transition-colors ${
+                    type="button"
+                    onClick={() => pickDate(day)}
+                    className={cn(
+                      "relative rounded-sm border-2 p-2 text-sm font-semibold transition-colors",
                       isSelected
-                        ? "bg-sky-500 text-white"
+                        ? "border-foreground bg-accent text-white"
                         : isSameMonth(day, currentMonth)
-                          ? "hover:bg-slate-100"
-                          : "text-slate-300"
-                    }`}
+                          ? "border-transparent hover:border-foreground hover:bg-accent-light"
+                          : "border-transparent text-muted/40"
+                    )}
                   >
                     {format(day, "d")}
                     {dayEvts.length > 0 && (
-                      <span className="absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-sky-400" />
+                      <span
+                        className={cn(
+                          "absolute bottom-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full",
+                          isSelected ? "bg-white" : "bg-accent"
+                        )}
+                      />
                     )}
                   </button>
                 );
@@ -190,29 +250,34 @@ export function CalendarPageClient({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hard-shadow-sm">
           <CardHeader>
             <CardTitle className="text-base">
               {selectedDate
                 ? format(selectedDate, "d MMMM", { locale: es })
-                : "Selecciona un día"}
+                : "Seleccioná un día"}
             </CardTitle>
           </CardHeader>
           <CardContent>
             {dayEvents.length === 0 ? (
-              <p className="text-sm text-slate-500">Sin eventos</p>
+              <p className="text-sm text-muted">Sin eventos</p>
             ) : (
               <div className="space-y-3">
                 {dayEvents.map((event) => (
-                  <div key={event.id} className="rounded-lg border border-slate-200 p-3">
-                    <p className="font-medium text-slate-900">{event.title}</p>
-                    <p className="text-xs text-slate-500">
+                  <button
+                    key={event.id}
+                    type="button"
+                    onClick={() => pickEvent(event)}
+                    className="w-full rounded-sm border-2 border-foreground bg-surface p-3 text-left hard-shadow-sm hard-shadow-hover"
+                  >
+                    <p className="font-bold">{event.title}</p>
+                    <p className="text-xs text-muted">
                       {format(new Date(event.starts_at), "HH:mm")} · {event.event_type}
                     </p>
                     {event.description && (
-                      <p className="mt-1 text-sm text-slate-600">{event.description}</p>
+                      <p className="mt-1 text-sm text-muted">{event.description}</p>
                     )}
-                  </div>
+                  </button>
                 ))}
               </div>
             )}

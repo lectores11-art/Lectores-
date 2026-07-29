@@ -12,7 +12,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 export default function LoginPage() {
   const searchParams = useSearchParams();
   const rawRedirect = searchParams.get("redirect") || "/dashboard";
-  // Only allow internal, single-slash paths to avoid open-redirect attacks
   const redirect =
     rawRedirect.startsWith("/") && !rawRedirect.startsWith("//")
       ? rawRedirect
@@ -39,7 +38,6 @@ export default function LoginPage() {
         return;
       }
 
-      // Hard navigation so production picks up auth cookies before SSR/middleware run.
       window.location.assign(redirect);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al iniciar sesión");
@@ -49,14 +47,14 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-      <Card className="w-full max-w-md">
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <Card className="w-full max-w-md hard-shadow">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-sky-500 text-white">
+          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center border-2 border-foreground bg-band">
             <BookOpen className="h-6 w-6" />
           </div>
           <CardTitle>Iniciar sesión</CardTitle>
-          <CardDescription>Accede a tu comunidad de lectura</CardDescription>
+          <CardDescription>Accedé a tu comunidad de lectura</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -81,12 +79,12 @@ export default function LoginPage() {
                 required
               />
             </div>
-            {error && <p className="text-sm text-red-500">{error}</p>}
+            {error && <p className="text-sm text-red-600">{error}</p>}
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Entrando..." : "Entrar"}
             </Button>
           </form>
-          <p className="mt-4 text-center text-sm text-slate-500">
+          <p className="mt-4 text-center text-sm text-muted">
             El acceso es solo por invitación. Si tenés un link de tu comunidad, abrilo para
             registrarte.
           </p>

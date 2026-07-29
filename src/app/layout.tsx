@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import { Inter, Literata } from "next/font/google";
+import { Space_Grotesk, Literata } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({
+const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
-  variable: "--font-inter",
+  variable: "--font-space-grotesk",
 });
 
 const literata = Literata({
@@ -24,7 +24,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es">
-      <body className={`${inter.variable} ${literata.variable} antialiased`}>
+      <body className={`${spaceGrotesk.variable} ${literata.variable} antialiased`}>
         {children}
       </body>
     </html>

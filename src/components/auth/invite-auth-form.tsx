@@ -79,10 +79,10 @@ export function InviteAuthForm({ token, communityName, onAuthenticated }: Invite
   if (confirmSent) {
     return (
       <div className="space-y-3 text-center">
-        <p className="text-sm text-slate-600">
-          Te enviamos un correo a <span className="font-medium">{email}</span>. Confirmá tu
+        <p className="text-sm text-muted">
+          Te enviamos un correo a <span className="font-semibold text-foreground">{email}</span>. Confirmá tu
           cuenta desde ese email y vas a entrar automáticamente a{" "}
-          <span className="font-medium">{communityName}</span>.
+          <span className="font-semibold text-foreground">{communityName}</span>.
         </p>
       </div>
     );
@@ -124,7 +124,7 @@ export function InviteAuthForm({ token, communityName, onAuthenticated }: Invite
           minLength={6}
         />
       </div>
-      {error && <p className="text-sm text-red-500">{error}</p>}
+      {error && <p className="text-sm text-red-600">{error}</p>}
       <Button type="submit" className="w-full" disabled={loading}>
         {loading
           ? "Procesando..."
@@ -133,7 +133,7 @@ export function InviteAuthForm({ token, communityName, onAuthenticated }: Invite
           : "Iniciar sesión y entrar"}
       </Button>
 
-      <p className="text-center text-sm text-slate-500">
+      <p className="text-center text-sm text-muted">
         {mode === "register" ? (
           <>
             ¿Ya tienes cuenta?{" "}
@@ -143,7 +143,7 @@ export function InviteAuthForm({ token, communityName, onAuthenticated }: Invite
                 setMode("login");
                 setError("");
               }}
-              className="text-sky-600 hover:underline"
+              className="font-semibold text-accent hover:underline"
             >
               Inicia sesión
             </button>
@@ -157,7 +157,7 @@ export function InviteAuthForm({ token, communityName, onAuthenticated }: Invite
                 setMode("register");
                 setError("");
               }}
-              className="text-sky-600 hover:underline"
+              className="font-semibold text-accent hover:underline"
             >
               Regístrate
             </button>
