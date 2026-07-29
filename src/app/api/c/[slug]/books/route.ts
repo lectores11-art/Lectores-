@@ -1,15 +1,18 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { getCurrentUser, isCommunityAdmin, requireApiCommunityAccess } from "@/lib/auth/helpers";
+import { isCommunityAdmin, requireApiCommunityAccess } from "@/lib/auth/helpers";
 import type { ReadingProgress } from "@/lib/types/database";
 import {
   extractTextFromPdfBuffer,
   extractTOC,
   MAX_STORED_PAGES,
   normalizeExtractedText,
+  paginateBlocksByLines,
   paginateText,
   PIPELINE_VERSION,
 } from "@/lib/pdf/paginator";
+import { extractPositionedTextFromPdfBuffer } from "@/lib/pdf/extract-positioned";
+import { inferLayoutBlocks } from "@/lib/pdf/layout-inference";
 import {
   bookUploadFieldsSchema,
   internalErrorResponse,
@@ -53,9 +56,25 @@ export async function POST(
     const { title, author, description } = fieldsResult.data;
 
     const buffer = Buffer.from(await file!.arrayBuffer());
-    const rawText = await extractTextFromPdfBuffer(buffer);
-    const text = normalizeExtractedText(rawText);
-    const pages = paginateText(text);
+
+    let pages;
+    try {
+      const positioned = await extractPositionedTextFromPdfBuffer(buffer);
+      const pageWidth =
+        positioned.length > 0
+          ? Math.max(...positioned.map((item) => item.x + item.width), 612)
+          : 612;
+      const layoutBlocks = inferLayoutBlocks(positioned, pageWidth);
+      pages =
+        layoutBlocks.length > 0
+          ? paginateBlocksByLines(layoutBlocks)
+          : paginateText(normalizeExtractedText(await extractTextFromPdfBuffer(buffer)));
+    } catch (layoutErr) {
+      console.error("Level B pipeline failed, falling back to text pagination:", layoutErr);
+      const text = normalizeExtractedText(await extractTextFromPdfBuffer(buffer));
+      pages = paginateText(text);
+    }
+
     const storedPages =
       pages.length > MAX_STORED_PAGES ? pages.slice(0, MAX_STORED_PAGES) : pages;
     const toc = extractTOC(storedPages);

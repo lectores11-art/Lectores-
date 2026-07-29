@@ -1,15 +1,70 @@
 import { describe, expect, it } from "vitest";
 import {
   assertWordPreservation,
+  blockLineCost,
   buildBlocks,
   classifyLineStyle,
   extractTOC,
   hasLegacyPaginationBug,
+  LEFT_PAGE_LINES,
   LEFT_PAGE_WORDS,
   normalizeExtractedText,
+  paginateBlocksByLines,
   paginateText,
+  RIGHT_PAGE_LINES,
   RIGHT_PAGE_WORDS,
 } from "./paginator";
+
+describe("paginateBlocksByLines", () => {
+  it("spreads Buddhacarita-style TOC across at least 2 pages with all blocks preserved", () => {
+    const lines = [
+      "Tabla de Contenido",
+      "BUDDHACARITA",
+      ...Array.from({ length: 14 }, (_, i) => `Libro ${i + 1}: capítulo`),
+    ];
+    const blocks = lines.map((text) => ({
+      style: classifyLineStyle(text),
+      text,
+      align: "center" as const,
+    }));
+
+    const pages = paginateBlocksByLines(blocks);
+    const recovered = pages.flatMap((p) => p.blocks ?? []);
+
+    expect(pages.length).toBeGreaterThanOrEqual(2);
+    expect(recovered).toHaveLength(16);
+    expect(recovered.map((b) => b.text)).toEqual(lines);
+  });
+
+  it("never splits list-item blocks across pages", () => {
+    const item = { style: "list-item" as const, text: "Libro 5: ejemplo largo de capítulo" };
+    const pages = paginateBlocksByLines([
+      ...Array.from({ length: LEFT_PAGE_LINES }, (_, i) => ({
+        style: "paragraph" as const,
+        text: `filler line ${i}`,
+      })),
+      item,
+    ]);
+
+    const listPages = pages.filter((p) =>
+      (p.blocks ?? []).some((b) => b.style === "list-item")
+    );
+    expect(listPages).toHaveLength(1);
+    expect(listPages[0].blocks?.some((b) => b.text === item.text)).toBe(true);
+  });
+
+  it("uses alternating left/right line limits", () => {
+    expect(blockLineCost({ style: "paragraph", text: "x" })).toBe(1);
+    const blocks = Array.from({ length: LEFT_PAGE_LINES + 1 }, (_, i) => ({
+      style: "paragraph" as const,
+      text: `line ${i}`,
+    }));
+    const pages = paginateBlocksByLines(blocks);
+    expect(pages.length).toBeGreaterThanOrEqual(2);
+    expect(pages[0].blocks?.length).toBe(LEFT_PAGE_LINES);
+    expect(pages[1].blocks?.length).toBeLessThanOrEqual(RIGHT_PAGE_LINES);
+  });
+});
 
 describe("classifyLineStyle", () => {
   it("detects TOC title and list items", () => {
