@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { getCommunityBySlug, getCurrentUser, isCommunityAdmin } from "@/lib/auth/helpers";
+import { getCurrentUser, isCommunityAdmin, requireApiCommunityAccess } from "@/lib/auth/helpers";
 import type { ReadingProgress } from "@/lib/types/database";
 import {
   extractTextFromPdfBuffer,
@@ -32,11 +32,9 @@ export async function POST(
     if ("error" in paramsResult) return paramsResult.error;
     const { slug } = paramsResult.data;
 
-    const user = await getCurrentUser();
-    if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
-
-    const community = await getCommunityBySlug(slug);
-    if (!community) return NextResponse.json({ error: "Comunidad no encontrada" }, { status: 404 });
+    const access = await requireApiCommunityAccess(slug);
+    if (access instanceof NextResponse) return access;
+    const { user, community } = access;
 
     const admin = await isCommunityAdmin(community.id, user.id, user.is_super_admin);
     if (!admin) return NextResponse.json({ error: "No autorizado" }, { status: 403 });
@@ -108,11 +106,9 @@ export async function GET(
   if ("error" in paramsResult) return paramsResult.error;
   const { slug } = paramsResult.data;
 
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
-
-  const community = await getCommunityBySlug(slug);
-  if (!community) return NextResponse.json({ error: "Comunidad no encontrada" }, { status: 404 });
+  const access = await requireApiCommunityAccess(slug);
+  if (access instanceof NextResponse) return access;
+  const { user, community } = access;
 
   const supabase = await createClient();
   const { data: books } = await supabase

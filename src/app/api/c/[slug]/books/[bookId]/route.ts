@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentUser } from "@/lib/auth/helpers";
+import { requireApiCommunityAccess } from "@/lib/auth/helpers";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ slug: string; bookId: string }> }
 ) {
-  const { bookId } = await params;
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  const { slug, bookId } = await params;
+  const access = await requireApiCommunityAccess(slug);
+  if (access instanceof NextResponse) return access;
+  const { user, community } = access;
 
   const supabase = await createClient();
 
@@ -16,6 +17,7 @@ export async function GET(
     .from("books")
     .select("*")
     .eq("id", bookId)
+    .eq("community_id", community.id)
     .single();
 
   if (error || !book) {

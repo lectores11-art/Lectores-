@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentUser, isCommunityAdmin } from "@/lib/auth/helpers";
+import { getCurrentUser, isCommunityAdmin, requireApiCommunityAccess } from "@/lib/auth/helpers";
 import {
   forumPostCreateSchema,
   forumThreadPatchSchema,
@@ -16,10 +16,11 @@ export async function PATCH(
 ) {
   const paramsResult = parseData(threadParamsSchema, await params);
   if ("error" in paramsResult) return paramsResult.error;
-  const { threadId } = paramsResult.data;
+  const { slug, threadId } = paramsResult.data;
 
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  const access = await requireApiCommunityAccess(slug);
+  if (access instanceof NextResponse) return access;
+  const { user, community } = access;
 
   const bodyResult = await parseJsonBody(request, forumThreadPatchSchema);
   if ("error" in bodyResult) return bodyResult.error;
@@ -30,6 +31,7 @@ export async function PATCH(
     .from("forum_threads")
     .select("*, community:communities(id, slug)")
     .eq("id", threadId)
+    .eq("community_id", community.id)
     .single();
 
   if (!thread) return NextResponse.json({ error: "Hilo no encontrado" }, { status: 404 });
@@ -77,7 +79,11 @@ export async function GET(
 ) {
   const paramsResult = parseData(threadParamsSchema, await params);
   if ("error" in paramsResult) return paramsResult.error;
-  const { threadId } = paramsResult.data;
+  const { slug, threadId } = paramsResult.data;
+
+  const access = await requireApiCommunityAccess(slug);
+  if (access instanceof NextResponse) return access;
+  const { community } = access;
 
   const supabase = await createClient();
 
@@ -85,7 +91,12 @@ export async function GET(
     .from("forum_threads")
     .select("*, author:profiles(id, full_name, avatar_url)")
     .eq("id", threadId)
+    .eq("community_id", community.id)
     .single();
+
+  if (!thread) {
+    return NextResponse.json({ error: "Hilo no encontrado" }, { status: 404 });
+  }
 
   const { data: posts } = await supabase
     .from("forum_posts")
@@ -102,16 +113,29 @@ export async function POST(
 ) {
   const paramsResult = parseData(threadParamsSchema, await params);
   if ("error" in paramsResult) return paramsResult.error;
-  const { threadId } = paramsResult.data;
+  const { slug, threadId } = paramsResult.data;
 
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  const access = await requireApiCommunityAccess(slug);
+  if (access instanceof NextResponse) return access;
+  const { user, community } = access;
 
   const bodyResult = await parseJsonBody(request, forumPostCreateSchema);
   if ("error" in bodyResult) return bodyResult.error;
   const { content } = bodyResult.data;
 
   const supabase = await createClient();
+
+  const { data: thread } = await supabase
+    .from("forum_threads")
+    .select("id, reply_count")
+    .eq("id", threadId)
+    .eq("community_id", community.id)
+    .single();
+
+  if (!thread) {
+    return NextResponse.json({ error: "Hilo no encontrado" }, { status: 404 });
+  }
+
   const { data: post, error } = await supabase
     .from("forum_posts")
     .insert({ thread_id: threadId, author_id: user.id, content })
@@ -120,18 +144,10 @@ export async function POST(
 
   if (error) return internalErrorResponse("Error al crear respuesta:", error);
 
-  const { data: thread } = await supabase
+  await supabase
     .from("forum_threads")
-    .select("reply_count")
-    .eq("id", threadId)
-    .single();
-
-  if (thread) {
-    await supabase
-      .from("forum_threads")
-      .update({ reply_count: thread.reply_count + 1 })
-      .eq("id", threadId);
-  }
+    .update({ reply_count: thread.reply_count + 1 })
+    .eq("id", threadId);
 
   return NextResponse.json({ post });
 }

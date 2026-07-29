@@ -1,3 +1,4 @@
+import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Community, Membership, Profile } from "@/lib/types/database";
@@ -237,6 +238,46 @@ export async function requireCommunityAccess(slug: string) {
 
   if (!hasAccess) {
     return { user, community, membership: null };
+  }
+
+  return { user, community, membership };
+}
+
+export type ApiCommunityContext = {
+  user: Profile;
+  community: Community;
+  membership: Membership | null;
+};
+
+export function hasActiveCommunityAccess(
+  user: Profile,
+  community: Community,
+  membership: Membership | null
+): boolean {
+  return (
+    user.is_super_admin ||
+    community.owner_id === user.id ||
+    membership?.status === "active"
+  );
+}
+
+/** Guard for /api/c/[slug] routes — returns 401/403/404 or the authorized context. */
+export async function requireApiCommunityAccess(
+  slug: string
+): Promise<ApiCommunityContext | NextResponse> {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  }
+
+  const community = await getCommunityBySlug(slug);
+  if (!community) {
+    return NextResponse.json({ error: "Comunidad no encontrada" }, { status: 404 });
+  }
+
+  const membership = await getMembership(community.id, user.id);
+  if (!hasActiveCommunityAccess(user, community, membership)) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
   return { user, community, membership };
