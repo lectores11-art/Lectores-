@@ -158,7 +158,7 @@ export function ForumPageClient({ slug, isAdmin }: ForumPageClientProps) {
           {filtered.map((thread) => (
             <Card
               key={thread.id}
-              className="cursor-pointer transition-transform hard-shadow-hover hard-shadow-sm"
+              className="cursor-pointer transition-transform hard-shadow-sm"
               onClick={() => selectThread(thread)}
             >
               <CardHeader className="pb-2">

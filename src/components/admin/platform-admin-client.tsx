@@ -66,10 +66,10 @@ export function PlatformAdminClient() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b-2 border-foreground bg-band">
+      <header className="border-b border-border bg-surface">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center border-2 border-foreground bg-surface hard-shadow-sm">
+            <div className="flex h-9 w-9 items-center justify-center rounded-md bg-band text-foreground">
               <BookOpen className="h-4 w-4" />
             </div>
             <span className="font-bold">Lectores · Super Admin</span>
@@ -90,7 +90,7 @@ export function PlatformAdminClient() {
         </div>
 
         {lastInviteUrl && (
-          <Card className="mb-6 border-2 border-foreground bg-band hard-shadow-sm">
+          <Card className="mb-6 border-border bg-accent-light hard-shadow-sm">
             <CardContent className="pt-6">
               <p className="mb-2 text-sm font-bold">
                 Comunidad creada. Link de invitación:
@@ -128,7 +128,7 @@ export function PlatformAdminClient() {
                   <Input name="ownerEmail" type="email" required placeholder="duena@ejemplo.com" />
                   <p className="text-xs text-muted">
                     Se creará automáticamente en Supabase. Si falla, ejecutá{" "}
-                    <code className="border border-foreground bg-surface px-1">002_fix_auth_trigger.sql</code> en Supabase.
+                    <code className="border border-border bg-surface px-1">002_fix_auth_trigger.sql</code> en Supabase.
                   </p>
                 </div>
                 <div className="space-y-2">

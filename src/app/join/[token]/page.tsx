@@ -102,7 +102,7 @@ export default function JoinPage({ params }: { params: Promise<{ token: string }
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <Card className="w-full max-w-md hard-shadow">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center border-2 border-foreground bg-band">
+          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-md bg-band">
             <BookOpen className="h-6 w-6" />
           </div>
           {community ? (

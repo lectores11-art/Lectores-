@@ -89,10 +89,10 @@ function DashboardLayout({
 }) {
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b-2 border-foreground bg-band">
+      <header className="border-b border-border bg-surface">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center border-2 border-foreground bg-surface hard-shadow-sm">
+            <div className="flex h-9 w-9 items-center justify-center rounded-md bg-band text-foreground">
               <BookOpen className="h-4 w-4" />
             </div>
             <span className="font-bold">Lectores</span>
@@ -117,15 +117,15 @@ function CommunityGrid({
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {communities.map(({ community, isAdmin }) => (
         <Link key={community.id} href={`/c/${community.slug}/forum`}>
-          <Card className="h-full hard-shadow-sm hard-shadow-hover transition-transform">
+          <Card className="h-full transition-shadow hover:shadow-md hard-shadow-sm">
             <CardHeader>
               <div className="mb-2 flex items-center gap-2">
-                <div className="flex h-10 w-10 items-center justify-center border-2 border-foreground bg-band">
+                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-band text-foreground">
                   <BookOpen className="h-5 w-5" />
                 </div>
                 {community.accent_color ? (
                   <span
-                    className="h-3 w-3 border border-foreground"
+                    className="h-3 w-3 rounded-sm border border-border"
                     style={{ backgroundColor: community.accent_color }}
                     aria-hidden
                   />

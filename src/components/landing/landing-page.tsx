@@ -5,10 +5,10 @@ import { Button } from "@/components/ui/button";
 export function LandingPage() {
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b-2 border-foreground bg-band">
+      <header className="border-b border-border bg-surface">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center border-2 border-foreground bg-surface hard-shadow-sm">
+            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-band text-foreground">
               <BookOpen className="h-5 w-5" />
             </div>
             <span className="text-xl font-bold tracking-tight">Lectores</span>
@@ -44,18 +44,24 @@ export function LandingPage() {
             </p>
           </div>
 
-          <div className="border-2 border-foreground bg-surface p-4 hard-shadow lg:p-6">
-            <div className="mb-4 border-2 border-foreground bg-band px-4 py-3">
-              <p className="text-sm font-semibold">Buscar título, autor o tema…</p>
+          <div className="rounded-md border border-border bg-surface p-4 hard-shadow-sm lg:p-6">
+            <div className="mb-4 flex items-center gap-2 rounded-md border border-border bg-background px-4 py-3">
+              <span className="h-2 w-2 rounded-full bg-band" aria-hidden />
+              <p className="text-sm text-muted">Buscar título, autor o tema…</p>
             </div>
             <div className="grid grid-cols-3 gap-3">
               {["Foro", "Biblioteca", "Sala", "Classroom", "Agenda", "Invite"].map(
                 (label, i) => (
                   <div
                     key={label}
-                    className="flex aspect-[3/4] flex-col justify-between border-2 border-foreground bg-background p-3"
+                    className="flex aspect-[3/4] flex-col justify-between rounded-md border border-border bg-background p-3"
                     style={{
-                      backgroundColor: i % 2 === 0 ? "var(--band)" : "var(--accent-light)",
+                      backgroundColor:
+                        i === 0
+                          ? "var(--accent-light)"
+                          : i === 1
+                            ? "var(--band)"
+                            : undefined,
                     }}
                   >
                     <BookOpen className="h-5 w-5" />

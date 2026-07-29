@@ -157,10 +157,10 @@ export function ClassroomPageClient({
                         type="button"
                         onClick={() => pickLesson(lesson, course.title)}
                         className={cn(
-                          "flex w-full items-center gap-2 rounded-sm border-2 px-3 py-2 text-left text-sm font-medium transition-colors",
+                          "flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm font-medium transition-colors",
                           selectedLesson?.id === lesson.id
-                            ? "border-foreground bg-accent text-white"
-                            : "border-transparent hover:border-foreground hover:bg-accent-light"
+                            ? "border-accent bg-accent text-white"
+                            : "border-transparent hover:border-border hover:bg-accent-light"
                         )}
                       >
                         <Play className="h-3 w-3" />
@@ -181,7 +181,7 @@ export function ClassroomPageClient({
               </CardHeader>
               <CardContent>
                 {selectedLesson.video_url ? (
-                  <div className="aspect-video overflow-hidden border-2 border-foreground bg-black">
+                  <div className="aspect-video overflow-hidden border border-border bg-black">
                     {selectedLesson.video_url.includes("youtube") ||
                     selectedLesson.video_url.includes("vimeo") ||
                     selectedLesson.video_url.includes("mux") ? (

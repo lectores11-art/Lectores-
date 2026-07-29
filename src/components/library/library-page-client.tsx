@@ -232,9 +232,9 @@ export function LibraryPageClient({ slug, isAdmin }: LibraryPageClientProps) {
                   onClick={() => selectBook(book)}
                   className="group text-left"
                 >
-                  <Card className="h-full transition-transform hard-shadow-hover hard-shadow-sm">
+                  <Card className="h-full transition-transform hard-shadow-sm">
                     <CardContent className="p-4">
-                      <div className="mb-3 flex h-36 items-center justify-center overflow-hidden border-2 border-foreground bg-band">
+                      <div className="mb-3 flex h-36 items-center justify-center overflow-hidden rounded-md border border-border bg-accent-light">
                         {book.cover_url ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img

@@ -51,11 +51,11 @@ export function IconRail({ community, isAdmin }: IconRailProps) {
   }
 
   return (
-    <aside className="hidden h-screen w-[88px] shrink-0 flex-col border-r-2 border-foreground bg-background lg:flex">
-      <div className="flex flex-col items-center gap-1 border-b-2 border-foreground px-2 py-4">
+    <aside className="hidden h-screen w-[88px] shrink-0 flex-col border-r border-border bg-surface lg:flex">
+      <div className="flex flex-col items-center gap-1 border-b border-border px-2 py-4">
         <Link
           href="/dashboard"
-          className="flex h-11 w-11 items-center justify-center border-2 border-foreground bg-band hard-shadow-sm"
+          className="flex h-11 w-11 items-center justify-center rounded-md bg-band text-foreground"
           title="Lectores"
         >
           <BookOpen className="h-5 w-5" />
@@ -68,7 +68,7 @@ export function IconRail({ community, isAdmin }: IconRailProps) {
         </span>
         {community.accent_color && (
           <span
-            className="mt-0.5 h-1.5 w-6 border border-foreground"
+            className="mt-0.5 h-1.5 w-6 rounded-sm"
             style={{ backgroundColor: community.accent_color }}
             aria-hidden
           />
@@ -100,7 +100,7 @@ export function IconRail({ community, isAdmin }: IconRailProps) {
           <Link
             href={`${base}/admin`}
             className={cn(
-              "mt-2 flex w-[72px] flex-col items-center gap-1 rounded-sm border-t-2 border-foreground px-1 pt-3 text-[10px] font-semibold uppercase tracking-wide",
+              "mt-2 flex w-[72px] flex-col items-center gap-1 rounded-md border-t border-border px-1 pt-3 text-[10px] font-semibold uppercase tracking-wide",
               pathname.startsWith(`${base}/admin`)
                 ? "text-accent"
                 : "text-foreground hover:bg-accent-light"
@@ -112,7 +112,7 @@ export function IconRail({ community, isAdmin }: IconRailProps) {
         )}
       </nav>
 
-      <div className="flex flex-col items-center gap-1 border-t-2 border-foreground py-3">
+      <div className="flex flex-col items-center gap-1 border-t border-border py-3">
         <Link
           href={`${base}/settings`}
           className={cn(
@@ -165,7 +165,7 @@ export function MobileBottomNav({
   }
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 flex h-16 items-stretch border-t-2 border-foreground bg-background lg:hidden">
+    <nav className="fixed inset-x-0 bottom-0 z-40 flex h-16 items-stretch border-t border-border bg-surface lg:hidden">
       {items.map(({ href, label, icon: Icon }) => {
         const fullHref = `${base}/${href}`;
         const active = pathname.startsWith(fullHref);

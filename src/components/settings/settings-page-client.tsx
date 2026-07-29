@@ -110,7 +110,7 @@ export function SettingsPageClient({
       </div>
 
       {message && (
-        <div className="mb-4 border-2 border-foreground bg-band px-4 py-2 text-sm font-semibold">
+        <div className="mb-4 border border-border bg-accent-light px-4 py-2 text-sm font-semibold">
           {message}
         </div>
       )}

@@ -18,7 +18,7 @@ export function UserChrome({
   const initial = (user.full_name || user.email).charAt(0).toUpperCase();
 
   return (
-    <div className="flex items-center gap-3 border-b-2 border-foreground bg-background px-4 py-3">
+    <div className="flex items-center gap-3 border-b border-border bg-surface px-4 py-3">
       <Avatar className="h-10 w-10">
         {user.avatar_url ? (
           <AvatarImage src={user.avatar_url} alt="" />
@@ -33,7 +33,7 @@ export function UserChrome({
       </div>
       <button
         type="button"
-        className="flex h-10 w-10 items-center justify-center border-2 border-foreground bg-surface hard-shadow-sm"
+        className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-background text-muted hover:bg-accent-light hover:text-foreground"
         aria-label="Notificaciones"
         title="Próximamente"
       >
@@ -49,10 +49,10 @@ export function DetailPanelBody() {
   if (!detail) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-        <div className="flex h-14 w-14 items-center justify-center border-2 border-foreground bg-band">
+        <div className="flex h-14 w-14 items-center justify-center rounded-md bg-band text-foreground">
           <BookOpen className="h-6 w-6" />
         </div>
-        <p className="text-sm font-semibold text-muted">
+        <p className="text-sm font-medium text-muted">
           Elegí un ítem de la lista para ver el detalle aquí.
         </p>
       </div>
@@ -62,7 +62,7 @@ export function DetailPanelBody() {
   return (
     <div className="flex flex-1 flex-col overflow-y-auto p-4">
       <div className="mb-4 flex items-start gap-3">
-        <div className="flex h-20 w-16 shrink-0 items-center justify-center overflow-hidden border-2 border-foreground bg-band">
+        <div className="flex h-20 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-band">
           {detail.imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -123,7 +123,7 @@ export function DetailPanelBody() {
       )}
 
       {detail.meta && detail.meta.length > 0 ? (
-        <dl className="mb-4 space-y-2 border-y-2 border-foreground py-3">
+        <dl className="mb-4 space-y-2 border-y border-border py-3">
           {detail.meta.map((row) => (
             <div key={row.label} className="flex justify-between gap-3 text-sm">
               <dt className="font-semibold uppercase tracking-wide text-muted">
@@ -164,7 +164,7 @@ export function DetailPanel({
   return (
     <aside
       className={cn(
-        "hidden h-screen w-[340px] shrink-0 flex-col border-l-2 border-foreground bg-background lg:flex",
+        "hidden h-screen w-[340px] shrink-0 flex-col border-l border-border bg-surface lg:flex",
         className
       )}
     >
@@ -187,8 +187,8 @@ export function MobileDetailSheet() {
         aria-label="Cerrar"
         onClick={() => setMobileOpen(false)}
       />
-      <div className="absolute inset-x-0 bottom-0 flex max-h-[85vh] flex-col border-t-2 border-foreground bg-background pb-16">
-        <div className="flex items-center justify-between border-b-2 border-foreground px-4 py-3">
+      <div className="absolute inset-x-0 bottom-0 flex max-h-[85vh] flex-col border-t border-border bg-surface pb-16">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <p className="text-xs font-bold uppercase tracking-wide">Detalle</p>
           <button
             type="button"
@@ -196,7 +196,7 @@ export function MobileDetailSheet() {
               setMobileOpen(false);
               clearDetail();
             }}
-            className="flex h-8 w-8 items-center justify-center border-2 border-foreground bg-surface"
+            className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background"
             aria-label="Cerrar detalle"
           >
             <X className="h-4 w-4" />

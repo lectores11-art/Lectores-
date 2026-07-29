@@ -160,7 +160,7 @@ export function CalendarPageClient({
                 <Label>Tipo</Label>
                 <select
                   name="eventType"
-                  className="flex h-10 w-full rounded-sm border-2 border-foreground bg-surface px-3 text-sm"
+                  className="flex h-10 w-full rounded-md border border-border bg-surface px-3 text-sm"
                 >
                   <option value="meeting">Reunión</option>
                   <option value="deadline">Fecha límite</option>
@@ -226,11 +226,11 @@ export function CalendarPageClient({
                     type="button"
                     onClick={() => pickDate(day)}
                     className={cn(
-                      "relative rounded-sm border-2 p-2 text-sm font-semibold transition-colors",
+                      "relative rounded-md border p-2 text-sm font-semibold transition-colors",
                       isSelected
-                        ? "border-foreground bg-accent text-white"
+                        ? "border-accent bg-accent text-white"
                         : isSameMonth(day, currentMonth)
-                          ? "border-transparent hover:border-foreground hover:bg-accent-light"
+                          ? "border-transparent hover:border-border hover:bg-accent-light"
                           : "border-transparent text-muted/40"
                     )}
                   >
@@ -268,7 +268,7 @@ export function CalendarPageClient({
                     key={event.id}
                     type="button"
                     onClick={() => pickEvent(event)}
-                    className="w-full rounded-sm border-2 border-foreground bg-surface p-3 text-left hard-shadow-sm hard-shadow-hover"
+                    className="w-full rounded-md border border-border bg-surface p-3 text-left hard-shadow-sm"
                   >
                     <p className="font-bold">{event.title}</p>
                     <p className="text-xs text-muted">

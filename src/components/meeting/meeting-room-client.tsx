@@ -342,7 +342,7 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
           {meetings.map((meeting) => (
             <Card
               key={meeting.id}
-              className="cursor-pointer hard-shadow-sm hard-shadow-hover"
+              className="cursor-pointer hard-shadow-sm"
               onClick={() => selectMeeting(meeting)}
             >
               <CardHeader>

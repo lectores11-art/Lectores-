@@ -2,13 +2,13 @@
 
 :root {
   --background: #f5e8d6;
-  --foreground: #111111;
+  --foreground: #1a1612;
   --surface: #fff8ee;
   --band: #f5c518;
   --accent: #e85d2a;
   --accent-light: #fce8df;
   --muted: #6b5e52;
-  --border: #111111;
+  --border: #d6c7b5;
   --sidebar: #f5e8d6;
 }
 
@@ -36,29 +36,31 @@ body {
   font-family: var(--font-literata), Georgia, "Times New Roman", serif;
 }
 
-/* Hard neo-brutalist shadow */
+/* Soft warm elevation (editorial, not neo-brutal) */
 .hard-shadow {
-  box-shadow: 4px 4px 0 0 var(--foreground);
+  box-shadow:
+    0 1px 2px rgba(26, 22, 18, 0.06),
+    0 4px 12px rgba(26, 22, 18, 0.06);
 }
 
 .hard-shadow-sm {
-  box-shadow: 2px 2px 0 0 var(--foreground);
+  box-shadow: 0 1px 3px rgba(26, 22, 18, 0.06);
 }
 
 .hard-shadow-hover {
   transition:
-    transform 120ms ease,
-    box-shadow 120ms ease;
+    box-shadow 160ms ease,
+    background-color 160ms ease;
 }
 
 .hard-shadow-hover:hover:not(:disabled) {
-  transform: translate(2px, 2px);
-  box-shadow: 2px 2px 0 0 var(--foreground);
+  box-shadow:
+    0 2px 4px rgba(26, 22, 18, 0.07),
+    0 8px 20px rgba(26, 22, 18, 0.08);
 }
 
 .hard-shadow-hover:active:not(:disabled) {
-  transform: translate(4px, 4px);
-  box-shadow: 0 0 0 0 var(--foreground);
+  box-shadow: 0 1px 2px rgba(26, 22, 18, 0.06);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -66,7 +68,6 @@ body {
   .hard-shadow-hover:hover:not(:disabled),
   .hard-shadow-hover:active:not(:disabled) {
     transition: none;
-    transform: none;
   }
 }
 
