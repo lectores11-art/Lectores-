@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { getCurrentUser, isCommunityAdmin, requireApiCommunityAccess } from "@/lib/auth/helpers";
+import { isCommunityAdmin, requireApiCommunityAccess } from "@/lib/auth/helpers";
 import type { ReadingProgress } from "@/lib/types/database";
 import {
   extractTextFromPdfBuffer,
