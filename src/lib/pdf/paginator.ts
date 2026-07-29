@@ -23,11 +23,18 @@ export interface TOCItem {
 export const LEFT_PAGE_WORDS = 80;
 export const RIGHT_PAGE_WORDS = 105;
 
+/**
+ * Visual line budget per half-page (Level B pipeline v4).
+ * Tuned for `.book-page { height: calc(100vh - 10rem); overflow: hidden }`.
+ */
+export const LEFT_PAGE_LINES = 28;
+export const RIGHT_PAGE_LINES = 32;
+
 /** @deprecated Use LEFT_PAGE_WORDS / RIGHT_PAGE_WORDS per page index. */
 export const READER_WORDS_PER_PAGE = LEFT_PAGE_WORDS;
 
 /** Bump when extraction/pagination logic changes; stored on each book row. */
-export const PIPELINE_VERSION = 3;
+export const PIPELINE_VERSION = 4;
 
 /** Safety cap for content_json size in DB. */
 export const MAX_STORED_PAGES = 1500;
@@ -133,6 +140,85 @@ function serializeBlocks(blocks: TextBlock[]): string {
 
 function wordsLimitForPage(pageIndex: number): number {
   return pageIndex % 2 === 0 ? LEFT_PAGE_WORDS : RIGHT_PAGE_WORDS;
+}
+
+function linesLimitForPage(pageIndex: number): number {
+  return pageIndex % 2 === 0 ? LEFT_PAGE_LINES : RIGHT_PAGE_LINES;
+}
+
+/** Visual line cost — centered TOC blocks need more vertical space in the reader. */
+export function blockLineCost(block: TextBlock): number {
+  switch (block.style) {
+    case "title":
+      return 3;
+    case "subtitle":
+    case "heading":
+      return 2;
+    case "list-item":
+      return 2;
+    case "paragraph": {
+      const explicitLines = block.text.split("\n").filter(Boolean).length;
+      const wrapped = Math.ceil(block.text.length / 72);
+      return Math.max(1, explicitLines, wrapped);
+    }
+    default:
+      return 1;
+  }
+}
+
+/**
+ * Paginate structured blocks by visual line height (Level B).
+ * Atomic blocks (especially list-item) are never split across pages.
+ */
+export function paginateBlocksByLines(blocks: TextBlock[]): PaginatedPage[] {
+  if (blocks.length === 0) {
+    const fallback = "Este libro no tiene contenido extraíble.";
+    return [
+      {
+        pageNumber: 0,
+        content: fallback,
+        blocks: [{ style: "paragraph", text: fallback }],
+      },
+    ];
+  }
+
+  const pages: PaginatedPage[] = [];
+  let pageBlocks: TextBlock[] = [];
+  let lineCount = 0;
+
+  function flushPage() {
+    if (pageBlocks.length === 0) return;
+    pages.push({
+      pageNumber: pages.length,
+      content: serializeBlocks(pageBlocks),
+      blocks: [...pageBlocks],
+    });
+    pageBlocks = [];
+    lineCount = 0;
+  }
+
+  for (const block of blocks) {
+    const cost = blockLineCost(block);
+    const limit = linesLimitForPage(pages.length);
+
+    if (cost > limit && pageBlocks.length > 0) {
+      flushPage();
+    }
+
+    if (lineCount + cost > limit && pageBlocks.length > 0) {
+      flushPage();
+    }
+
+    pageBlocks.push(block);
+    lineCount += cost;
+
+    if (lineCount >= linesLimitForPage(pages.length)) {
+      flushPage();
+    }
+  }
+
+  flushPage();
+  return pages;
 }
 
 /**
@@ -345,4 +431,4 @@ export function totalSpreads(totalPages: number): number {
   return Math.ceil(totalPages / 2);
 }
 
-export const _test = { countWords, buildBlocks, classifyLineStyle };
+export const _test = { countWords, buildBlocks, classifyLineStyle, blockLineCost, linesLimitForPage };

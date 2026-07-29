@@ -21,8 +21,10 @@ POST /api/c/[slug]/books
 |-----------|-------|--------|
 | `LEFT_PAGE_WORDS` | 80 | Páginas pares (izquierda): caben con título solo en spread 1 |
 | `RIGHT_PAGE_WORDS` | 105 | Páginas impares (derecha): caben con barra de herramientas |
+| `LEFT_PAGE_LINES` | 28 | Nivel B — presupuesto visual hoja izquierda |
+| `RIGHT_PAGE_LINES` | 32 | Nivel B — presupuesto visual hoja derecha |
 | `MAX_STORED_PAGES` | 1500 | Techo de seguridad para JSONB en Postgres |
-| `PIPELINE_VERSION` | 3 | Libros con `pipeline_version < 3` se consideran legacy |
+| `PIPELINE_VERSION` | 4 | Libros con `pipeline_version < 4` pueden usar paginación legacy |
 
 ## Nivel A — preservación de formato (v3)
 
@@ -31,6 +33,22 @@ POST /api/c/[slug]/books
 - **Estilos heurísticos:** `title`, `subtitle`, `list-item` (p. ej. `Libro 1:`), `heading`, `paragraph`.
 - **Lector:** `PageContent` renderiza cada bloque con CSS (centrado para TOC, ítems de lista, etc.).
 - **Persistencia:** cada página en `content_json` incluye `{ pageNumber, content, blocks[] }`.
+
+## Nivel B — layout-aware (v4)
+
+- **Extracción:** `extractPositionedTextFromPdfBuffer` obtiene `PositionedTextItem[]` con X/Y.
+- **Inferencia:** `inferLayoutBlocks` agrupa por línea, detecta centrado (±15%) y `fontSize` relativo.
+- **Paginación:** `paginateBlocksByLines` usa `LEFT_PAGE_LINES` / `RIGHT_PAGE_LINES` (no palabras).
+- **Regla:** los bloques `list-item` nunca se parten entre páginas.
+- **Upload:** `POST /api/c/[slug]/books` intenta pipeline B y hace fallback a Nivel A si falla.
+
+### Checklist índice sin recorte (Nivel B)
+
+1. Subir PDF con TOC largo (p. ej. Buddhacarita).
+2. Spread 1 muestra `Tabla de Contenido`, título y primeros `Libro N:` sin recorte vertical.
+3. Los `Libro N:` restantes continúan en hoja 2+.
+4. `pipeline_version` del libro = 4.
+5. Re-subir libros procesados con v3 si el índice aún se corta.
 
 ## Migraciones Supabase requeridas
 
@@ -48,18 +66,18 @@ Después de subir un PDF en **Biblioteca → Subir y procesar**:
 4. **Páginas razonables** — un libro mediano suele dar ~50–300 hojas, no 1500.
 5. **Texto real** — no el mensaje fallback *"No se pudo extraer el texto del PDF…"*.
 
-6. **Índice legible** — "Tabla de Contenido", título en mayúsculas y entradas `Libro N:` aparecen en líneas separadas y centradas, no como un párrafo único.
+6. **Índice legible** — "Tabla de Contenido", título en mayúsculas y entradas `Libro N:` aparecen en líneas separadas y centradas, sin recorte en hoja 1 (v4).
 
 ## Libros procesados antes del fix (legacy)
 
-Los libros subidos **antes** de `PIPELINE_VERSION = 3` pueden tener índice fusionado o paginación vieja. **No se reparan solos.**
+Los libros subidos **antes** de `PIPELINE_VERSION = 4` pueden tener índice fusionado, paginación por palabras o recorte visual. **No se reparan solos.**
 
 Acción:
 
 1. Borrar el libro en la biblioteca (o desde Supabase).
 2. Volver a subir el mismo PDF.
 
-El lector muestra un banner amarillo si detecta legacy (`pipeline_version < 3`, >500 páginas, o patrón de repetición progresiva).
+El lector muestra un banner amarillo si detecta legacy (`pipeline_version < 4`, >500 páginas, o patrón de repetición progresiva).
 
 ## Tests automatizados
 
