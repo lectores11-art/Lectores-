@@ -20,27 +20,11 @@ export function SettingsPageClient({
   const [membership, setMembership] = useState<Membership | null>(null);
   const [message, setMessage] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const { setDetail, setSearchPlaceholder } = useDetailPanel();
+  const { setSearchPlaceholder } = useDetailPanel();
 
   useEffect(() => {
     setSearchPlaceholder("Buscar en cuenta…");
-    setDetail({
-      kind: "account",
-      title: user.full_name || "Tu cuenta",
-      subtitle: user.email,
-      description:
-        "Desde aquí podés actualizar tu perfil, cambiar la contraseña y gestionar la suscripción de esta comunidad.",
-      meta: [
-        {
-          label: "Estado",
-          value:
-            membership?.status === "active"
-              ? "Activa"
-              : membership?.status || "—",
-        },
-      ],
-    });
-  }, [user, membership, setDetail, setSearchPlaceholder]);
+  }, [setSearchPlaceholder]);
 
   useEffect(() => {
     loadMembership();

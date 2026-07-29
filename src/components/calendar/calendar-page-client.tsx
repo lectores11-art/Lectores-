@@ -33,7 +33,7 @@ export function CalendarPageClient({
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const { setDetail, setSearchPlaceholder } = useDetailPanel();
+  const { setSearchPlaceholder } = useDetailPanel();
 
   useEffect(() => {
     setSearchPlaceholder("Buscar eventos…");
@@ -61,44 +61,6 @@ export function CalendarPageClient({
 
   function pickDate(day: Date) {
     setSelectedDate(day);
-    const dayEvts = events.filter((e) => isSameDay(new Date(e.starts_at), day));
-    if (dayEvts.length === 0) {
-      setDetail({
-        kind: "day",
-        title: format(day, "d MMMM yyyy", { locale: es }),
-        description: "Sin eventos este día.",
-      });
-      return;
-    }
-    const first = dayEvts[0];
-    setDetail({
-      kind: "event",
-      title: first.title,
-      subtitle: format(day, "d MMMM yyyy", { locale: es }),
-      description:
-        dayEvts.length > 1
-          ? `${dayEvts.length} eventos. Primero: ${first.description || first.title}`
-          : first.description || undefined,
-      meta: [
-        { label: "Hora", value: format(new Date(first.starts_at), "HH:mm") },
-        { label: "Tipo", value: first.event_type },
-        ...(dayEvts.length > 1
-          ? [{ label: "Total", value: String(dayEvts.length) }]
-          : []),
-      ],
-    });
-  }
-
-  function pickEvent(event: CalendarEvent) {
-    setDetail({
-      kind: "event",
-      title: event.title,
-      subtitle: format(new Date(event.starts_at), "d MMMM yyyy · HH:mm", {
-        locale: es,
-      }),
-      description: event.description || undefined,
-      meta: [{ label: "Tipo", value: event.event_type }],
-    });
   }
 
   async function createEvent(e: React.FormEvent<HTMLFormElement>) {
@@ -267,7 +229,6 @@ export function CalendarPageClient({
                   <button
                     key={event.id}
                     type="button"
-                    onClick={() => pickEvent(event)}
                     className="w-full rounded-md border border-border bg-surface p-3 text-left hard-shadow-sm"
                   >
                     <p className="font-bold">{event.title}</p>

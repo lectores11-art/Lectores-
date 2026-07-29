@@ -7,7 +7,7 @@ import { DetailPanelProvider } from "@/components/layout/detail-panel-context";
 import { IconRail, MobileBottomNav } from "@/components/layout/icon-rail";
 import { YellowSearchBand } from "@/components/layout/yellow-search-band";
 import {
-  DetailPanel,
+  LibraryDetailPanel,
   MobileDetailSheet,
 } from "@/components/layout/detail-panel";
 
@@ -25,6 +25,8 @@ export function CommunityShell({
   const pathname = usePathname();
   // Book reader is immersive: /c/[slug]/library/[bookId]
   const isBookReader = /\/library\/[^/]+$/.test(pathname);
+  // Library list only (not the reader): show book detail panel
+  const isLibraryList = /\/library\/?$/.test(pathname);
 
   if (isBookReader) {
     return <>{children}</>;
@@ -36,12 +38,17 @@ export function CommunityShell({
         <IconRail community={community} isAdmin={isAdmin} />
 
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <YellowSearchBand />
+          <YellowSearchBand user={user} community={community} />
           <main className="flex-1 overflow-y-auto pb-20 lg:pb-0">{children}</main>
         </div>
 
-        <DetailPanel user={user} community={community} />
-        <MobileDetailSheet />
+        {isLibraryList ? (
+          <>
+            <LibraryDetailPanel />
+            <MobileDetailSheet />
+          </>
+        ) : null}
+
         <MobileBottomNav community={community} isAdmin={isAdmin} />
       </div>
     </DetailPanelProvider>

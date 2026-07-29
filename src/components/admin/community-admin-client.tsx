@@ -14,18 +14,11 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
   const [copied, setCopied] = useState(false);
   const [inviteError, setInviteError] = useState("");
   const [creatingInvite, setCreatingInvite] = useState(false);
-  const { setDetail, setSearchPlaceholder } = useDetailPanel();
+  const { setSearchPlaceholder } = useDetailPanel();
 
   useEffect(() => {
     setSearchPlaceholder("Buscar en admin…");
-    setDetail({
-      kind: "admin",
-      title: "Panel admin",
-      description:
-        "Generá links de invitación y saltá a las secciones de contenido de la comunidad.",
-      meta: [{ label: "Invites", value: String(invites.length) }],
-    });
-  }, [invites.length, setDetail, setSearchPlaceholder]);
+  }, [setSearchPlaceholder]);
 
   async function createInvite() {
     setCreatingInvite(true);

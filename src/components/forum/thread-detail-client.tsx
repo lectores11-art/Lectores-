@@ -15,7 +15,7 @@ export function ThreadDetailClient({ slug, threadId }: { slug: string; threadId:
   const [posts, setPosts] = useState<(ForumPost & { author?: Profile })[]>([]);
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
-  const { setDetail, setSearchPlaceholder } = useDetailPanel();
+  const { setSearchPlaceholder } = useDetailPanel();
 
   useEffect(() => {
     setSearchPlaceholder("Buscar en el hilo…");
@@ -31,18 +31,6 @@ export function ThreadDetailClient({ slug, threadId }: { slug: string; threadId:
     setThread(data.thread);
     setPosts(data.posts || []);
     setLoading(false);
-    if (data.thread) {
-      setDetail({
-        kind: "thread",
-        title: data.thread.title,
-        subtitle: data.thread.author?.full_name || "Usuario",
-        description: data.thread.content,
-        meta: [
-          { label: "Likes", value: String(data.thread.like_count) },
-          { label: "Respuestas", value: String((data.posts || []).length) },
-        ],
-      });
-    }
   }
 
   async function submitReply(e: React.FormEvent) {

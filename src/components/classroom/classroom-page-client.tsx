@@ -24,7 +24,7 @@ export function ClassroomPageClient({
   const [courses, setCourses] = useState<(Course & { lessons?: Lesson[] })[]>([]);
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const { setDetail, setSearchPlaceholder } = useDetailPanel();
+  const { setSearchPlaceholder } = useDetailPanel();
 
   useEffect(() => {
     setSearchPlaceholder("Buscar cursos o lecciones…");
@@ -46,21 +46,8 @@ export function ClassroomPageClient({
     setCourses(data || []);
   }
 
-  function pickLesson(lesson: Lesson, courseTitle?: string) {
+  function pickLesson(lesson: Lesson) {
     setSelectedLesson(lesson);
-    setDetail({
-      kind: "lesson",
-      title: lesson.title,
-      subtitle: courseTitle,
-      description: lesson.video_url
-        ? "Lección con video disponible."
-        : "Video no disponible todavía.",
-      meta: [{ label: "Tipo", value: "Lección" }],
-      primaryAction: {
-        label: "Ver en el aula",
-        onClick: () => setSelectedLesson(lesson),
-      },
-    });
   }
 
   async function createCourse(e: React.FormEvent<HTMLFormElement>) {
@@ -155,7 +142,7 @@ export function ClassroomPageClient({
                       <button
                         key={lesson.id}
                         type="button"
-                        onClick={() => pickLesson(lesson, course.title)}
+                        onClick={() => pickLesson(lesson)}
                         className={cn(
                           "flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm font-medium transition-colors",
                           selectedLesson?.id === lesson.id

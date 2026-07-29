@@ -22,7 +22,7 @@ interface MeetingRoomClientProps {
 }
 
 export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
-  const { setDetail, setSearchPlaceholder } = useDetailPanel();
+  const { setSearchPlaceholder } = useDetailPanel();
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [activeMeeting, setActiveMeeting] = useState<Meeting | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -55,25 +55,6 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
     const res = await fetch(`/api/c/${slug}/books`);
     const data = await res.json();
     setBooks(data.books || []);
-  }
-
-  function selectMeeting(meeting: Meeting) {
-    setDetail({
-      kind: "meeting",
-      title: meeting.title,
-      subtitle:
-        meeting.status === "live"
-          ? "En vivo"
-          : meeting.status === "ended"
-            ? "Finalizada"
-            : "Programada",
-      description: "Sala de video con lectura compartida y chat en vivo.",
-      meta: [{ label: "Estado", value: meeting.status }],
-      primaryAction: {
-        label: "Entrar a la sala",
-        onClick: () => joinMeeting(meeting),
-      },
-    });
   }
 
   async function joinMeeting(meeting: Meeting) {
@@ -340,11 +321,7 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {meetings.map((meeting) => (
-            <Card
-              key={meeting.id}
-              className="cursor-pointer hard-shadow-sm"
-              onClick={() => selectMeeting(meeting)}
-            >
+            <Card key={meeting.id} className="hard-shadow-sm">
               <CardHeader>
                 <CardTitle className="text-lg">{meeting.title}</CardTitle>
                 <p className="text-sm text-muted">
@@ -367,12 +344,7 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
                 </p>
               </CardHeader>
               <CardContent>
-                <Button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    joinMeeting(meeting);
-                  }}
-                >
+                <Button onClick={() => joinMeeting(meeting)}>
                   <Video className="h-4 w-4" />
                   Entrar a la sala
                 </Button>
