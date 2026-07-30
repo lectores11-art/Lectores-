@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireApiCommunityAccess } from "@/lib/auth/helpers";
+import { bookParamsSchema, parseData } from "@/lib/validation";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ slug: string; bookId: string }> }
 ) {
-  const { slug, bookId } = await params;
+  const paramsResult = parseData(bookParamsSchema, await params);
+  if ("error" in paramsResult) return paramsResult.error;
+  const { slug, bookId } = paramsResult.data;
+
   const access = await requireApiCommunityAccess(slug);
   if (access instanceof NextResponse) return access;
   const { user, community } = access;
@@ -31,6 +35,7 @@ export async function GET(
     .eq("user_id", user.id)
     .maybeSingle();
 
+  // Never return a public storage URL — clients must call .../pdf for a signed link.
   return NextResponse.json({
     book,
     initialPage: userProgress?.current_page ?? 0,
