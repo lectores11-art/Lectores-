@@ -200,6 +200,20 @@ export async function getCurrentUser() {
   } as Profile;
 }
 
+/** Server-only: returns the profile only when `is_super_admin` is true in DB. */
+export async function requireSuperAdmin(): Promise<
+  Profile | { error: NextResponse }
+> {
+  const user = await getCurrentUser();
+  if (!user) {
+    return { error: NextResponse.json({ error: "No autenticado" }, { status: 401 }) };
+  }
+  if (!user.is_super_admin) {
+    return { error: NextResponse.json({ error: "No autorizado" }, { status: 403 }) };
+  }
+  return user;
+}
+
 export async function getMembership(communityId: string, userId: string) {
   const supabase = await createClient();
   const { data } = await supabase
