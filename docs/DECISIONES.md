@@ -23,3 +23,25 @@
 ## Aislamiento multi-tenant
 - **Decisión:** Postgres compartido + `community_id` + Row Level Security
 - **Roles:** super_admin, community_owner, member
+
+## Super-admin (bootstrap)
+
+No hay UI pública para promover super-admins. Se marca **solo** desde el SQL Editor
+de Supabase (rol `postgres` / service), nunca desde el cliente anon/authenticated:
+
+```sql
+-- Promover (reemplazar el email)
+UPDATE profiles
+SET is_super_admin = true
+WHERE email = 'tu-email@ejemplo.com';
+
+-- Revocar
+UPDATE profiles
+SET is_super_admin = false
+WHERE email = 'tu-email@ejemplo.com';
+```
+
+- `/platform/admin` y `POST/GET /api/platform/communities` exigen `profiles.is_super_admin`.
+- Un usuario normal recibe **403** en la API y **404** en la página admin.
+- No crear rutas UI abiertas para este flag. Tras S2-05, un trigger bloquea que un JWT
+  autenticado cambie `is_super_admin` sobre su propio perfil.

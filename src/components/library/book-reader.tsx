@@ -86,11 +86,16 @@ export function BookReader({
     return rebuilt.length > 0 ? rebuilt : tableOfContents;
   }, [displayPages, tableOfContents]);
 
-  const spreadIdx = Math.floor(currentPage / 2);
-  const [leftPage, rightPage] = pagesForSpread(displayPages, spreadIdx);
   const totalPageCount = displayPages.length;
+  // Clamp in render (not an effect) so shrinking page lists cannot leave an OOB index.
+  const safePage =
+    totalPageCount > 0
+      ? Math.min(currentPage, Math.max(0, Math.floor((totalPageCount - 1) / 2) * 2))
+      : 0;
+  const spreadIdx = Math.floor(safePage / 2);
+  const [leftPage, rightPage] = pagesForSpread(displayPages, spreadIdx);
   const progressPercent =
-    totalPageCount > 0 ? ((currentPage + 1) / totalPageCount) * 100 : 0;
+    totalPageCount > 0 ? ((safePage + 1) / totalPageCount) * 100 : 0;
 
   const goToPage = useCallback(
     (page: number) => {
@@ -111,12 +116,6 @@ export function BookReader({
   const goPrevSpread = useCallback(() => {
     goToPage(spreadIdx * 2 - 2);
   }, [goToPage, spreadIdx]);
-
-  useEffect(() => {
-    if (totalPageCount > 0 && currentPage >= totalPageCount) {
-      goToPage(totalPageCount - 1);
-    }
-  }, [totalPageCount, currentPage, goToPage]);
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -149,7 +148,7 @@ export function BookReader({
   }
 
   function handleBookmark() {
-    onBookmark?.(currentPage);
+    onBookmark?.(safePage);
     setJustBookmarked(true);
     setTimeout(() => setJustBookmarked(false), 1500);
   }
@@ -401,7 +400,7 @@ export function BookReader({
           />
 
           <span className="min-w-[72px] text-center text-xs font-medium text-white/90">
-            {leftPage ? leftPage.pageNumber + 1 : currentPage + 1}
+            {leftPage ? leftPage.pageNumber + 1 : safePage + 1}
             {rightPage ? `–${rightPage.pageNumber + 1}` : ""} de {totalPageCount}
           </span>
 
