@@ -13,16 +13,48 @@ import {
 } from "@/lib/pdf/paginator";
 import {
   bookUploadFieldsSchema,
+  coverContentType,
   internalErrorResponse,
   parseData,
   slugParamsSchema,
+  validateCoverFile,
   validatePdfFile,
 } from "@/lib/validation";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
-/** Guard against huge JSONB inserts that can hit Postgres statement timeouts. */
+const COVER_BUCKET = "book-covers";
+
+function sanitizeFileName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100);
+}
+
+async function uploadCover(
+  serviceClient: Awaited<ReturnType<typeof createServiceClient>>,
+  communityId: string,
+  cover: File
+): Promise<{ coverUrl: string } | { error: NextResponse }> {
+  const coverBuffer = Buffer.from(await cover.arrayBuffer());
+  const coverPath = `${communityId}/${Date.now()}-${sanitizeFileName(cover.name)}`;
+  const contentType = coverContentType(cover);
+
+  const { error: coverError } = await serviceClient.storage
+    .from(COVER_BUCKET)
+    .upload(coverPath, coverBuffer, { contentType });
+
+  if (coverError) {
+    return {
+      error: internalErrorResponse("Error al subir portada a storage:", coverError),
+    };
+  }
+
+  const {
+    data: { publicUrl },
+  } = serviceClient.storage.from(COVER_BUCKET).getPublicUrl(coverPath);
+
+  return { coverUrl: publicUrl };
+}
 
 export async function POST(
   request: Request,
@@ -41,17 +73,50 @@ export async function POST(
     if (!admin) return NextResponse.json({ error: "No autorizado" }, { status: 403 });
 
     const formData = await request.formData();
-    const file = formData.get("file") as File | null;
-    const pdfError = validatePdfFile(file);
-    if (pdfError) return pdfError;
-
     const fieldsResult = parseData(bookUploadFieldsSchema, {
       title: formData.get("title"),
       author: formData.get("author"),
       description: formData.get("description"),
+      mode: formData.get("mode") || "pdf",
     });
     if ("error" in fieldsResult) return fieldsResult.error;
-    const { title, author, description } = fieldsResult.data;
+    const { title, author, description, mode } = fieldsResult.data;
+
+    const cover = formData.get("cover") as File | null;
+    const coverError = validateCoverFile(cover);
+    if (coverError) return coverError;
+
+    const serviceClient = await createServiceClient();
+    const coverResult = await uploadCover(serviceClient, community.id, cover!);
+    if ("error" in coverResult) return coverResult.error;
+    const { coverUrl } = coverResult;
+
+    if (mode === "catalog") {
+      const { data: book, error } = await serviceClient
+        .from("books")
+        .insert({
+          community_id: community.id,
+          title,
+          author: author || null,
+          description: description || null,
+          cover_url: coverUrl,
+          pdf_storage_path: null,
+          content_json: [],
+          total_pages: 0,
+          table_of_contents: [],
+          is_published: true,
+          pipeline_version: 0,
+        })
+        .select()
+        .single();
+
+      if (error) return internalErrorResponse("Error al crear libro:", error);
+      return NextResponse.json({ book });
+    }
+
+    const file = formData.get("file") as File | null;
+    const pdfError = validatePdfFile(file);
+    if (pdfError) return pdfError;
 
     const buffer = Buffer.from(await file!.arrayBuffer());
 
@@ -84,10 +149,6 @@ export async function POST(
 
     const storagePath = `${community.id}/${Date.now()}-${file!.name}`;
 
-    // Admin verified above — service_role for storage + insert avoids missing
-    // storage RLS and slow/forbidden books RLS on large content_json payloads.
-    const serviceClient = await createServiceClient();
-
     const { error: storageError } = await serviceClient.storage
       .from("books")
       .upload(storagePath, buffer, { contentType: "application/pdf" });
@@ -103,6 +164,7 @@ export async function POST(
         title,
         author: author || null,
         description: description || null,
+        cover_url: coverUrl,
         pdf_storage_path: storagePath,
         content_json: storedPages,
         total_pages: storedPages.length,
@@ -152,8 +214,8 @@ export async function GET(
       .eq("user_id", user.id)
       .in("book_id", bookIds);
 
-    for (const progress of progressRows || []) {
-      progressByBookId.set(progress.book_id, progress);
+    for (const row of progressRows || []) {
+      progressByBookId.set(row.book_id, row as ReadingProgress);
     }
   }
 
