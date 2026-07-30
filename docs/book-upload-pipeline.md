@@ -35,6 +35,15 @@ POST /api/c/[slug]/books
 - **Lector:** `PageContent` renderiza cada bloque con CSS (centrado para TOC, ítems de lista, etc.).
 - **Persistencia:** cada página en `content_json` incluye `{ pageNumber, content, blocks[] }`.
 
+## Storage (PDFs)
+
+- Bucket `books` es **privado** (`public = false`). Ver migraciones `003`, `004`, `007`.
+- Paths: `{community_id}/{timestamp}-{filename}.pdf`.
+- Lectura directa de Storage: solo miembros de esa comunidad (RLS).
+- Upload/delete: solo `community_owner` / super-admin (`is_community_admin`).
+- Descarga vía app: `GET /api/c/[slug]/books/[bookId]/pdf` → `createSignedUrl` (~60s).
+  Miembros de otra comunidad reciben 403 (guard de API) o 404 si el libro no está en su comunidad.
+
 ## Nivel B — layout-aware (v4/v5)
 
 - **Extracción:** `extractPositionedTextFromPdfBuffer` obtiene `PositionedTextItem[]` con X/Y.
