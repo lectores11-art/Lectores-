@@ -10,9 +10,22 @@ Automation debe resumir estas reglas, no reinventarlas.
   `https://app.notion.com/p/2b7a05d81f57836ca71a01a0dcdc9381`
 - **Data source:** `collection://ff9a05d8-1f57-83dc-bf41-0707ece40934`
 - **Filtro de la cola:** `Status = "Not started" AND "Apto Agente" = true`
-- Ordenar por `createdTime` ascendente (las más viejas primero), salvo que el
-  usuario haya dejado alguna nota de prioridad en
-  `Descripción / Criterios de aceptación`.
+
+### Orden de la cola (siempre el mismo lugar)
+
+**Única fuente de prioridad:** el campo Notion
+`Descripción / Criterios de aceptación`.
+
+1. Buscar al inicio del campo una línea con el formato exacto:
+   `PRIORIDAD: N/M` (ej. `PRIORIDAD: 1/5`, `PRIORIDAD: 2/5`).
+2. Ordenar la cola por **N ascendente** (1 primero, luego 2, …).
+3. Si varias tareas tienen el mismo N, desempatar por `createdTime`
+   ascendente (más vieja primero).
+4. Si una tarea **no** tiene `PRIORIDAD:`, va **después** de todas las que sí
+   tienen número; entre las sin prioridad, `createdTime` ascendente.
+
+No inventar otro orden (ni por título, ni por Sprint, ni por “parece urgente”).
+Quien arme la cola de la noche debe dejar `PRIORIDAD:` en ese campo.
 
 ### Propiedades relevantes
 
@@ -21,7 +34,7 @@ Automation debe resumir estas reglas, no reinventarlas.
 | `Entregables` | title | nombre de la tarea |
 | `Status` | status | `Not started` → `In progress` → `En revicion` (PR abierto) → `Done`/`Revisado` (los pone el usuario al mergear) |
 | `Apto Agente` | checkbox | **único filtro de seguridad**. Si no está marcado, el agente nunca la toca. |
-| `Descripción / Criterios de aceptación` | texto | definition of done. Si está vacío o es ambiguo, tratar como bloqueada (ver abajo). |
+| `Descripción / Criterios de aceptación` | texto | **prioridad de cola** (`PRIORIDAD: N/M` al inicio) + definition of done. Si el criterio está vacío o es ambiguo, tratar como bloqueada (ver abajo). |
 | `PR` | url | el agente completa el link al Pull Request abierto |
 | `Encargado` | person | no lo modifica el agente |
 
@@ -114,11 +127,14 @@ Corrida nocturna <fecha>:
 ## Reglas no negociables (resumen para el prompt de la Automation)
 
 1. Solo tomar tareas con `Apto Agente = true` y `Status = "Not started"`.
-2. Nunca mergear a `main` ni deployar — siempre Pull Request y listo.
-3. Auto-revisión de la diff antes de abrir cada PR.
-4. `npm run lint` y `npm run build` deben pasar antes de abrir el PR.
-5. Ante ambigüedad o dependencias externas: comentar en Notion y pasar a la
+2. Ordenar la cola **solo** con `PRIORIDAD: N/M` al inicio de
+   `Descripción / Criterios de aceptación` (N ascendente; sin prioridad al
+   final; empate → `createdTime` asc). No usar otro criterio de orden.
+3. Nunca mergear a `main` ni deployar — siempre Pull Request y listo.
+4. Auto-revisión de la diff antes de abrir cada PR.
+5. `npm run lint` y `npm run build` deben pasar antes de abrir el PR.
+6. Ante ambigüedad o dependencias externas: comentar en Notion y pasar a la
    siguiente tarea, nunca improvisar alcance.
-6. Respetar presupuesto de tiempo/tareas por corrida.
-7. Dejar todo registrado en Notion (`Status`, `PR`, comentarios) para que la
+7. Respetar presupuesto de tiempo/tareas por corrida.
+8. Dejar todo registrado en Notion (`Status`, `PR`, comentarios) para que la
    revisión de la mañana sea rápida.
