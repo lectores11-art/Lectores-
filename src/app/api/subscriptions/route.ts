@@ -23,11 +23,10 @@ export async function POST(request: Request) {
     const { communityId, priceId } = bodyResult.data;
 
     if (!stripe) {
-      return NextResponse.json({
-        url: "/dashboard",
-        demo: true,
-        message: "Stripe no configurado - modo demo",
-      });
+      return NextResponse.json(
+        { error: "Stripe no configurado. Definí STRIPE_SECRET_KEY." },
+        { status: 503 }
+      );
     }
 
     const supabase = await createClient();

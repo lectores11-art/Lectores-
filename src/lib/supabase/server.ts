@@ -2,7 +2,9 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 export async function createClient() {
+  // Local escape hatch only — never enable in production (bypasses RLS).
   if (
+    process.env.NODE_ENV !== "production" &&
     process.env.NEXT_PUBLIC_DISABLE_AUTH === "true" &&
     process.env.SUPABASE_SERVICE_ROLE_KEY
   ) {

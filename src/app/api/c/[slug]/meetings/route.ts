@@ -72,13 +72,10 @@ export async function POST(
       const apiSecret = process.env.LIVEKIT_API_SECRET;
 
       if (!apiKey || !apiSecret) {
-        return NextResponse.json({
-          token: "demo-token",
-          room: meeting.livekit_room,
-          url: process.env.NEXT_PUBLIC_LIVEKIT_URL || "",
-          isHost,
-          demo: true,
-        });
+        return NextResponse.json(
+          { error: "LiveKit no configurado. Definí LIVEKIT_API_KEY y LIVEKIT_API_SECRET." },
+          { status: 503 }
+        );
       }
 
       const at = new AccessToken(apiKey, apiSecret, {

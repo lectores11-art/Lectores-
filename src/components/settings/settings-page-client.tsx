@@ -82,8 +82,11 @@ export function SettingsPageClient({
       body: JSON.stringify({ communityId }),
     });
     const data = await res.json();
-    if (data.url) window.location.href = data.url;
-    else setMessage(data.message || "Error al suscribirse");
+    if (res.ok && data.url) {
+      window.location.href = data.url;
+      return;
+    }
+    setMessage(data.error || data.message || "Error al suscribirse");
   }
 
   return (

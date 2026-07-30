@@ -28,7 +28,7 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
   const [token, setToken] = useState<string | null>(null);
   const [livekitUrl, setLivekitUrl] = useState("");
   const [isHost, setIsHost] = useState(false);
-  const [demo, setDemo] = useState(false);
+  const [joinError, setJoinError] = useState("");
   const [books, setBooks] = useState<Book[]>([]);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [showBooks, setShowBooks] = useState(false);
@@ -58,16 +58,20 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
   }
 
   async function joinMeeting(meeting: Meeting) {
+    setJoinError("");
     const res = await fetch(`/api/c/${slug}/meetings`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "token", meetingId: meeting.id }),
     });
     const data = await res.json();
+    if (!res.ok || !data.token) {
+      setJoinError(data.error || "No se pudo unir a la reunión");
+      return;
+    }
     setToken(data.token);
     setLivekitUrl(data.url || "");
     setIsHost(data.isHost);
-    setDemo(data.demo || false);
     setActiveMeeting(meeting);
     subscribeToChat(meeting.id);
   }
@@ -168,31 +172,17 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
         <div className="flex flex-1 overflow-hidden">
           {/* Video area */}
           <div className="flex w-1/3 flex-col border-r border-slate-700">
-            {demo ? (
-              <div className="flex flex-1 flex-col items-center justify-center p-4 text-white">
-                <Video className="mb-4 h-12 w-12 text-sky-400" />
-                <p className="text-center text-sm text-slate-400">
-                  Modo demo: configura LIVEKIT_API_KEY y LIVEKIT_API_SECRET para video en vivo
-                </p>
-                {isHost && (
-                  <div className="mt-4 h-48 w-full rounded-lg bg-slate-800 flex items-center justify-center">
-                    <p className="text-slate-500">Cámara de la conductora</p>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <LiveKitRoom
-                token={token}
-                serverUrl={livekitUrl}
-                connect={true}
-                video={isHost}
-                audio={isHost}
-                className="flex-1"
-              >
-                <VideoConference />
-                <RoomAudioRenderer />
-              </LiveKitRoom>
-            )}
+            <LiveKitRoom
+              token={token}
+              serverUrl={livekitUrl}
+              connect={true}
+              video={isHost}
+              audio={isHost}
+              className="flex-1"
+            >
+              <VideoConference />
+              <RoomAudioRenderer />
+            </LiveKitRoom>
           </div>
 
           {/* Book reader area */}
@@ -310,6 +300,12 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
         </div>
         {isAdmin && <Button onClick={createMeeting}>Crear reunión</Button>}
       </div>
+
+      {joinError && (
+        <p className="mb-4 text-sm text-red-600" role="alert">
+          {joinError}
+        </p>
+      )}
 
       {meetings.length === 0 ? (
         <Card>
