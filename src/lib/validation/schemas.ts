@@ -1,6 +1,9 @@
 import { z } from "zod";
 
 export const MAX_PDF_BYTES = 50 * 1024 * 1024;
+export const MAX_COVER_BYTES = 5 * 1024 * 1024;
+
+export const bookUploadModeSchema = z.enum(["pdf", "catalog"]);
 
 export const slugParamsSchema = z.object({
   slug: z.string().min(1).max(100),
@@ -22,6 +25,7 @@ export const bookUploadFieldsSchema = z.object({
   title: z.string().trim().min(1).max(500),
   author: z.string().trim().max(200).optional().nullable(),
   description: z.string().trim().max(5000).optional().nullable(),
+  mode: bookUploadModeSchema.default("pdf"),
 });
 
 export const readingProgressSchema = z.object({

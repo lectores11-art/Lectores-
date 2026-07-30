@@ -18,11 +18,17 @@ interface LibraryPageClientProps {
 }
 
 type BookRow = Book & { reading_progress?: ReadingProgress | null };
+type UploadMode = "pdf" | "catalog";
+
+function isDigitalBook(book: BookRow): boolean {
+  return Boolean(book.pdf_storage_path);
+}
 
 export function LibraryPageClient({ slug, isAdmin }: LibraryPageClientProps) {
   const [books, setBooks] = useState<BookRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
+  const [uploadMode, setUploadMode] = useState<UploadMode>("pdf");
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [filter, setFilter] = useState<"all" | "reading" | "new">("all");
@@ -64,6 +70,7 @@ export function LibraryPageClient({ slug, isAdmin }: LibraryPageClientProps) {
 
   function selectBook(book: BookRow) {
     const progress = Number(book.reading_progress?.progress_percent || 0);
+    const digital = isDigitalBook(book);
     setDetail({
       kind: "book",
       title: book.title,
@@ -73,18 +80,26 @@ export function LibraryPageClient({ slug, isAdmin }: LibraryPageClientProps) {
       meta: [
         {
           label: "Progreso",
-          value: progress > 0 ? `${Math.round(progress)}%` : "Sin empezar",
+          value: digital
+            ? progress > 0
+              ? `${Math.round(progress)}%`
+              : "Sin empezar"
+            : "Libro físico",
         },
-        { label: "Formato", value: "PDF" },
+        { label: "Formato", value: digital ? "PDF" : "Físico" },
       ],
-      primaryAction: {
-        label: "Leer ahora",
-        href: `/c/${slug}/library/${book.id}`,
-      },
-      secondaryAction: {
-        label: "Abrir ficha",
-        href: `/c/${slug}/library/${book.id}`,
-      },
+      primaryAction: digital
+        ? {
+            label: "Leer ahora",
+            href: `/c/${slug}/library/${book.id}`,
+          }
+        : undefined,
+      secondaryAction: digital
+        ? {
+            label: "Abrir ficha",
+            href: `/c/${slug}/library/${book.id}`,
+          }
+        : undefined,
     });
   }
 
@@ -94,6 +109,7 @@ export function LibraryPageClient({ slug, isAdmin }: LibraryPageClientProps) {
     setUploadError("");
     const form = e.currentTarget;
     const formData = new FormData(form);
+    formData.set("mode", uploadMode);
 
     const res = await fetch(`/api/c/${slug}/books`, {
       method: "POST",
@@ -103,6 +119,7 @@ export function LibraryPageClient({ slug, isAdmin }: LibraryPageClientProps) {
     if (res.ok) {
       form.reset();
       setShowUpload(false);
+      setUploadMode("pdf");
       await refreshBooks();
     } else {
       const raw = await res.text();
@@ -117,7 +134,9 @@ export function LibraryPageClient({ slug, isAdmin }: LibraryPageClientProps) {
       const message =
         body.error ||
         (res.status >= 500
-          ? "Error del servidor al procesar el PDF. Si el archivo es muy grande, probá de nuevo o revisá la terminal del servidor."
+          ? uploadMode === "pdf"
+            ? "Error del servidor al procesar el PDF. Si el archivo es muy grande, probá de nuevo o revisá la terminal del servidor."
+            : "Error del servidor al registrar el libro."
           : `No se pudo subir el libro (${res.status}).`);
       setUploadError(message);
       console.error("handleUpload error:", { status: res.status, body, raw: raw.slice(0, 300) });
@@ -129,8 +148,11 @@ export function LibraryPageClient({ slug, isAdmin }: LibraryPageClientProps) {
     const q = searchQuery.trim().toLowerCase();
     return books.filter((book) => {
       const progress = Number(book.reading_progress?.progress_percent || 0);
-      if (filter === "reading" && !(progress > 0 && progress < 100)) return false;
-      if (filter === "new" && progress > 0) return false;
+      const digital = isDigitalBook(book);
+      if (filter === "reading" && !(digital && progress > 0 && progress < 100)) {
+        return false;
+      }
+      if (filter === "new" && (!digital || progress > 0)) return false;
       if (!q) return true;
       return (
         book.title.toLowerCase().includes(q) ||
@@ -148,9 +170,14 @@ export function LibraryPageClient({ slug, isAdmin }: LibraryPageClientProps) {
           <p className="text-sm text-muted">Libros de la comunidad</p>
         </div>
         {isAdmin && (
-          <Button onClick={() => setShowUpload(!showUpload)}>
+          <Button
+            onClick={() => {
+              setShowUpload(!showUpload);
+              setUploadError("");
+            }}
+          >
             <Upload className="h-4 w-4" />
-            Subir libro
+            Añadir libro
           </Button>
         )}
       </div>
@@ -173,9 +200,36 @@ export function LibraryPageClient({ slug, isAdmin }: LibraryPageClientProps) {
       {showUpload && isAdmin && (
         <Card className="mb-6 hard-shadow-sm">
           <CardHeader>
-            <CardTitle className="text-lg">Subir PDF</CardTitle>
+            <CardTitle className="text-lg">
+              {uploadMode === "pdf" ? "Subir PDF" : "Registrar libro"}
+            </CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="mb-4 flex flex-wrap gap-2">
+              <FilterPill
+                active={uploadMode === "pdf"}
+                onClick={() => {
+                  setUploadMode("pdf");
+                  setUploadError("");
+                }}
+              >
+                Subir PDF
+              </FilterPill>
+              <FilterPill
+                active={uploadMode === "catalog"}
+                onClick={() => {
+                  setUploadMode("catalog");
+                  setUploadError("");
+                }}
+              >
+                Registrar libro
+              </FilterPill>
+            </div>
+            <p className="mb-4 text-sm text-muted">
+              {uploadMode === "pdf"
+                ? "Libro digital para leer en la plataforma. La portada es obligatoria."
+                : "Ficha de libro físico (sin PDF). Solo se muestra en el catálogo."}
+            </p>
             <form onSubmit={handleUpload} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="title">Título</Label>
@@ -190,14 +244,32 @@ export function LibraryPageClient({ slug, isAdmin }: LibraryPageClientProps) {
                 <Input id="description" name="description" />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="file">Archivo PDF</Label>
-                <Input id="file" name="file" type="file" accept=".pdf" required />
+                <Label htmlFor="cover">Portada</Label>
+                <Input
+                  id="cover"
+                  name="cover"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                  required
+                />
               </div>
+              {uploadMode === "pdf" && (
+                <div className="space-y-2">
+                  <Label htmlFor="file">Archivo PDF</Label>
+                  <Input id="file" name="file" type="file" accept=".pdf" required />
+                </div>
+              )}
               {uploadError && (
                 <p className="text-sm text-red-600">{uploadError}</p>
               )}
               <Button type="submit" disabled={uploading}>
-                {uploading ? "Procesando..." : "Subir y procesar"}
+                {uploading
+                  ? uploadMode === "pdf"
+                    ? "Procesando..."
+                    : "Registrando..."
+                  : uploadMode === "pdf"
+                    ? "Subir y procesar"
+                    : "Registrar libro"}
               </Button>
             </form>
           </CardContent>
@@ -210,7 +282,7 @@ export function LibraryPageClient({ slug, isAdmin }: LibraryPageClientProps) {
         <Card>
           <CardContent className="py-12 text-center text-muted">
             {books.length === 0
-              ? `No hay libros aún. ${isAdmin ? "Subí el primer PDF para comenzar." : ""}`
+              ? `No hay libros aún. ${isAdmin ? "Añadí el primer libro para comenzar." : ""}`
               : "Ningún libro coincide con la búsqueda."}
           </CardContent>
         </Card>
@@ -225,6 +297,7 @@ export function LibraryPageClient({ slug, isAdmin }: LibraryPageClientProps) {
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {filtered.map((book) => {
               const progress = Number(book.reading_progress?.progress_percent || 0);
+              const digital = isDigitalBook(book);
               return (
                 <button
                   key={book.id}
@@ -251,21 +324,29 @@ export function LibraryPageClient({ slug, isAdmin }: LibraryPageClientProps) {
                         <p className="mt-1 text-sm text-muted">{book.author}</p>
                       )}
                       <div className="mt-3">
-                        <Progress value={progress} className="mb-1" />
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs text-muted">
-                            {progress > 0
-                              ? `${Math.round(progress)}% leído`
-                              : "Sin empezar"}
+                        {digital ? (
+                          <>
+                            <Progress value={progress} className="mb-1" />
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs text-muted">
+                                {progress > 0
+                                  ? `${Math.round(progress)}% leído`
+                                  : "Sin empezar"}
+                              </p>
+                              <Link
+                                href={`/c/${slug}/library/${book.id}`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-xs font-bold uppercase tracking-wide text-accent hover:underline"
+                              >
+                                Leer
+                              </Link>
+                            </div>
+                          </>
+                        ) : (
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                            Libro físico
                           </p>
-                          <Link
-                            href={`/c/${slug}/library/${book.id}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-xs font-bold uppercase tracking-wide text-accent hover:underline"
-                          >
-                            Leer
-                          </Link>
-                        </div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>

@@ -5,14 +5,17 @@ Este documento define el flujo estándar para subir un PDF a la biblioteca de un
 ## Flujo
 
 ```
-POST /api/c/[slug]/books
-  → validatePdfFile + zod (título, autor, descripción)
-  → extractTextFromPdfBuffer (pdf-parse, serverExternalPackages)
-  → normalizeExtractedText (espacios, líneas duplicadas consecutivas)
-  → buildBlocks + paginateText (hojas ~80/105 palabras + bloques con estilo)
-  → extractTOC
-  → Storage: PDF original en bucket `books`
-  → DB: books (content_json con `blocks[]`, pipeline_version, …)
+POST /api/c/[slug]/books (mode=pdf|catalog)
+  → validateCoverFile (portada obligatoria → bucket `book-covers`)
+  → mode=catalog: insert ficha (sin PDF)
+  → mode=pdf:
+      validatePdfFile + zod (título, autor, descripción)
+      → extractTextFromPdfBuffer (pdf-parse, serverExternalPackages)
+      → normalizeExtractedText (espacios, líneas duplicadas consecutivas)
+      → buildBlocks + paginateText (hojas ~80/105 palabras + bloques con estilo)
+      → extractTOC
+      → Storage: PDF original en bucket `books`
+      → DB: books (cover_url, content_json con `blocks[]`, pipeline_version, …)
 ```
 
 ## Constantes (`src/lib/pdf/paginator.ts`)
@@ -57,6 +60,7 @@ POST /api/c/[slug]/books
 1. `003_storage_setup.sql` — bucket `books`
 2. `004_storage_books_rls.sql` — políticas storage (opcional si usás service_role en upload)
 3. `005_books_pipeline_version.sql` — columna `pipeline_version`
+4. `008_book_covers_storage.sql` — bucket público `book-covers` (jpeg/png/webp)
 
 ## Checklist post-subida (manual)
 
