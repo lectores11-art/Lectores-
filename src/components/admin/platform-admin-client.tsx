@@ -38,14 +38,35 @@ export function PlatformAdminClient() {
     setError("");
     const form = new FormData(e.currentTarget);
 
+    const name = String(form.get("name") || "").trim();
+    const ownerEmail = String(form.get("ownerEmail") || "").trim();
+    const description = String(form.get("description") || "").trim();
+    const priceUsd = Number(form.get("price"));
+
+    if (!name) {
+      setError("El nombre es obligatorio");
+      setCreating(false);
+      return;
+    }
+    if (!ownerEmail || !ownerEmail.includes("@")) {
+      setError("Email de la dueña inválido");
+      setCreating(false);
+      return;
+    }
+    if (!Number.isFinite(priceUsd) || priceUsd < 0) {
+      setError("El precio debe ser un número ≥ 0");
+      setCreating(false);
+      return;
+    }
+
     const res = await fetch("/api/platform/communities", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: form.get("name"),
-        description: form.get("description"),
-        ownerEmail: form.get("ownerEmail"),
-        monthlyPriceCents: Number(form.get("price")) * 100 || 0,
+        name,
+        description: description || null,
+        ownerEmail,
+        monthlyPriceCents: Math.round(priceUsd * 100),
       }),
     });
 

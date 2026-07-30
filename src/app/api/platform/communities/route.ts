@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { getCurrentUser, getOrCreateOwnerByEmail } from "@/lib/auth/helpers";
+import { getOrCreateOwnerByEmail, requireSuperAdmin } from "@/lib/auth/helpers";
 import { slugify } from "@/lib/utils";
 import { nanoid } from "nanoid";
 import {
@@ -11,10 +11,8 @@ import {
 
 export async function POST(request: Request) {
   try {
-    const user = await getCurrentUser();
-    if (!user?.is_super_admin) {
-      return NextResponse.json({ error: "No autorizado" }, { status: 403 });
-    }
+    const auth = await requireSuperAdmin();
+    if ("error" in auth) return auth.error;
 
     const bodyResult = await parseJsonBody(request, platformCommunityCreateSchema);
     if ("error" in bodyResult) return bodyResult.error;
@@ -33,7 +31,7 @@ export async function POST(request: Request) {
         slug,
         description: description || null,
         owner_id: ownerId,
-        monthly_price_cents: monthlyPriceCents || 0,
+        monthly_price_cents: monthlyPriceCents ?? 0,
         accent_color: "#0ea5e9",
       })
       .select()
@@ -76,10 +74,8 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
-  const user = await getCurrentUser();
-  if (!user?.is_super_admin) {
-    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
-  }
+  const auth = await requireSuperAdmin();
+  if ("error" in auth) return auth.error;
 
   const supabase = await createClient();
   const { data: communities } = await supabase

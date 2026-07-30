@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 import { internalErrorResponse, inviteTokenParamsSchema, parseData } from "@/lib/validation";
 
 export async function GET(
@@ -11,7 +11,9 @@ export async function GET(
     if ("error" in paramsResult) return paramsResult.error;
     const { token } = paramsResult.data;
 
-    const supabase = await createClient();
+    // service_role: invites SELECT by token no longer allowed under anon RLS (006).
+    // Token is the capability secret — never list invites without it.
+    const supabase = await createServiceClient();
 
     const { data: invite, error } = await supabase
       .from("invites")

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { BookReader } from "@/components/library/book-reader";
+import { Button } from "@/components/ui/button";
 import type { Book, BookPage, BookTOCItem } from "@/lib/types/database";
 
 export function BookReaderPageClient({
@@ -14,6 +15,7 @@ export function BookReaderPageClient({
   const [book, setBook] = useState<Book | null>(null);
   const [initialPage, setInitialPage] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [pdfError, setPdfError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -60,6 +62,18 @@ export function BookReaderPageClient({
     [slug, bookId]
   );
 
+  async function openSignedPdf() {
+    setPdfError("");
+    const res = await fetch(`/api/c/${slug}/books/${bookId}/pdf`);
+    const data = await res.json();
+    if (!res.ok || !data.url) {
+      setPdfError(data.error || "No se pudo obtener el PDF");
+      return;
+    }
+    // Short-lived signed URL — open in a new tab; do not cache or re-share.
+    window.open(data.url, "_blank", "noopener,noreferrer");
+  }
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-900 text-white">
@@ -98,17 +112,25 @@ export function BookReaderPageClient({
   const toc = (book.table_of_contents as BookTOCItem[]) || [];
 
   return (
-    <div className="h-screen overflow-hidden">
+    <div className="relative h-screen overflow-hidden">
+      {book.pdf_storage_path && (
+        <div className="absolute right-4 top-3 z-20 flex items-center gap-2">
+          <Button type="button" size="sm" variant="outline" onClick={() => void openSignedPdf()}>
+            PDF original
+          </Button>
+          {pdfError && <span className="text-xs text-red-400">{pdfError}</span>}
+        </div>
+      )}
       <BookReader
-      key={book.id}
-      title={book.title}
-      author={book.author}
-      pages={pages}
-      tableOfContents={toc}
-      initialPage={initialPage}
-      onPageChange={saveProgress}
-      onBookmark={saveBookmark}
-      pipelineVersion={book.pipeline_version ?? 0}
+        key={book.id}
+        title={book.title}
+        author={book.author}
+        pages={pages}
+        tableOfContents={toc}
+        initialPage={initialPage}
+        onPageChange={saveProgress}
+        onBookmark={saveBookmark}
+        pipelineVersion={book.pipeline_version ?? 0}
       />
     </div>
   );
