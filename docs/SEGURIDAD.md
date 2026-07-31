@@ -43,7 +43,13 @@ Pasos manuales en Authentication → Providers / Settings:
 4. Site URL = producción.
 5. Desactivar sign-ups abiertos si el modelo es solo-por-invitación.
 
-## RLS / Storage / multi-tenant
+### Cambio de contraseña en Settings
+
+La UI en `/c/[slug]/settings` pide contraseña actual + nueva + confirmación (mín. 8).
+Reautenticación en cliente: `signInWithPassword` → `updateUser({ password })`
+(no requiere feature flag del dashboard). Opcional humano: activar
+**Secure password change** en Authentication → Settings si el plan lo ofrece.
+Las contraseñas nunca se loguean.
 
 - [ ] Migraciones `001` … `006` aplicadas en el proyecto Supabase.
 - [ ] Bucket `books` privado (ver S2-07 / `003`+`004` storage).
