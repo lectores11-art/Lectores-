@@ -54,17 +54,7 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Recovery / invite password pages need the session; do not bounce to dashboard.
-  const stayOnPasswordFlow =
-    pathname.startsWith("/update-password") ||
-    pathname.startsWith("/onboarding/set-password") ||
-    pathname.startsWith("/forgot-password");
-
-  if (
-    user &&
-    (pathname === "/login" || pathname === "/register") &&
-    !stayOnPasswordFlow
-  ) {
+  if (user && (pathname === "/login" || pathname === "/register")) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);
