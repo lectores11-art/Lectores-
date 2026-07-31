@@ -122,12 +122,10 @@ Riesgo residual: si solo se aplicó 003 en un entorno, cualquier authenticated l
 
 | Mecanismo | Archivo | Riesgo |
 |-----------|---------|--------|
-| `NEXT_PUBLIC_DISABLE_AUTH === "true"` → `createClient()` usa **service_role** | `src/lib/supabase/server.ts` | Crítico si se setea en prod: bypass RLS en cualquier query server |
+| ~~`NEXT_PUBLIC_DISABLE_AUTH` → service_role~~ | `server.ts` | **Cerrado (S2-02):** variable eliminada; `createClient()` siempre anon+cookies |
 | Stripe ausente → `{ demo: true }` | `subscriptions`, `webhooks/stripe` | Low (no cobro; no abre datos) |
 | LiveKit ausente → `token: "demo-token"` | `meetings/route.ts` | Low (sin video real) |
 | Invite join → membership `active` sin pago | by design MVP | Producto, no bypass oculto |
-
-Pendiente Notion: `PEND-REGISTRO · Limpiar DISABLE_AUTH / service_role`.
 
 ---
 
@@ -163,7 +161,7 @@ Pendiente Notion: `PEND-REGISTRO · Limpiar DISABLE_AUTH / service_role`.
 
 | Ticket | Notion | Código |
 |--------|--------|--------|
-| **S2-02** | Done (PR #2) | anon+RLS default; `service_role` documentado; **queda** rama `DISABLE_AUTH` |
+| **S2-02** | Done (PR #2 + limpieza) | anon+RLS always; rama `DISABLE_AUTH` **eliminada** |
 | **S2-04** | Done (PR #5) | `requireApiCommunityAccess` en todas `/api/c/[slug]/*` |
 | **S2-05** | **Not started** | Sin `004_rls_hardening.sql`; gaps §4 |
 | **S2-06** | Done (PR #3) | Progreso filtrado por usuario en APIs libros |
@@ -205,7 +203,7 @@ Usuarios: **Ma** = member comunidad A · **Oa** = owner A · **Mb** = member B �
 1. RLS: auto-promoción `is_super_admin` (profiles UPDATE).  
 2. RLS: self-insert membership sin invite (cualquier comunidad / rol).  
 3. RLS: SELECT invites activos sin token → robo de links.  
-4. `NEXT_PUBLIC_DISABLE_AUTH` → server client = service_role.
+4. ~~`NEXT_PUBLIC_DISABLE_AUTH` → service_role~~ — **cerrado S2-02**.
 
 ### Importante
 
@@ -233,7 +231,7 @@ Usuarios: **Ma** = member comunidad A · **Oa** = owner A · **Mb** = member B �
 
 1. Dos comunidades A y B (platform admin).  
 2. Owner A, member Ma (invite A), member Mb (invite B). Usuario Z sin membership.  
-3. Confirmar `NEXT_PUBLIC_DISABLE_AUTH` **unset** en el entorno.
+3. Confirmar que `NEXT_PUBLIC_DISABLE_AUTH` **no existe** (removido en S2-02).
 
 ### UI
 
@@ -301,24 +299,7 @@ Invites readable without token:
 CREATE POLICY "Anyone can read active invite by token" ON invites FOR SELECT USING (is_active = TRUE);
 ```
 
-DISABLE_AUTH → service_role:
-
-```4:16:src/lib/supabase/server.ts
-export async function createClient() {
-  if (
-    process.env.NEXT_PUBLIC_DISABLE_AUTH === "true" &&
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  ) {
-    const { createClient: createSupabaseClient } = await import(
-      "@supabase/supabase-js"
-    );
-
-    return createSupabaseClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-  }
-```
+~~DISABLE_AUTH → service_role~~ — eliminado en S2-02 (`createClient` solo anon+cookies).
 
 API community guard (S2-04):
 
@@ -366,7 +347,7 @@ Layout gate:
    - profiles: impedir cambio de `is_super_admin` (column privilege / trigger / WITH CHECK).  
    - memberships INSERT: solo vía flujo controlado (service_role en join) o check de invite válido.  
    - invites SELECT: `token = current_setting(...)` no aplica; usar RPC `get_invite_by_token(t)` SECURITY DEFINER o policy que no permita LIST (p.ej. solo service_role + API).  
-2. Eliminar rama `DISABLE_AUTH` / service_role en `createClient`.  
+2. ~~Eliminar rama `DISABLE_AUTH` / service_role en `createClient`.~~ **Hecho (S2-02).**  
 3. Membership gate en policies de progress/bookmarks/reactions.  
 4. S2-07 signed URLs si se sirve PDF crudo.  
 5. S2-08: doc SQL bootstrap + re-test post fix profiles.
