@@ -52,13 +52,13 @@ POST /api/c/[slug]/books (mode=pdf|catalog)
 - **Extracción:** `extractPositionedTextFromPdfBuffer` obtiene `PositionedTextItem[]` con X/Y.
 - **Inferencia:** `inferLayoutBlocks` agrupa por línea, detecta centrado (±15%) y `fontSize` relativo.
 - **Paginación upload:** `paginateBlocksByHeight` con presupuesto conservador (14/16 líneas).
-- **Paginación lector (v5):** reflow en cliente midiendo `.book-page-body` con ResizeObserver — **arregla libros ya subidos sin re-subir**.
+- **Paginación lector:** usa las páginas de `content_json` tal cual (solo `mergeContinuationParagraphs` por página). **No hay reflow/re-paginado en cliente** — eso causaba saltos y pantallas en blanco.
 - **Regla:** los bloques `list-item` nunca se parten entre páginas; párrafos largos sí.
 - **Upload:** `POST /api/c/[slug]/books` intenta pipeline B y hace fallback a Nivel A si falla.
 
 ### Checklist índice sin recorte (Nivel B)
 
-1. Abrir libro (reflow del lector debería bastar; re-subir opcional para v5 en DB).
+1. Abrir libro (páginas vienen de `content_json`; re-subir si el banner legacy aparece).
 2. Spread 1 muestra `Tabla de Contenido`, título y primeros `Libro N:` sin recorte vertical.
 3. Los `Libro N:` restantes continúan en hoja 2+.
 4. Ninguna hoja corta texto a media letra en el borde inferior.

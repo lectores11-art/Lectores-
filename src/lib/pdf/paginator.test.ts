@@ -4,8 +4,10 @@ import {
   blockLineCost,
   buildBlocks,
   classifyLineStyle,
+  clampToSpreadStart,
   extractTOC,
   flattenPageBlocks,
+  getPageBlocks,
   hasLegacyPaginationBug,
   isParagraphContinuation,
   LEFT_PAGE_LINES,
@@ -13,11 +15,13 @@ import {
   mergeContinuationParagraphs,
   normalizeExtractedText,
   packBlocksWithMeasuredHeights,
+  pagesForSpread,
   paginateBlocksByHeight,
   paginateBlocksByLines,
   paginateText,
   RIGHT_PAGE_LINES,
   RIGHT_PAGE_WORDS,
+  totalSpreads,
 } from "./paginator";
 
 describe("paginateBlocksByLines", () => {
@@ -307,5 +311,79 @@ describe("hasLegacyPaginationBug", () => {
   it("returns false for clean pagination", () => {
     const clean = paginateText("Intro paragraph.\n\nNext paragraph.");
     expect(hasLegacyPaginationBug(clean)).toBe(false);
+  });
+});
+
+describe("reader spread navigation (S3-02 regression)", () => {
+  function makePages(n: number) {
+    return Array.from({ length: n }, (_, i) => ({
+      pageNumber: i,
+      content: `page-${i}`,
+      blocks: [{ style: "paragraph" as const, text: `page-${i}` }],
+    }));
+  }
+
+  it("pagesForSpread 0→1 is continuous without gaps or skips", () => {
+    const pages = makePages(6);
+    const [l0, r0] = pagesForSpread(pages, 0);
+    const [l1, r1] = pagesForSpread(pages, 1);
+    const [l2, r2] = pagesForSpread(pages, 2);
+
+    expect(l0?.pageNumber).toBe(0);
+    expect(r0?.pageNumber).toBe(1);
+    expect(l1?.pageNumber).toBe(2);
+    expect(r1?.pageNumber).toBe(3);
+    expect(l2?.pageNumber).toBe(4);
+    expect(r2?.pageNumber).toBe(5);
+
+    const order = [l0, r0, l1, r1, l2, r2].map((p) => p!.content);
+    expect(order).toEqual([
+      "page-0",
+      "page-1",
+      "page-2",
+      "page-3",
+      "page-4",
+      "page-5",
+    ]);
+  });
+
+  it("odd last page leaves right null without inventing content", () => {
+    const pages = makePages(3);
+    const [left, right] = pagesForSpread(pages, 1);
+    expect(left?.pageNumber).toBe(2);
+    expect(right).toBeNull();
+    expect(totalSpreads(3)).toBe(2);
+  });
+
+  it("clampToSpreadStart keeps even indices and preserves bookmark-safe progress", () => {
+    expect(clampToSpreadStart(0, 5)).toBe(0);
+    expect(clampToSpreadStart(1, 5)).toBe(0);
+    expect(clampToSpreadStart(2, 5)).toBe(2);
+    expect(clampToSpreadStart(3, 5)).toBe(2);
+    expect(clampToSpreadStart(4, 5)).toBe(4);
+    expect(clampToSpreadStart(99, 5)).toBe(4);
+    expect(clampToSpreadStart(-3, 5)).toBe(0);
+    expect(clampToSpreadStart(7, 0)).toBe(0);
+    // Previously goToPage used min(even, total-1) which could leave an odd index (e.g. 3 of 4).
+    expect(clampToSpreadStart(100, 4)).toBe(2);
+  });
+
+  it("normalize-style merge does not change page count or order (no client reflow)", () => {
+    const pages = makePages(4);
+    const normalized = pages.map((page) => {
+      const blocks = mergeContinuationParagraphs(getPageBlocks(page));
+      return {
+        ...page,
+        blocks,
+        content: blocks.map((b) => b.text).join("\n\n"),
+      };
+    });
+    expect(normalized).toHaveLength(pages.length);
+    expect(normalized.map((p) => p.pageNumber)).toEqual([0, 1, 2, 3]);
+    const [a, b] = pagesForSpread(normalized, 0);
+    const [c, d] = pagesForSpread(normalized, 1);
+    expect([a?.pageNumber, b?.pageNumber, c?.pageNumber, d?.pageNumber]).toEqual([
+      0, 1, 2, 3,
+    ]);
   });
 });
