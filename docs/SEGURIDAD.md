@@ -55,9 +55,27 @@ Pasos manuales en Authentication → Providers / Settings:
 
 1. **Confirm email** activado para sign-up (o invitar solo vía invite links).
 2. **Password**: mínimo 8+ caracteres; preferir leak detection si el plan lo permite.
-3. Redirect URLs: solo dominios propios (`NEXT_PUBLIC_APP_URL`, previews controlados).
-4. Site URL = producción.
+3. **Redirect URLs** (Authentication → URL Configuration) — incluir exactamente:
+   - `{NEXT_PUBLIC_APP_URL}/auth/confirm`
+   - `{NEXT_PUBLIC_APP_URL}/update-password`
+   - `{NEXT_PUBLIC_APP_URL}/onboarding/set-password`
+   - `{NEXT_PUBLIC_APP_URL}/join/**` (o cada path de join que uses)
+   - Previews controlados si aplica
+4. **Site URL** = producción (`NEXT_PUBLIC_APP_URL`).
 5. Desactivar sign-ups abiertos si el modelo es solo-por-invitación.
+6. **Plantilla Recovery** (Authentication → Email Templates → Reset password):
+   el link debe apuntar a  
+   `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/update-password`  
+   (mismo patrón que invite → `/onboarding/set-password`).
+
+### Flujo «Olvidé mi contraseña» (app)
+
+1. `/login` → link a `/forgot-password`
+2. `resetPasswordForEmail` con `redirectTo` → `/auth/confirm?next=/update-password`
+3. `/update-password` → `updateUser({ password })` (sesión de recovery)
+4. Mensaje de éxito genérico (no revela si el email existe)
+
+SMTP/Resend y dominio: **configuración humana**, no del agente.
 
 ## RLS / Storage / multi-tenant
 
