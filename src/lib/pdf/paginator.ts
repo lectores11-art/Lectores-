@@ -740,4 +740,15 @@ export function totalSpreads(totalPages: number): number {
   return Math.ceil(totalPages / 2);
 }
 
+/**
+ * Clamp a page index to the start of a valid two-page spread.
+ * Always returns an even index in [0, maxEven] so bookmarks/progress stay aligned.
+ */
+export function clampToSpreadStart(page: number, totalPages: number): number {
+  if (totalPages <= 0) return 0;
+  const even = Math.floor(Math.max(0, page) / 2) * 2;
+  const maxEven = Math.floor((totalPages - 1) / 2) * 2;
+  return Math.min(even, maxEven);
+}
+
 export const _test = { countWords, buildBlocks, classifyLineStyle, blockLineCost, linesLimitForPage };
