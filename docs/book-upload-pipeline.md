@@ -85,7 +85,7 @@ Después de subir un PDF en **Biblioteca → Subir y procesar**:
 
 ## Libros procesados antes del fix (legacy)
 
-Los libros subidos **antes** de `PIPELINE_VERSION = 5` pueden tener paginación de servidor demasiado densa. El **lector v5 reflowea en cliente**, así que el recorte debería desaparecer al refrescar. Re-subir sigue siendo recomendable para dejar `pipeline_version = 5` en DB.
+Los libros subidos **antes** de `PIPELINE_VERSION = 5` pueden tener paginación de servidor demasiado densa. El lector **no** reflowea en cliente: si hay banner legacy, hay que **re-subir** el PDF para regenerar `content_json` con `pipeline_version = 5`.
 
 Acción:
 
