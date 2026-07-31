@@ -40,6 +40,9 @@ export async function updateSession(request: NextRequest) {
   const isAuthPage =
     pathname.startsWith("/login") ||
     pathname.startsWith("/register") ||
+    pathname.startsWith("/forgot-password") ||
+    pathname.startsWith("/update-password") ||
+    pathname.startsWith("/onboarding/set-password") ||
     pathname.startsWith("/join") ||
     pathname.startsWith("/auth");
   const isPublicPage = pathname === "/" || isAuthPage;
@@ -51,7 +54,17 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && (pathname === "/login" || pathname === "/register")) {
+  // Recovery / invite password pages need the session; do not bounce to dashboard.
+  const stayOnPasswordFlow =
+    pathname.startsWith("/update-password") ||
+    pathname.startsWith("/onboarding/set-password") ||
+    pathname.startsWith("/forgot-password");
+
+  if (
+    user &&
+    (pathname === "/login" || pathname === "/register") &&
+    !stayOnPasswordFlow
+  ) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);
