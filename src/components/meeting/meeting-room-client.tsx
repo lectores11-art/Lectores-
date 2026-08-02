@@ -24,11 +24,14 @@ interface MeetingRoomClientProps {
 export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
   const { setSearchPlaceholder } = useDetailPanel();
   const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [loadingMeetings, setLoadingMeetings] = useState(true);
+  const [listError, setListError] = useState("");
   const [activeMeeting, setActiveMeeting] = useState<Meeting | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [livekitUrl, setLivekitUrl] = useState("");
   const [isHost, setIsHost] = useState(false);
   const [joinError, setJoinError] = useState("");
+  const [joiningId, setJoiningId] = useState<string | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [showBooks, setShowBooks] = useState(false);
@@ -46,9 +49,27 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
   }, [slug]);
 
   async function loadMeetings() {
-    const res = await fetch(`/api/c/${slug}/meetings`);
-    const data = await res.json();
-    setMeetings(data.meetings || []);
+    setLoadingMeetings(true);
+    setListError("");
+    try {
+      const res = await fetch(`/api/c/${slug}/meetings`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMeetings([]);
+        setListError(
+          data.error || "No se pudieron cargar las reuniones. Intentá de nuevo."
+        );
+        return;
+      }
+      setMeetings(data.meetings || []);
+    } catch {
+      setMeetings([]);
+      setListError(
+        "No se pudieron cargar las reuniones. Revisá tu conexión e intentá de nuevo."
+      );
+    } finally {
+      setLoadingMeetings(false);
+    }
   }
 
   async function loadBooks() {
@@ -59,21 +80,42 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
 
   async function joinMeeting(meeting: Meeting) {
     setJoinError("");
-    const res = await fetch(`/api/c/${slug}/meetings`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "token", meetingId: meeting.id }),
-    });
-    const data = await res.json();
-    if (!res.ok || !data.token) {
-      setJoinError(data.error || "No se pudo unir a la reunión");
-      return;
+    setJoiningId(meeting.id);
+    try {
+      const res = await fetch(`/api/c/${slug}/meetings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "token", meetingId: meeting.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      // Never invent or fall back to demo tokens when LiveKit is unavailable.
+      if (res.status === 503) {
+        setJoinError(
+          "Las videollamadas no están disponibles: LiveKit no está configurado en este entorno. Pedile a quien administra la plataforma que defina LIVEKIT_API_KEY, LIVEKIT_API_SECRET y NEXT_PUBLIC_LIVEKIT_URL."
+        );
+        return;
+      }
+
+      if (!res.ok || !data.token || typeof data.token !== "string") {
+        setJoinError(
+          data.error || "No se pudo unir a la reunión. Intentá de nuevo."
+        );
+        return;
+      }
+
+      setToken(data.token);
+      setLivekitUrl(data.url || "");
+      setIsHost(Boolean(data.isHost));
+      setActiveMeeting(meeting);
+      subscribeToChat(meeting.id);
+    } catch {
+      setJoinError(
+        "No se pudo unir a la reunión. Revisá tu conexión e intentá de nuevo."
+      );
+    } finally {
+      setJoiningId(null);
     }
-    setToken(data.token);
-    setLivekitUrl(data.url || "");
-    setIsHost(data.isHost);
-    setActiveMeeting(meeting);
-    subscribeToChat(meeting.id);
   }
 
   function subscribeToChat(meetingId: string) {
@@ -302,16 +344,34 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
       </div>
 
       {joinError && (
-        <p className="mb-4 text-sm text-red-600" role="alert">
-          {joinError}
-        </p>
+        <Card className="mb-4 border-red-200 hard-shadow-sm" role="alert">
+          <CardContent className="py-4 text-sm text-red-700">
+            {joinError}
+          </CardContent>
+        </Card>
       )}
 
-      {meetings.length === 0 ? (
-        <Card>
+      {loadingMeetings ? (
+        <Card className="hard-shadow-sm">
           <CardContent className="py-12 text-center text-muted">
-            No hay reuniones programadas.
-            {isAdmin && " Creá una para comenzar."}
+            Cargando reuniones…
+          </CardContent>
+        </Card>
+      ) : listError ? (
+        <Card className="hard-shadow-sm">
+          <CardContent className="space-y-3 py-12 text-center">
+            <p className="text-sm text-red-600">{listError}</p>
+            <Button type="button" variant="outline" onClick={() => loadMeetings()}>
+              Reintentar
+            </Button>
+          </CardContent>
+        </Card>
+      ) : meetings.length === 0 ? (
+        <Card className="hard-shadow-sm">
+          <CardContent className="py-12 text-center text-muted">
+            {isAdmin
+              ? "Todavía no hay reuniones. Creá una para empezar la sala de lectura en vivo."
+              : "No hay reuniones programadas por ahora. Volvé más tarde."}
           </CardContent>
         </Card>
       ) : (
@@ -340,9 +400,12 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
                 </p>
               </CardHeader>
               <CardContent>
-                <Button onClick={() => joinMeeting(meeting)}>
+                <Button
+                  onClick={() => joinMeeting(meeting)}
+                  disabled={joiningId === meeting.id}
+                >
                   <Video className="h-4 w-4" />
-                  Entrar a la sala
+                  {joiningId === meeting.id ? "Conectando…" : "Entrar a la sala"}
                 </Button>
               </CardContent>
             </Card>
