@@ -1,6 +1,6 @@
 # QA Sprint 2 — Aislamiento multi-tenant + security review
 
-**Actualizado:** 2026-07-31 (S3-01, spot-check contra `main` post-merge S2-05/07/08/10/11)  
+**Actualizado:** 2026-08-02 (S3-01, merge conflict resolve post #16–#19)  
 **Origen:** review estático 2026-07-30 (`agent/s2-11-qa-aislamiento`, PR #10)  
 **Método:** review de código + verificación de archivos en `main` (sin credenciales Supabase / **sin E2E real**).  
 **Alcance:** APIs, auth helpers, middleware, RLS, storage, platform admin, demos/bypasses.
@@ -19,14 +19,15 @@ Los **hallazgos críticos de RLS / storage / super-admin** quedaron **cerrados e
 | Super-admin + platform | [#12](https://github.com/lectores11-art/Lectores-/pull/12) | guards API/UI + bootstrap SQL en `docs/DECISIONES.md` |
 | Hardening headers / env / demos | [#13](https://github.com/lectores11-art/Lectores-/pull/13) | `next.config.ts`, `docs/SEGURIDAD.md`, `.env.local.example` |
 | Storage privado + signed URLs | [#14](https://github.com/lectores11-art/Lectores-/pull/14) | `007_storage_books_private_signed.sql`, `GET .../books/[bookId]/pdf` |
+| Limpieza `DISABLE_AUTH` | [#16](https://github.com/lectores11-art/Lectores-/pull/16) | `createClient()` solo anon+cookies |
 | Este QA (baseline) | [#10](https://github.com/lectores11-art/Lectores-/pull/10) | este documento |
 
 **Pendiente humano (no cerrado por merge de código):**
 
 1. Aplicar migraciones `006` y `007` (y `008` covers si aplica) en el proyecto Supabase.  
 2. Checklist E2E con **2 comunidades** (§12 abajo) — **sigue pendiente**.  
-3. Auth Dashboard (Redirect URLs, plantillas email) según `docs/SEGURIDAD.md`.  
-4. En `main` aún existe la rama `NEXT_PUBLIC_DISABLE_AUTH` en `createClient()` (footgun local); hay trabajo abierto de limpieza (PEND-REGISTRO / S2-02 follow-up).
+3. Auth Dashboard (Redirect URLs, plantillas email / SMTP) según `docs/SEGURIDAD.md` y flujos #17/#18.  
+4. ~~`NEXT_PUBLIC_DISABLE_AUTH`~~ — **cerrado** en #16 (ya no existe en `createClient()`).
 
 ---
 
@@ -59,7 +60,7 @@ Sin cambio de modelo: `requireApiCommunityAccess`, `hasActiveCommunityAccess`, `
 ## 3. Middleware
 
 - Refresca sesión; `/api/*` no exige sesión en middleware (handlers autentican).  
-- Páginas públicas: `/`, `/login`, `/register`, `/join`, `/auth`.
+- Páginas públicas: `/`, `/login`, `/register`, `/join`, `/auth`, `/forgot-password`, `/update-password`.
 
 ---
 
@@ -111,9 +112,9 @@ Aplicar `007` en Supabase es paso humano.
 
 ## 7. Demo / bypasses
 
-| Mecanismo | Estado en `main` (2026-07-31) | Riesgo |
+| Mecanismo | Estado en `main` (2026-08-02) | Riesgo |
 |-----------|-------------------------------|--------|
-| `NEXT_PUBLIC_DISABLE_AUTH` → `createClient()` service_role | **Aún presente** (restringido `NODE_ENV !== "production"` desde S2-10) | Footgun local / misconfig; limpieza PEND-REGISTRO |
+| ~~`NEXT_PUBLIC_DISABLE_AUTH` → `createClient()` service_role~~ | **Cerrado (#16 / S2-02):** eliminado; `createClient()` siempre anon+cookies | — |
 | Stripe ausente → demo | Presente | Low |
 | LiveKit ausente | Depende de config | Low si no emite tokens útiles |
 | Invite join → membership `active` sin pago | By design MVP | Producto |
@@ -133,7 +134,7 @@ Aplicar `007` en Supabase es paso humano.
 
 | Ticket | Código en `main` | Notas |
 |--------|------------------|-------|
-| **S2-02** | Parcial | anon+RLS default (PR #2); **queda** rama `DISABLE_AUTH` |
+| **S2-02** | Done (PR #2 + #16) | anon+RLS always; rama `DISABLE_AUTH` **eliminada** |
 | **S2-03** | Done (PR #4) | Invites/membresías reales |
 | **S2-04** | Done (PR #5) | Guards API comunidad |
 | **S2-05** | Done en repo (PR #11) | `006_rls_hardening.sql` — **aplicar en Supabase** |
@@ -165,7 +166,7 @@ Leyenda: ✅ OK en app+código RLS · ⚠️ depende de migración aplicada · �
 
 ## 11. Issues ranqueados (actualizado)
 
-### Cerrados en código (PRs #11–#14)
+### Cerrados en código (PRs #11–#16)
 
 1. ~~RLS auto-promoción `is_super_admin`~~ → PR #11 + #12  
 2. ~~RLS self-insert membership~~ → PR #11 (`accept_invite`)  
@@ -176,13 +177,13 @@ Leyenda: ✅ OK en app+código RLS · ⚠️ depende de migración aplicada · �
 7. ~~Progress/bookmarks sin membership en RLS~~ → cubierto en 006 (verificar E2E)  
 8. ~~Calendar INSERT miembro~~ → 006 restringe writes a admin  
 9. ~~Profiles SELECT peers~~ → 006 permite peers de comunidades compartidas  
+10. ~~`NEXT_PUBLIC_DISABLE_AUTH` → service_role~~ → PR #16  
 
 ### Abiertos / residuales
 
 | Pri | Item |
 |-----|------|
-| Alto (ops) | Aplicar migraciones 006/007 en Supabase + Auth dashboard |
-| Medio | Quitar `NEXT_PUBLIC_DISABLE_AUTH` del runtime (`server.ts`) |
+| Alto (ops) | Aplicar migraciones 006/007 en Supabase + Auth dashboard (Redirect URLs, SMTP/plantillas) |
 | Low | Meetings start/end sin `community_id` en UPDATE |
 | Low | Subscriptions POST sin membresía previa |
 | Low | Demos Stripe/LiveKit sin secrets |
@@ -199,7 +200,7 @@ Leyenda: ✅ OK en app+código RLS · ⚠️ depende de migración aplicada · �
 1. Aplicar migraciones hasta `007` (y `008` si usás portadas).  
 2. Dos comunidades A y B (platform admin / Sa).  
 3. Owner A, member Ma (invite A), member Mb (invite B). Usuario Z sin membership.  
-4. Confirmar `NEXT_PUBLIC_DISABLE_AUTH` **unset** (y preferible eliminada del código).  
+4. Confirmar que `NEXT_PUBLIC_DISABLE_AUTH` **no existe** (removido en #16 / S2-02).  
 5. Site URL + Redirect URLs según `docs/SEGURIDAD.md`.
 
 ### UI
@@ -255,6 +256,7 @@ Ver policies originales en `001_initial_schema.sql` (profiles UPDATE abierto, me
 - `docs/RLS-MATRIX.md` — matriz rol × tabla.  
 - `docs/DECISIONES.md` — SQL bootstrap super-admin.  
 - `007_storage_books_private_signed.sql` + `src/app/api/c/[slug]/books/[bookId]/pdf/route.ts`.  
+- ~~`DISABLE_AUTH` → service_role~~ — eliminado en #16 (`createClient` solo anon+cookies).  
 - App guard (sigue vigente):
 
 ```264:284:src/lib/auth/helpers.ts
@@ -276,7 +278,8 @@ export async function requireApiCommunityAccess(
 
 1. **Humano:** aplicar `006` + `007` (+ `008`) en Supabase.  
 2. **Humano:** correr §12 E2E con 2 comunidades.  
-3. **Código:** eliminar `DISABLE_AUTH` de `createClient()` (PEND-REGISTRO).  
-4. Low: `community_id` en meetings start/end; demos Stripe/LiveKit; dead import forum.
+3. **Humano:** Auth dashboard — Redirect URLs + SMTP/plantillas (flujos forgot/change password #17/#18).  
+4. ~~Eliminar `DISABLE_AUTH` de `createClient()`.~~ **Hecho (#16).**  
+5. Low: `community_id` en meetings start/end; demos Stripe/LiveKit; dead import forum.
 
 **E2E real:** bloqueado en el entorno del agente (sin credenciales Supabase). Usar §12.

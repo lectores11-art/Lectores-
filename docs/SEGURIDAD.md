@@ -29,9 +29,25 @@ Ver `.env.local.example`.
 | `SUPABASE_SERVICE_ROLE_KEY` | **no** | solo servidor |
 | `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | **no** | |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | **no** | |
-| `NEXT_PUBLIC_DISABLE_AUTH` | **prohibido en prod** | si `true`, `createClient()` usa service_role |
 
-Checklist: en Vercel, confirmar que `SUPABASE_SERVICE_ROLE_KEY` no tiene prefijo `NEXT_PUBLIC_` y que `NEXT_PUBLIC_DISABLE_AUTH` no está definida.
+Checklist: en Vercel, confirmar que `SUPABASE_SERVICE_ROLE_KEY` no tiene prefijo `NEXT_PUBLIC_`.
+
+### `NEXT_PUBLIC_DISABLE_AUTH` — removido (S2-02)
+
+La variable **ya no existe**. `createClient()` en `src/lib/supabase/server.ts`
+siempre usa anon key + cookies (RLS activo). No hay escape hatch por env.
+
+### Usos justificados de `createServiceClient()` (service_role)
+
+| Lugar | Por qué saltea RLS |
+|-------|--------------------|
+| `GET /api/invites/[token]` | Lookup de invite por token tras endurecer SELECT de invites |
+| `POST /api/platform/communities` | Bootstrap de comunidad + membership + invite (super-admin) |
+| `POST /api/webhooks/stripe` | Webhooks sin sesión de usuario |
+| `POST /api/c/[slug]/books` (upload) | Tras check de admin: write a storage/DB sin pelear storage RLS |
+| `GET /api/c/[slug]/books/[bookId]/pdf` | Tras check de membership: mint signed URL corta |
+| `getOrCreateOwnerByEmail` | `auth.admin` + lookup cross-user en platform onboarding |
+| `getCurrentUser` (fallback) | Upsert de profile si el trigger de auth no creó la fila |
 
 ## Auth (Supabase Dashboard — documentar, no automatizar)
 
@@ -39,11 +55,35 @@ Pasos manuales en Authentication → Providers / Settings:
 
 1. **Confirm email** activado para sign-up (o invitar solo vía invite links).
 2. **Password**: mínimo 8+ caracteres; preferir leak detection si el plan lo permite.
-3. Redirect URLs: solo dominios propios (`NEXT_PUBLIC_APP_URL`, previews controlados).
-4. Site URL = producción.
+3. **Redirect URLs** (Authentication → URL Configuration) — incluir exactamente:
+   - `{NEXT_PUBLIC_APP_URL}/auth/confirm`
+   - `{NEXT_PUBLIC_APP_URL}/update-password`
+   - `{NEXT_PUBLIC_APP_URL}/onboarding/set-password`
+   - `{NEXT_PUBLIC_APP_URL}/join/**` (o cada path de join que uses)
+   - Previews controlados si aplica
+4. **Site URL** = producción (`NEXT_PUBLIC_APP_URL`).
 5. Desactivar sign-ups abiertos si el modelo es solo-por-invitación.
+6. **Plantilla Recovery** (Authentication → Email Templates → Reset password):
+   el link debe apuntar a  
+   `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/update-password`  
+   (mismo patrón que invite → `/onboarding/set-password`).
 
-## RLS / Storage / multi-tenant
+### Flujo «Olvidé mi contraseña» (app)
+
+1. `/login` → link a `/forgot-password`
+2. `resetPasswordForEmail` con `redirectTo` → `/auth/confirm?next=/update-password`
+3. `/update-password` → `updateUser({ password })` (sesión de recovery)
+4. Mensaje de éxito genérico (no revela si el email existe)
+
+SMTP/Resend y dominio: **configuración humana**, no del agente.
+
+### Cambio de contraseña en Settings
+
+La UI en `/c/[slug]/settings` pide contraseña actual + nueva + confirmación (mín. 8).
+Reautenticación en cliente: `signInWithPassword` → `updateUser({ password })`
+(no requiere feature flag del dashboard). Opcional humano: activar
+**Secure password change** en Authentication → Settings si el plan lo ofrece.
+Las contraseñas nunca se loguean.
 
 - [ ] Migraciones `001` … `006` aplicadas en el proyecto Supabase.
 - [ ] Bucket `books` privado (ver S2-07 / `003`+`004` storage).
@@ -55,7 +95,7 @@ Pasos manuales en Authentication → Providers / Settings:
 - [ ] `/platform/admin` inaccesible sin `is_super_admin` (404).
 - [ ] APIs `/api/c/[slug]/*` con `requireApiCommunityAccess`.
 - [ ] LiveKit / Stripe: sin tokens/URLs demo; responden error si faltan secrets.
-- [ ] No hay `NEXT_PUBLIC_DISABLE_AUTH` en prod.
+- [x] `NEXT_PUBLIC_DISABLE_AUTH` eliminado del código (S2-02).
 
 ## npm audit (corrida 2026-07-30)
 
@@ -76,6 +116,6 @@ Re-correr `npm audit` antes de cada release.
 - [ ] RLS + storage privado + signed URLs (S2-07)
 - [ ] Secretos solo server-side
 - [ ] Headers activos en deploy
-- [ ] Sin demos / disable-auth
+- [x] Sin demos / disable-auth (S2-02)
 - [ ] `npm run lint` + `npm run build` + `npm test`
 - [ ] QA manual `docs/QA-SPRINT2.md` (si disponible) o checklist S2-11

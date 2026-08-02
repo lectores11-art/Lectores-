@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { BookOpen } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -70,7 +71,15 @@ export default function LoginPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Contraseña</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="password">Contraseña</Label>
+                <Link
+                  href="/forgot-password"
+                  className="text-xs font-semibold text-accent hover:underline"
+                >
+                  Olvidé mi contraseña
+                </Link>
+              </div>
               <Input
                 id="password"
                 type="password"

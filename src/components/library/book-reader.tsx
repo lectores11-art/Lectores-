@@ -19,6 +19,7 @@ import {
   PIPELINE_VERSION,
   getPageBlocks,
   totalSpreads,
+  clampToSpreadStart,
   type PaginatedPage,
   type TOCItem,
 } from "@/lib/pdf/paginator";
@@ -71,7 +72,9 @@ export function BookReader({
   pipelineVersion = 0,
   legacyWarning = false,
 }: BookReaderProps) {
-  const [currentPage, setCurrentPage] = useState(() => Math.floor(initialPage / 2) * 2);
+  const [currentPage, setCurrentPage] = useState(() =>
+    clampToSpreadStart(initialPage, pages.length)
+  );
   const [settings, setSettings] = useState<ReaderSettings>(defaultSettings);
   const [panel, setPanel] = useState<"toc" | "settings" | "search" | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -88,10 +91,7 @@ export function BookReader({
 
   const totalPageCount = displayPages.length;
   // Clamp in render (not an effect) so shrinking page lists cannot leave an OOB index.
-  const safePage =
-    totalPageCount > 0
-      ? Math.min(currentPage, Math.max(0, Math.floor((totalPageCount - 1) / 2) * 2))
-      : 0;
+  const safePage = clampToSpreadStart(currentPage, totalPageCount);
   const spreadIdx = Math.floor(safePage / 2);
   const [leftPage, rightPage] = pagesForSpread(displayPages, spreadIdx);
   const progressPercent =
@@ -99,8 +99,7 @@ export function BookReader({
 
   const goToPage = useCallback(
     (page: number) => {
-      const even = Math.floor(page / 2) * 2;
-      const clamped = Math.max(0, Math.min(even, Math.max(0, totalPageCount - 1)));
+      const clamped = clampToSpreadStart(page, totalPageCount);
       setCurrentPage(clamped);
       const percent =
         totalPageCount > 0 ? ((clamped + 1) / totalPageCount) * 100 : 0;
