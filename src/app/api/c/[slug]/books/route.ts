@@ -12,54 +12,42 @@ import {
   PIPELINE_VERSION,
 } from "@/lib/pdf/paginator";
 import {
-  bookUploadFieldsSchema,
-  coverContentType,
+  BOOKS_BUCKET,
+  COVER_BUCKET,
+  isCommunityScopedPath,
+} from "@/lib/storage/book-upload-paths";
+import {
+  bookFinalizeUploadSchema,
   internalErrorResponse,
-  parseData,
+  parseJsonBody,
   slugParamsSchema,
-  validateCoverFile,
-  validatePdfFile,
+  parseData,
 } from "@/lib/validation";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
-const COVER_BUCKET = "book-covers";
-
-function sanitizeFileName(name: string): string {
-  return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100);
-}
-
-async function uploadCover(
+async function removeStorageObjects(
   serviceClient: Awaited<ReturnType<typeof createServiceClient>>,
-  communityId: string,
-  cover: File
-): Promise<{ coverUrl: string } | { error: NextResponse }> {
-  const coverBuffer = Buffer.from(await cover.arrayBuffer());
-  const coverPath = `${communityId}/${Date.now()}-${sanitizeFileName(cover.name)}`;
-  const contentType = coverContentType(cover);
-
-  const { error: coverError } = await serviceClient.storage
-    .from(COVER_BUCKET)
-    .upload(coverPath, coverBuffer, { contentType });
-
-  if (coverError) {
-    return {
-      error: internalErrorResponse("Error al subir portada a storage:", coverError),
-    };
+  paths: { coverPath?: string | null; pdfPath?: string | null }
+) {
+  if (paths.coverPath) {
+    await serviceClient.storage.from(COVER_BUCKET).remove([paths.coverPath]);
   }
-
-  const {
-    data: { publicUrl },
-  } = serviceClient.storage.from(COVER_BUCKET).getPublicUrl(coverPath);
-
-  return { coverUrl: publicUrl };
+  if (paths.pdfPath) {
+    await serviceClient.storage.from(BOOKS_BUCKET).remove([paths.pdfPath]);
+  }
 }
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
+  let coverStoragePath: string | null = null;
+  let pdfStoragePath: string | null = null;
+  let serviceClient: Awaited<ReturnType<typeof createServiceClient>> | null =
+    null;
+
   try {
     const paramsResult = parseData(slugParamsSchema, await params);
     if ("error" in paramsResult) return paramsResult.error;
@@ -69,27 +57,56 @@ export async function POST(
     if (access instanceof NextResponse) return access;
     const { user, community } = access;
 
-    const admin = await isCommunityAdmin(community.id, user.id, user.is_super_admin);
-    if (!admin) return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+    const admin = await isCommunityAdmin(
+      community.id,
+      user.id,
+      user.is_super_admin
+    );
+    if (!admin) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+    }
 
-    const formData = await request.formData();
-    const fieldsResult = parseData(bookUploadFieldsSchema, {
-      title: formData.get("title"),
-      author: formData.get("author"),
-      description: formData.get("description"),
-      mode: formData.get("mode") || "pdf",
-    });
-    if ("error" in fieldsResult) return fieldsResult.error;
-    const { title, author, description, mode } = fieldsResult.data;
+    const bodyResult = await parseJsonBody(request, bookFinalizeUploadSchema);
+    if ("error" in bodyResult) return bodyResult.error;
+    const { title, author, description, mode, coverStoragePath: coverPath } =
+      bodyResult.data;
+    coverStoragePath = coverPath;
+    pdfStoragePath =
+      mode === "pdf" ? bodyResult.data.pdfStoragePath || null : null;
 
-    const cover = formData.get("cover") as File | null;
-    const coverError = validateCoverFile(cover);
-    if (coverError) return coverError;
+    if (!isCommunityScopedPath(community.id, coverStoragePath)) {
+      return NextResponse.json(
+        { error: "Ruta de portada inválida" },
+        { status: 400 }
+      );
+    }
+    if (
+      pdfStoragePath &&
+      !isCommunityScopedPath(community.id, pdfStoragePath)
+    ) {
+      return NextResponse.json(
+        { error: "Ruta de PDF inválida" },
+        { status: 400 }
+      );
+    }
 
-    const serviceClient = await createServiceClient();
-    const coverResult = await uploadCover(serviceClient, community.id, cover!);
-    if ("error" in coverResult) return coverResult.error;
-    const { coverUrl } = coverResult;
+    serviceClient = await createServiceClient();
+
+    const { error: coverStatError } = await serviceClient.storage
+      .from(COVER_BUCKET)
+      .download(coverStoragePath);
+    if (coverStatError) {
+      return NextResponse.json(
+        { error: "No se encontró la portada subida. Volvé a intentar." },
+        { status: 400 }
+      );
+    }
+
+    const {
+      data: { publicUrl: coverUrl },
+    } = serviceClient.storage
+      .from(COVER_BUCKET)
+      .getPublicUrl(coverStoragePath);
 
     if (mode === "catalog") {
       const { data: book, error } = await serviceClient
@@ -110,15 +127,30 @@ export async function POST(
         .select()
         .single();
 
-      if (error) return internalErrorResponse("Error al crear libro:", error);
+      if (error) {
+        await removeStorageObjects(serviceClient, {
+          coverPath: coverStoragePath,
+        });
+        return internalErrorResponse("Error al crear libro:", error);
+      }
       return NextResponse.json({ book });
     }
 
-    const file = formData.get("file") as File | null;
-    const pdfError = validatePdfFile(file);
-    if (pdfError) return pdfError;
+    const { data: pdfBlob, error: pdfDownloadError } =
+      await serviceClient.storage.from(BOOKS_BUCKET).download(pdfStoragePath!);
 
-    const buffer = Buffer.from(await file!.arrayBuffer());
+    if (pdfDownloadError || !pdfBlob) {
+      await removeStorageObjects(serviceClient, {
+        coverPath: coverStoragePath,
+        pdfPath: pdfStoragePath,
+      });
+      return NextResponse.json(
+        { error: "No se encontró el PDF subido. Volvé a intentar." },
+        { status: 400 }
+      );
+    }
+
+    const buffer = Buffer.from(await pdfBlob.arrayBuffer());
 
     // Lazy-load pdfjs pipeline only on upload — GET /books must not import pdfjs.
     let pages;
@@ -136,26 +168,23 @@ export async function POST(
       pages =
         layoutBlocks.length > 0
           ? paginateBlocksByLines(layoutBlocks)
-          : paginateText(normalizeExtractedText(await extractTextFromPdfBuffer(buffer)));
+          : paginateText(
+              normalizeExtractedText(await extractTextFromPdfBuffer(buffer))
+            );
     } catch (layoutErr) {
-      console.error("Level B pipeline failed, falling back to text pagination:", layoutErr);
-      const text = normalizeExtractedText(await extractTextFromPdfBuffer(buffer));
+      console.error(
+        "Level B pipeline failed, falling back to text pagination:",
+        layoutErr
+      );
+      const text = normalizeExtractedText(
+        await extractTextFromPdfBuffer(buffer)
+      );
       pages = paginateText(text);
     }
 
     const storedPages =
       pages.length > MAX_STORED_PAGES ? pages.slice(0, MAX_STORED_PAGES) : pages;
     const toc = extractTOC(storedPages);
-
-    const storagePath = `${community.id}/${Date.now()}-${file!.name}`;
-
-    const { error: storageError } = await serviceClient.storage
-      .from("books")
-      .upload(storagePath, buffer, { contentType: "application/pdf" });
-
-    if (storageError) {
-      return internalErrorResponse("Error al subir PDF a storage:", storageError);
-    }
 
     const { data: book, error } = await serviceClient
       .from("books")
@@ -165,7 +194,7 @@ export async function POST(
         author: author || null,
         description: description || null,
         cover_url: coverUrl,
-        pdf_storage_path: storagePath,
+        pdf_storage_path: pdfStoragePath,
         content_json: storedPages,
         total_pages: storedPages.length,
         table_of_contents: toc,
@@ -175,9 +204,22 @@ export async function POST(
       .select()
       .single();
 
-    if (error) return internalErrorResponse("Error al crear libro:", error);
+    if (error) {
+      await removeStorageObjects(serviceClient, {
+        coverPath: coverStoragePath,
+        pdfPath: pdfStoragePath,
+      });
+      return internalErrorResponse("Error al crear libro:", error);
+    }
+
     return NextResponse.json({ book });
   } catch (err) {
+    if (serviceClient) {
+      await removeStorageObjects(serviceClient, {
+        coverPath: coverStoragePath,
+        pdfPath: pdfStoragePath,
+      });
+    }
     return internalErrorResponse("POST /api/c/[slug]/books failed:", err);
   }
 }

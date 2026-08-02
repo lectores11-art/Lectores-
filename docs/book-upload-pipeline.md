@@ -5,18 +5,19 @@ Este documento define el flujo estándar para subir un PDF a la biblioteca de un
 ## Flujo
 
 ```
-POST /api/c/[slug]/books (mode=pdf|catalog)
-  → validateCoverFile (portada obligatoria → bucket `book-covers`)
+Browser (admin):
+  → Storage upload portada → bucket `book-covers` (`{community_id}/…`)
+  → Storage upload PDF → bucket `books` (`{community_id}/…`)  [solo mode=pdf]
+POST /api/c/[slug]/books  (JSON chico: metadatos + storage paths)
+  → valida admin + paths scoped a la comunidad
   → mode=catalog: insert ficha (sin PDF)
   → mode=pdf:
-      validatePdfFile + zod (título, autor, descripción)
-      → extractTextFromPdfBuffer (pdf-parse, serverExternalPackages)
-      → normalizeExtractedText (espacios, líneas duplicadas consecutivas)
-      → buildBlocks + paginateText (hojas ~80/105 palabras + bloques con estilo)
-      → extractTOC
-      → Storage: PDF original en bucket `books`
-      → DB: books (cover_url, content_json con `blocks[]`, pipeline_version, …)
+      download PDF desde Storage (service_role)
+      → pipeline pdfjs / fallback texto → paginate → extractTOC
+      → DB: books (cover_url, pdf_storage_path, content_json, …)
 ```
+
+Los archivos **no** pasan por el body de Vercel (límite ~4.5 MB). Tope práctico: policies Storage (PDF 50 MB, portada 5 MB).
 
 ## Constantes (`src/lib/pdf/paginator.ts`)
 

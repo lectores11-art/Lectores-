@@ -10,10 +10,19 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { FilterPill } from "@/components/ui/filter-pill";
 import { useDetailPanel } from "@/components/layout/detail-panel-context";
+import { createClient } from "@/lib/supabase/client";
+import {
+  BOOKS_BUCKET,
+  COVER_BUCKET,
+  buildCommunityObjectPath,
+  coverObjectContentType,
+} from "@/lib/storage/book-upload-paths";
+import { MAX_COVER_BYTES, MAX_PDF_BYTES } from "@/lib/validation/schemas";
 import type { Book, ReadingProgress } from "@/lib/types/database";
 
 interface LibraryPageClientProps {
   slug: string;
+  communityId: string;
   isAdmin: boolean;
 }
 
@@ -24,12 +33,41 @@ function isDigitalBook(book: BookRow): boolean {
   return Boolean(book.pdf_storage_path);
 }
 
-export function LibraryPageClient({ slug, isAdmin }: LibraryPageClientProps) {
+function isCoverFile(file: File): boolean {
+  if (["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+    return true;
+  }
+  if (!file.type || file.type === "application/octet-stream") {
+    const lower = file.name.toLowerCase();
+    return (
+      lower.endsWith(".jpg") ||
+      lower.endsWith(".jpeg") ||
+      lower.endsWith(".png") ||
+      lower.endsWith(".webp")
+    );
+  }
+  return false;
+}
+
+function isPdfFile(file: File): boolean {
+  if (file.type === "application/pdf") return true;
+  if (!file.type || file.type === "application/octet-stream") {
+    return file.name.toLowerCase().endsWith(".pdf");
+  }
+  return false;
+}
+
+export function LibraryPageClient({
+  slug,
+  communityId,
+  isAdmin,
+}: LibraryPageClientProps) {
   const [books, setBooks] = useState<BookRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
   const [uploadMode, setUploadMode] = useState<UploadMode>("pdf");
   const [uploading, setUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState("");
   const [uploadError, setUploadError] = useState("");
   const [filter, setFilter] = useState<"all" | "reading" | "new">("all");
   const {
@@ -37,7 +75,6 @@ export function LibraryPageClient({ slug, isAdmin }: LibraryPageClientProps) {
     searchQuery,
     setSearchPlaceholder,
   } = useDetailPanel();
-
   useEffect(() => {
     setSearchPlaceholder("Título, autor o tema…");
   }, [setSearchPlaceholder]);
@@ -107,21 +144,104 @@ export function LibraryPageClient({ slug, isAdmin }: LibraryPageClientProps) {
     e.preventDefault();
     setUploading(true);
     setUploadError("");
+    setUploadStatus("Preparando…");
+
     const form = e.currentTarget;
     const formData = new FormData(form);
-    formData.set("mode", uploadMode);
+    const title = String(formData.get("title") || "").trim();
+    const author = String(formData.get("author") || "").trim();
+    const description = String(formData.get("description") || "").trim();
+    const cover = formData.get("cover") as File | null;
+    const file = formData.get("file") as File | null;
 
-    const res = await fetch(`/api/c/${slug}/books`, {
-      method: "POST",
-      body: formData,
-    });
+    let coverStoragePath: string | null = null;
+    let pdfStoragePath: string | null = null;
+    const supabase = createClient();
 
-    if (res.ok) {
-      form.reset();
-      setShowUpload(false);
-      setUploadMode("pdf");
-      await refreshBooks();
-    } else {
+    try {
+      if (!title) {
+        setUploadError("El título es obligatorio.");
+        return;
+      }
+      if (!cover || !isCoverFile(cover)) {
+        setUploadError("Elegí una portada JPG, PNG o WebP.");
+        return;
+      }
+      if (cover.size <= 0 || cover.size > MAX_COVER_BYTES) {
+        setUploadError("La portada debe pesar como máximo 5 MB.");
+        return;
+      }
+      if (uploadMode === "pdf") {
+        if (!file || !isPdfFile(file)) {
+          setUploadError("Elegí un archivo PDF.");
+          return;
+        }
+        if (file.size <= 0 || file.size > MAX_PDF_BYTES) {
+          setUploadError("El PDF debe pesar como máximo 50 MB.");
+          return;
+        }
+      }
+
+      coverStoragePath = buildCommunityObjectPath(communityId, cover.name);
+      setUploadStatus("Subiendo portada…");
+      const { error: coverError } = await supabase.storage
+        .from(COVER_BUCKET)
+        .upload(coverStoragePath, cover, {
+          contentType: coverObjectContentType(cover),
+          upsert: false,
+        });
+      if (coverError) {
+        console.error("cover upload error:", coverError);
+        setUploadError(
+          "No se pudo subir la portada. ¿Aplicaste la migración de book-covers en Supabase?"
+        );
+        return;
+      }
+
+      if (uploadMode === "pdf" && file) {
+        pdfStoragePath = buildCommunityObjectPath(communityId, file.name);
+        setUploadStatus("Subiendo PDF…");
+        const { error: pdfError } = await supabase.storage
+          .from(BOOKS_BUCKET)
+          .upload(pdfStoragePath, file, {
+            contentType: "application/pdf",
+            upsert: false,
+          });
+        if (pdfError) {
+          console.error("pdf upload error:", pdfError);
+          await supabase.storage.from(COVER_BUCKET).remove([coverStoragePath]);
+          setUploadError(
+            "No se pudo subir el PDF. Revisá que seas admin de la comunidad e intentá de nuevo."
+          );
+          return;
+        }
+      }
+
+      setUploadStatus(
+        uploadMode === "pdf" ? "Procesando libro…" : "Registrando ficha…"
+      );
+      const res = await fetch(`/api/c/${slug}/books`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          author: author || null,
+          description: description || null,
+          mode: uploadMode,
+          coverStoragePath,
+          pdfStoragePath,
+        }),
+      });
+
+      if (res.ok) {
+        form.reset();
+        setShowUpload(false);
+        setUploadMode("pdf");
+        setUploadStatus("");
+        await refreshBooks();
+        return;
+      }
+
       const raw = await res.text();
       let body: { error?: string } = {};
       if (raw) {
@@ -131,17 +251,45 @@ export function LibraryPageClient({ slug, isAdmin }: LibraryPageClientProps) {
           body = {};
         }
       }
+
+      // Server cleans Storage on most failures; remove client-side as backup.
+      const toRemoveCover = coverStoragePath;
+      const toRemovePdf = pdfStoragePath;
+      coverStoragePath = null;
+      pdfStoragePath = null;
+      if (toRemoveCover) {
+        await supabase.storage.from(COVER_BUCKET).remove([toRemoveCover]);
+      }
+      if (toRemovePdf) {
+        await supabase.storage.from(BOOKS_BUCKET).remove([toRemovePdf]);
+      }
+
       const message =
         body.error ||
         (res.status >= 500
           ? uploadMode === "pdf"
-            ? "Error del servidor al procesar el PDF. Si el archivo es muy grande, probá de nuevo o revisá la terminal del servidor."
+            ? "Error del servidor al procesar el PDF. Probá de nuevo."
             : "Error del servidor al registrar el libro."
           : `No se pudo subir el libro (${res.status}).`);
       setUploadError(message);
-      console.error("handleUpload error:", { status: res.status, body, raw: raw.slice(0, 300) });
+      console.error("handleUpload error:", {
+        status: res.status,
+        body,
+        raw: raw.slice(0, 300),
+      });
+    } catch (err) {
+      console.error("handleUpload exception:", err);
+      if (coverStoragePath) {
+        await supabase.storage.from(COVER_BUCKET).remove([coverStoragePath]);
+      }
+      if (pdfStoragePath) {
+        await supabase.storage.from(BOOKS_BUCKET).remove([pdfStoragePath]);
+      }
+      setUploadError("Error de red al subir. Revisá tu conexión e intentá de nuevo.");
+    } finally {
+      setUploading(false);
+      setUploadStatus("");
     }
-    setUploading(false);
   }
 
   const filtered = useMemo(() => {
@@ -227,7 +375,7 @@ export function LibraryPageClient({ slug, isAdmin }: LibraryPageClientProps) {
             </div>
             <p className="mb-4 text-sm text-muted">
               {uploadMode === "pdf"
-                ? "Libro digital para leer en la plataforma. La portada es obligatoria."
+                ? "Libro digital para leer en la plataforma. La portada es obligatoria. El PDF se sube directo a almacenamiento (hasta 50 MB)."
                 : "Ficha de libro físico (sin PDF). Solo se muestra en el catálogo."}
             </p>
             <form onSubmit={handleUpload} className="space-y-4">
@@ -259,14 +407,15 @@ export function LibraryPageClient({ slug, isAdmin }: LibraryPageClientProps) {
                   <Input id="file" name="file" type="file" accept=".pdf" required />
                 </div>
               )}
+              {uploadStatus && (
+                <p className="text-sm text-muted">{uploadStatus}</p>
+              )}
               {uploadError && (
                 <p className="text-sm text-red-600">{uploadError}</p>
               )}
               <Button type="submit" disabled={uploading}>
                 {uploading
-                  ? uploadMode === "pdf"
-                    ? "Procesando..."
-                    : "Registrando..."
+                  ? uploadStatus || "Subiendo…"
                   : uploadMode === "pdf"
                     ? "Subir y procesar"
                     : "Registrar libro"}

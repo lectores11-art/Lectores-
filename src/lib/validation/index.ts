@@ -7,6 +7,7 @@ export {
 export {
   MAX_COVER_BYTES,
   MAX_PDF_BYTES,
+  bookFinalizeUploadSchema,
   bookParamsSchema,
   bookUploadFieldsSchema,
   bookUploadModeSchema,

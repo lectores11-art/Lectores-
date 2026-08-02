@@ -8,10 +8,17 @@ export default async function LibraryPage({
 }) {
   const { slug } = await params;
   const { user, community } = await requireCommunityAccess(slug);
-  const admin =
-    community && user
-      ? await isCommunityAdmin(community.id, user.id, user.is_super_admin)
-      : false;
+  if (!community) return null;
 
-  return <LibraryPageClient slug={slug} isAdmin={admin} />;
+  const admin = user
+    ? await isCommunityAdmin(community.id, user.id, user.is_super_admin)
+    : false;
+
+  return (
+    <LibraryPageClient
+      slug={slug}
+      communityId={community.id}
+      isAdmin={admin}
+    />
+  );
 }
