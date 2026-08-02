@@ -39,6 +39,12 @@ async function removeStorageObjects(
   }
 }
 
+/** Avoid returning huge content_json in the HTTP response (Vercel ~4.5MB cap). */
+function bookResponsePayload(book: Record<string, unknown>) {
+  const { content_json: _content, ...rest } = book;
+  return rest;
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ slug: string }> }
@@ -124,16 +130,24 @@ export async function POST(
           is_published: true,
           pipeline_version: 0,
         })
-        .select()
+        .select(
+          "id, community_id, title, author, description, cover_url, pdf_storage_path, total_pages, table_of_contents, is_published, pipeline_version, created_at, updated_at"
+        )
         .single();
 
       if (error) {
         await removeStorageObjects(serviceClient, {
           coverPath: coverStoragePath,
         });
-        return internalErrorResponse("Error al crear libro:", error);
+        console.error("Error al crear libro (catalog):", error);
+        return NextResponse.json(
+          { error: "No se pudo guardar la ficha del libro." },
+          { status: 500 }
+        );
       }
-      return NextResponse.json({ book });
+      return NextResponse.json({
+        book: bookResponsePayload(book as Record<string, unknown>),
+      });
     }
 
     const { data: pdfBlob, error: pdfDownloadError } =
@@ -155,31 +169,46 @@ export async function POST(
     // Lazy-load pdfjs pipeline only on upload — GET /books must not import pdfjs.
     let pages;
     try {
-      const { extractPositionedTextFromPdfBuffer } = await import(
-        "@/lib/pdf/extract-positioned"
+      try {
+        const { extractPositionedTextFromPdfBuffer } = await import(
+          "@/lib/pdf/extract-positioned"
+        );
+        const { inferLayoutBlocks } = await import("@/lib/pdf/layout-inference");
+        const positioned = await extractPositionedTextFromPdfBuffer(buffer);
+        const pageWidth =
+          positioned.length > 0
+            ? Math.max(...positioned.map((item) => item.x + item.width), 612)
+            : 612;
+        const layoutBlocks = inferLayoutBlocks(positioned, pageWidth);
+        pages =
+          layoutBlocks.length > 0
+            ? paginateBlocksByLines(layoutBlocks)
+            : paginateText(
+                normalizeExtractedText(await extractTextFromPdfBuffer(buffer))
+              );
+      } catch (layoutErr) {
+        console.error(
+          "Level B pipeline failed, falling back to text pagination:",
+          layoutErr
+        );
+        const text = normalizeExtractedText(
+          await extractTextFromPdfBuffer(buffer)
+        );
+        pages = paginateText(text);
+      }
+    } catch (processErr) {
+      console.error("PDF processing failed:", processErr);
+      await removeStorageObjects(serviceClient, {
+        coverPath: coverStoragePath,
+        pdfPath: pdfStoragePath,
+      });
+      return NextResponse.json(
+        {
+          error:
+            "No se pudo procesar el PDF (archivo muy pesado o dañado). Probá con otro PDF o uno más liviano.",
+        },
+        { status: 500 }
       );
-      const { inferLayoutBlocks } = await import("@/lib/pdf/layout-inference");
-      const positioned = await extractPositionedTextFromPdfBuffer(buffer);
-      const pageWidth =
-        positioned.length > 0
-          ? Math.max(...positioned.map((item) => item.x + item.width), 612)
-          : 612;
-      const layoutBlocks = inferLayoutBlocks(positioned, pageWidth);
-      pages =
-        layoutBlocks.length > 0
-          ? paginateBlocksByLines(layoutBlocks)
-          : paginateText(
-              normalizeExtractedText(await extractTextFromPdfBuffer(buffer))
-            );
-    } catch (layoutErr) {
-      console.error(
-        "Level B pipeline failed, falling back to text pagination:",
-        layoutErr
-      );
-      const text = normalizeExtractedText(
-        await extractTextFromPdfBuffer(buffer)
-      );
-      pages = paginateText(text);
     }
 
     const storedPages =
@@ -201,7 +230,9 @@ export async function POST(
         is_published: true,
         pipeline_version: PIPELINE_VERSION,
       })
-      .select()
+      .select(
+        "id, community_id, title, author, description, cover_url, pdf_storage_path, total_pages, table_of_contents, is_published, pipeline_version, created_at, updated_at"
+      )
       .single();
 
     if (error) {
@@ -209,10 +240,16 @@ export async function POST(
         coverPath: coverStoragePath,
         pdfPath: pdfStoragePath,
       });
-      return internalErrorResponse("Error al crear libro:", error);
+      console.error("Error al crear libro (pdf):", error);
+      return NextResponse.json(
+        { error: "No se pudo guardar el libro en la base de datos." },
+        { status: 500 }
+      );
     }
 
-    return NextResponse.json({ book });
+    return NextResponse.json({
+      book: bookResponsePayload(book as Record<string, unknown>),
+    });
   } catch (err) {
     if (serviceClient) {
       await removeStorageObjects(serviceClient, {

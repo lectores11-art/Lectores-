@@ -252,7 +252,33 @@ export function LibraryPageClient({
         }
       }
 
-      // Server cleans Storage on most failures; remove client-side as backup.
+      // If finalize failed after DB insert (e.g. huge response), don't wipe Storage.
+      let saved = false;
+      try {
+        const check = await fetch(`/api/c/${slug}/books`);
+        const checkData = (await check.json()) as { books?: BookRow[] };
+        saved = (checkData.books || []).some(
+          (b) =>
+            b.title === title &&
+            (uploadMode === "catalog"
+              ? !b.pdf_storage_path
+              : b.pdf_storage_path === pdfStoragePath)
+        );
+        if (saved) {
+          setBooks(checkData.books || []);
+        }
+      } catch {
+        /* ignore */
+      }
+
+      if (saved) {
+        form.reset();
+        setShowUpload(false);
+        setUploadMode("pdf");
+        setUploadStatus("");
+        return;
+      }
+
       const toRemoveCover = coverStoragePath;
       const toRemovePdf = pdfStoragePath;
       coverStoragePath = null;
