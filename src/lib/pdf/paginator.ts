@@ -40,7 +40,7 @@ export const CHARS_PER_LINE = 42;
 export const READER_WORDS_PER_PAGE = LEFT_PAGE_WORDS;
 
 /** Bump when extraction/pagination logic changes; stored on each book row. */
-export const PIPELINE_VERSION = 6;
+export const PIPELINE_VERSION = 7;
 
 /** Safety cap for content_json size in DB. */
 export const MAX_STORED_PAGES = 1500;
@@ -77,12 +77,15 @@ export function classifyLineStyle(line: string): TextBlockStyle {
   return "paragraph";
 }
 
-function shouldJoinProseLines(prev: string, next: string): boolean {
+/** Whether two consecutive PDF lines should become one flowing paragraph. */
+export function shouldJoinProseLines(prev: string, next: string): boolean {
   if (prev.endsWith("-")) return true;
   if (/[.!?:;]$/.test(prev)) return false;
   if (next.length > 0 && next[0] === next[0].toLowerCase() && /[a-záéíóúñ]/.test(next[0])) {
     return true;
   }
+  // Same sentence / clause continued on the next visual line of the PDF.
+  if (!/[.!?…]["»')"\]]*$/.test(prev.trim())) return true;
   return false;
 }
 

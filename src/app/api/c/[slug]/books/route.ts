@@ -204,11 +204,8 @@ export async function POST(
           "@/lib/pdf/extract-positioned"
         );
         const { inferLayoutBlocks } = await import("@/lib/pdf/layout-inference");
-        const positioned = await extractPositionedTextFromPdfBuffer(buffer);
-        const pageWidth =
-          positioned.length > 0
-            ? Math.max(...positioned.map((item) => item.x + item.width), 612)
-            : 612;
+        const { items: positioned, pageWidth } =
+          await extractPositionedTextFromPdfBuffer(buffer);
         const layoutBlocks = inferLayoutBlocks(positioned, pageWidth);
         pages =
           layoutBlocks.length > 0
@@ -220,7 +217,9 @@ export async function POST(
           "book finalize: pipeline B pages",
           pages.length,
           "items",
-          positioned.length
+          positioned.length,
+          "pageWidth",
+          pageWidth
         );
       } catch (layoutErr) {
         console.error(

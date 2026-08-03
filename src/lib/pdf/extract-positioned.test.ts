@@ -20,6 +20,7 @@ describe("extractPositionedTextFromPdfBuffer", () => {
     mockGetInfo.mockResolvedValue({ total: 1 });
     mockGetPage.mockResolvedValue({
       getViewport: () => ({
+        width: 612,
         convertToViewportPoint: (x: number, y: number) => [x, 100 - y],
       }),
       getTextContent: mockGetTextContent,
@@ -70,9 +71,12 @@ describe("extractPositionedTextFromPdfBuffer", () => {
 
     vi.resetModules();
     const { extractPositionedTextFromPdfBuffer } = await import("./extract-positioned");
-    const items = await extractPositionedTextFromPdfBuffer(Buffer.from("fake-pdf"));
+    const { items, pageWidth } = await extractPositionedTextFromPdfBuffer(
+      Buffer.from("fake-pdf")
+    );
 
     expect(items).toHaveLength(2);
+    expect(pageWidth).toBeGreaterThanOrEqual(612);
     expect(items[0]).toMatchObject({
       text: "Tabla de Contenido",
       pageIndex: 0,
@@ -91,7 +95,7 @@ describe("extractPositionedTextFromPdfBuffer", () => {
 
     vi.resetModules();
     const { extractPositionedTextFromPdfBuffer } = await import("./extract-positioned");
-    const items = await extractPositionedTextFromPdfBuffer(Buffer.from("fake"));
+    const { items } = await extractPositionedTextFromPdfBuffer(Buffer.from("fake"));
     expect(items).toHaveLength(0);
   });
 

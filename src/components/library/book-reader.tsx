@@ -16,7 +16,6 @@ import {
   hasLegacyPaginationBug,
   mergeContinuationParagraphs,
   pagesForSpread,
-  PIPELINE_VERSION,
   getPageBlocks,
   totalSpreads,
   clampToSpreadStart,
@@ -158,11 +157,11 @@ export function BookReader({
   const iconBtn =
     "flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-black/5 hover:text-slate-800";
 
+  // Only warn for known-broken content — not every pipeline bump or long books.
   const showLegacyBanner =
     legacyWarning ||
-    pipelineVersion < PIPELINE_VERSION ||
     hasLegacyPaginationBug(pages) ||
-    pages.length > 500;
+    (pipelineVersion > 0 && pipelineVersion < 4);
 
   return (
     <div

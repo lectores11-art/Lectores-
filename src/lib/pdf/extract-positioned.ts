@@ -72,19 +72,26 @@ async function loadPdfJs(): Promise<PdfJsModule> {
   return pdfjs;
 }
 
+export type PositionedExtractResult = {
+  items: PositionedTextItem[];
+  /** MediaBox width from pdfjs viewport (not content bbox). */
+  pageWidth: number;
+};
+
 /**
  * Extract text runs with X/Y positions from a PDF buffer using pdf-parse/pdfjs.
  * Server-only — used by layout inference during upload (Nivel B).
  */
 export async function extractPositionedTextFromPdfBuffer(
   buffer: Buffer
-): Promise<PositionedTextItem[]> {
+): Promise<PositionedExtractResult> {
   const { PDFParse } = await import("pdf-parse");
   const pdfjs = await loadPdfJs();
 
   const data = toTransferablePdfBytes(buffer);
   const parser = new PDFParse({ data: toTransferablePdfBytes(buffer) });
   const items: PositionedTextItem[] = [];
+  let pageWidth = 612;
 
   try {
     await parser.getInfo();
@@ -101,6 +108,7 @@ export async function extractPositionedTextFromPdfBuffer(
       for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
         const page = await doc.getPage(pageNum);
         const viewport = page.getViewport({ scale: 1 });
+        pageWidth = Math.max(pageWidth, viewport.width);
         const textContent = await page.getTextContent({
           includeMarkedContent: false,
           disableNormalization: false,
@@ -135,5 +143,5 @@ export async function extractPositionedTextFromPdfBuffer(
     await parser.destroy();
   }
 
-  return items;
+  return { items, pageWidth };
 }
