@@ -64,10 +64,11 @@ function fail(
   logErr?: unknown
 ) {
   if (logContext) console.error(logContext, logErr ?? detail ?? error);
-  return NextResponse.json(
-    detail ? { error, detail } : { error },
-    { status }
-  );
+  // Put detail in `error` so the UI always shows the real cause.
+  const message = detail ? `${error} — ${detail}` : error;
+  return NextResponse.json({ error: message, detail: detail || undefined }, {
+    status,
+  });
 }
 
 export async function POST(
