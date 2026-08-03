@@ -40,7 +40,10 @@ describe("extractPositionedTextFromPdfBuffer", () => {
       "Function",
       function MockFunction(...args: string[]) {
         if (args.length === 2 && args[0] === "specifier" && args[1].includes("import")) {
-          return async () => ({ getDocument: mockGetDocument });
+          return async () => ({
+            getDocument: mockGetDocument,
+            GlobalWorkerOptions: { workerSrc: "" },
+          });
         }
         return RealFunction(...args);
       }

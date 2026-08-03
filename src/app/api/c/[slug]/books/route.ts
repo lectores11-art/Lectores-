@@ -18,7 +18,6 @@ import {
 } from "@/lib/storage/book-upload-paths";
 import {
   bookFinalizeUploadSchema,
-  internalErrorResponse,
   parseJsonBody,
   slugParamsSchema,
   parseData,
@@ -27,22 +26,48 @@ import {
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
+/** Keep response under Vercel’s ~4.5MB body cap. */
+const BOOK_SELECT =
+  "id, community_id, title, author, description, cover_url, pdf_storage_path, total_pages, table_of_contents, is_published, pipeline_version, created_at, updated_at";
+
+function errorMessage(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message.slice(0, 240);
+  if (typeof err === "string") return err.slice(0, 240);
+  try {
+    return JSON.stringify(err).slice(0, 240);
+  } catch {
+    return "unknown";
+  }
+}
+
 async function removeStorageObjects(
   serviceClient: Awaited<ReturnType<typeof createServiceClient>>,
   paths: { coverPath?: string | null; pdfPath?: string | null }
 ) {
-  if (paths.coverPath) {
-    await serviceClient.storage.from(COVER_BUCKET).remove([paths.coverPath]);
-  }
-  if (paths.pdfPath) {
-    await serviceClient.storage.from(BOOKS_BUCKET).remove([paths.pdfPath]);
+  try {
+    if (paths.coverPath) {
+      await serviceClient.storage.from(COVER_BUCKET).remove([paths.coverPath]);
+    }
+    if (paths.pdfPath) {
+      await serviceClient.storage.from(BOOKS_BUCKET).remove([paths.pdfPath]);
+    }
+  } catch (cleanupErr) {
+    console.error("Storage cleanup failed:", cleanupErr);
   }
 }
 
-/** Avoid returning huge content_json in the HTTP response (Vercel ~4.5MB cap). */
-function bookResponsePayload(book: Record<string, unknown>) {
-  const { content_json: _content, ...rest } = book;
-  return rest;
+function fail(
+  status: number,
+  error: string,
+  detail?: string,
+  logContext?: string,
+  logErr?: unknown
+) {
+  if (logContext) console.error(logContext, logErr ?? detail ?? error);
+  return NextResponse.json(
+    detail ? { error, detail } : { error },
+    { status }
+  );
 }
 
 export async function POST(
@@ -81,19 +106,13 @@ export async function POST(
       mode === "pdf" ? bodyResult.data.pdfStoragePath || null : null;
 
     if (!isCommunityScopedPath(community.id, coverStoragePath)) {
-      return NextResponse.json(
-        { error: "Ruta de portada inválida" },
-        { status: 400 }
-      );
+      return fail(400, "Ruta de portada inválida");
     }
     if (
       pdfStoragePath &&
       !isCommunityScopedPath(community.id, pdfStoragePath)
     ) {
-      return NextResponse.json(
-        { error: "Ruta de PDF inválida" },
-        { status: 400 }
-      );
+      return fail(400, "Ruta de PDF inválida");
     }
 
     serviceClient = await createServiceClient();
@@ -102,17 +121,22 @@ export async function POST(
       .from(COVER_BUCKET)
       .download(coverStoragePath);
     if (coverStatError) {
-      return NextResponse.json(
-        { error: "No se encontró la portada subida. Volvé a intentar." },
-        { status: 400 }
+      return fail(
+        400,
+        "No se encontró la portada subida. Volvé a intentar.",
+        errorMessage(coverStatError),
+        "Cover missing after client upload:",
+        coverStatError
       );
     }
 
-    const {
-      data: { publicUrl: coverUrl },
-    } = serviceClient.storage
+    const { data: publicData } = serviceClient.storage
       .from(COVER_BUCKET)
       .getPublicUrl(coverStoragePath);
+    const coverUrl = publicData?.publicUrl;
+    if (!coverUrl) {
+      return fail(500, "No se pudo armar la URL de la portada.");
+    }
 
     if (mode === "catalog") {
       const { data: book, error } = await serviceClient
@@ -130,24 +154,22 @@ export async function POST(
           is_published: true,
           pipeline_version: 0,
         })
-        .select(
-          "id, community_id, title, author, description, cover_url, pdf_storage_path, total_pages, table_of_contents, is_published, pipeline_version, created_at, updated_at"
-        )
+        .select(BOOK_SELECT)
         .single();
 
       if (error) {
         await removeStorageObjects(serviceClient, {
           coverPath: coverStoragePath,
         });
-        console.error("Error al crear libro (catalog):", error);
-        return NextResponse.json(
-          { error: "No se pudo guardar la ficha del libro." },
-          { status: 500 }
+        return fail(
+          500,
+          "No se pudo guardar la ficha del libro.",
+          errorMessage(error),
+          "Error al crear libro (catalog):",
+          error
         );
       }
-      return NextResponse.json({
-        book: bookResponsePayload(book as Record<string, unknown>),
-      });
+      return NextResponse.json({ book });
     }
 
     const { data: pdfBlob, error: pdfDownloadError } =
@@ -158,17 +180,23 @@ export async function POST(
         coverPath: coverStoragePath,
         pdfPath: pdfStoragePath,
       });
-      return NextResponse.json(
-        { error: "No se encontró el PDF subido. Volvé a intentar." },
-        { status: 400 }
+      return fail(
+        400,
+        "No se encontró el PDF subido. Volvé a intentar.",
+        pdfDownloadError ? errorMessage(pdfDownloadError) : "pdf missing",
+        "PDF missing after client upload:",
+        pdfDownloadError
       );
     }
 
-    const buffer = Buffer.from(await pdfBlob.arrayBuffer());
-
-    // Lazy-load pdfjs pipeline only on upload — GET /books must not import pdfjs.
     let pages;
+    let toc;
     try {
+      const buffer = Buffer.from(await pdfBlob.arrayBuffer());
+      console.info("book finalize: pdf bytes", buffer.byteLength);
+
+      // Nivel B (layout-aware) first — preserves TOC/centrado/listas.
+      // Fallback Nivel A (texto) only if B fails, so upload still works.
       try {
         const { extractPositionedTextFromPdfBuffer } = await import(
           "@/lib/pdf/extract-positioned"
@@ -186,6 +214,12 @@ export async function POST(
             : paginateText(
                 normalizeExtractedText(await extractTextFromPdfBuffer(buffer))
               );
+        console.info(
+          "book finalize: pipeline B pages",
+          pages.length,
+          "items",
+          positioned.length
+        );
       } catch (layoutErr) {
         console.error(
           "Level B pipeline failed, falling back to text pagination:",
@@ -195,25 +229,26 @@ export async function POST(
           await extractTextFromPdfBuffer(buffer)
         );
         pages = paginateText(text);
+        console.info("book finalize: pipeline A pages", pages.length);
       }
+
+      if (pages.length > MAX_STORED_PAGES) {
+        pages = pages.slice(0, MAX_STORED_PAGES);
+      }
+      toc = extractTOC(pages);
     } catch (processErr) {
-      console.error("PDF processing failed:", processErr);
       await removeStorageObjects(serviceClient, {
         coverPath: coverStoragePath,
         pdfPath: pdfStoragePath,
       });
-      return NextResponse.json(
-        {
-          error:
-            "No se pudo procesar el PDF (archivo muy pesado o dañado). Probá con otro PDF o uno más liviano.",
-        },
-        { status: 500 }
+      return fail(
+        500,
+        "No se pudo procesar el PDF.",
+        errorMessage(processErr),
+        "PDF processing failed:",
+        processErr
       );
     }
-
-    const storedPages =
-      pages.length > MAX_STORED_PAGES ? pages.slice(0, MAX_STORED_PAGES) : pages;
-    const toc = extractTOC(storedPages);
 
     const { data: book, error } = await serviceClient
       .from("books")
@@ -224,15 +259,13 @@ export async function POST(
         description: description || null,
         cover_url: coverUrl,
         pdf_storage_path: pdfStoragePath,
-        content_json: storedPages,
-        total_pages: storedPages.length,
+        content_json: pages,
+        total_pages: pages.length,
         table_of_contents: toc,
         is_published: true,
         pipeline_version: PIPELINE_VERSION,
       })
-      .select(
-        "id, community_id, title, author, description, cover_url, pdf_storage_path, total_pages, table_of_contents, is_published, pipeline_version, created_at, updated_at"
-      )
+      .select(BOOK_SELECT)
       .single();
 
     if (error) {
@@ -240,16 +273,16 @@ export async function POST(
         coverPath: coverStoragePath,
         pdfPath: pdfStoragePath,
       });
-      console.error("Error al crear libro (pdf):", error);
-      return NextResponse.json(
-        { error: "No se pudo guardar el libro en la base de datos." },
-        { status: 500 }
+      return fail(
+        500,
+        "No se pudo guardar el libro en la base de datos.",
+        errorMessage(error),
+        "Error al crear libro (pdf):",
+        error
       );
     }
 
-    return NextResponse.json({
-      book: bookResponsePayload(book as Record<string, unknown>),
-    });
+    return NextResponse.json({ book });
   } catch (err) {
     if (serviceClient) {
       await removeStorageObjects(serviceClient, {
@@ -257,7 +290,13 @@ export async function POST(
         pdfPath: pdfStoragePath,
       });
     }
-    return internalErrorResponse("POST /api/c/[slug]/books failed:", err);
+    return fail(
+      500,
+      "Error interno",
+      errorMessage(err),
+      "POST /api/c/[slug]/books failed:",
+      err
+    );
   }
 }
 

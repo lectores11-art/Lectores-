@@ -20,7 +20,13 @@ type TextContentItem = {
 };
 
 type PdfJsModule = {
-  getDocument: (src: { data: Uint8Array }) => {
+  GlobalWorkerOptions: { workerSrc: string };
+  getDocument: (src: {
+    data: Uint8Array;
+    useSystemFonts?: boolean;
+    isEvalSupported?: boolean;
+    useWorkerFetch?: boolean;
+  }) => {
     promise: Promise<{
       numPages: number;
       getPage(pageNum: number): Promise<{
@@ -41,22 +47,25 @@ type PdfJsModule = {
 /**
  * Load pdfjs without a static import path — Turbopack cannot resolve the
  * legacy .mjs subpath when analyzing the module graph.
+ * Worker src is set explicitly so Vercel/Node can resolve pdf.worker.mjs.
  */
 async function loadPdfJs(): Promise<PdfJsModule> {
   const require = createRequire(import.meta.url);
-  const resolved = require.resolve("pdfjs-dist/legacy/build/pdf.mjs");
-  const href = pathToFileURL(resolved).href;
+  const pdfPath = require.resolve("pdfjs-dist/legacy/build/pdf.mjs");
+  const workerPath = require.resolve("pdfjs-dist/legacy/build/pdf.worker.mjs");
   // Hide from bundler static analysis (Turbopack / webpack).
   const dynamicImport = new Function(
     "specifier",
     "return import(specifier)"
   ) as (specifier: string) => Promise<PdfJsModule>;
-  return dynamicImport(href);
+  const pdfjs = await dynamicImport(pathToFileURL(pdfPath).href);
+  pdfjs.GlobalWorkerOptions.workerSrc = pathToFileURL(workerPath).href;
+  return pdfjs;
 }
 
 /**
  * Extract text runs with X/Y positions from a PDF buffer using pdf-parse/pdfjs.
- * Server-only — used by layout inference during upload.
+ * Server-only — used by layout inference during upload (Nivel B).
  */
 export async function extractPositionedTextFromPdfBuffer(
   buffer: Buffer
@@ -71,7 +80,12 @@ export async function extractPositionedTextFromPdfBuffer(
   try {
     await parser.getInfo();
 
-    const doc = await pdfjs.getDocument({ data }).promise;
+    const doc = await pdfjs.getDocument({
+      data,
+      useSystemFonts: true,
+      isEvalSupported: false,
+      useWorkerFetch: false,
+    }).promise;
 
     try {
       for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
@@ -88,7 +102,8 @@ export async function extractPositionedTextFromPdfBuffer(
 
           const tm = item.transform ?? [1, 0, 0, 1, 0, 0];
           const [x, y] = viewport.convertToViewportPoint(tm[4], tm[5]);
-          const fontSize = item.height > 0 ? item.height : Math.abs(tm[0]) || undefined;
+          const fontSize =
+            item.height > 0 ? item.height : Math.abs(tm[0]) || undefined;
 
           items.push({
             text: item.str,

@@ -290,6 +290,10 @@ export function LibraryPageClient({
         await supabase.storage.from(BOOKS_BUCKET).remove([toRemovePdf]);
       }
 
+      const detail =
+        typeof (body as { detail?: unknown }).detail === "string"
+          ? String((body as { detail: string }).detail)
+          : "";
       const message =
         body.error ||
         (res.status >= 500
@@ -297,11 +301,11 @@ export function LibraryPageClient({
             ? "Error del servidor al procesar el PDF. Probá de nuevo."
             : "Error del servidor al registrar el libro."
           : `No se pudo subir el libro (${res.status}).`);
-      setUploadError(message);
+      setUploadError(detail ? `${message} (${detail})` : message);
       console.error("handleUpload error:", {
         status: res.status,
         body,
-        raw: raw.slice(0, 300),
+        raw: raw.slice(0, 500),
       });
     } catch (err) {
       console.error("handleUpload exception:", err);
