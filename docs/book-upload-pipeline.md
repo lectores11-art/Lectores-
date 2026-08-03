@@ -25,11 +25,11 @@ Los archivos **no** pasan por el body de Vercel (límite ~4.5 MB). Tope práctic
 |-----------|-------|--------|
 | `LEFT_PAGE_WORDS` | 80 | Páginas pares (izquierda): caben con título solo en spread 1 |
 | `RIGHT_PAGE_WORDS` | 105 | Páginas impares (derecha): caben con barra de herramientas |
-| `LEFT_PAGE_LINES` | 20 | Presupuesto visual hoja izquierda |
-| `RIGHT_PAGE_LINES` | 22 | Presupuesto visual hoja derecha |
-| `CHARS_PER_LINE` | 48 | Ancho real de columna (~half page) |
+| `LEFT_PAGE_LINES` | 13 | Presupuesto visual hoja izquierda (sin scroll) |
+| `RIGHT_PAGE_LINES` | 15 | Presupuesto visual hoja derecha (sin scroll) |
+| `CHARS_PER_LINE` | 42 | Ancho real de columna (~half page, serif 16px) |
 | `MAX_STORED_PAGES` | 1500 | Techo de seguridad para JSONB en Postgres |
-| `PIPELINE_VERSION` | 5 | Lector reflow por altura; upload con presupuesto conservador |
+| `PIPELINE_VERSION` | 6 | Packing más conservador; tipografía lector 16px |
 
 ## Nivel A — preservación de formato (v3)
 

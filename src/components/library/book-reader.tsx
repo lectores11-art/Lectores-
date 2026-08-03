@@ -42,7 +42,7 @@ interface BookReaderProps {
 }
 
 const defaultSettings: ReaderSettings = {
-  fontSize: 17,
+  fontSize: 16,
   fontFamily: "serif",
   theme: "light",
 };

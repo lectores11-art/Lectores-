@@ -27,20 +27,20 @@ export const RIGHT_PAGE_WORDS = 105;
 
 /**
  * Visual line budget per half-page (server-side estimate).
- * Half-page column ≈ 50–55 chars at 17px; body fits ~20–22 lines on a
- * typical laptop after padding (tuned against live reader fill).
+ * Conservative so content fits `calc(100vh - 10rem)` minus chrome/padding
+ * without per-page scroll on typical laptop viewports (~768–900px tall).
  */
-export const LEFT_PAGE_LINES = 20;
-export const RIGHT_PAGE_LINES = 22;
+export const LEFT_PAGE_LINES = 13;
+export const RIGHT_PAGE_LINES = 15;
 
-/** Approx characters per wrapped line in a reader half-page. */
-export const CHARS_PER_LINE = 48;
+/** Approx characters per wrapped line in a reader half-page (serif ~16px). */
+export const CHARS_PER_LINE = 42;
 
 /** @deprecated Use LEFT_PAGE_WORDS / RIGHT_PAGE_WORDS per page index. */
 export const READER_WORDS_PER_PAGE = LEFT_PAGE_WORDS;
 
 /** Bump when extraction/pagination logic changes; stored on each book row. */
-export const PIPELINE_VERSION = 5;
+export const PIPELINE_VERSION = 6;
 
 /** Safety cap for content_json size in DB. */
 export const MAX_STORED_PAGES = 1500;
@@ -175,10 +175,10 @@ export function blockLineCost(block: TextBlock): number {
 
 /** Estimate rendered height in px for a block at the given font size. */
 export function estimateBlockHeightPx(block: TextBlock, fontSize: number): number {
-  // Match globals.css: line-height 1.8, .book-para margin-bottom 0.85rem
-  // Slight inflation (+6%) so we never pack past the visible box.
-  const bodyLine = fontSize * 1.8;
-  const paraMargin = fontSize * 0.85;
+  // Match globals.css: line-height 1.75, .book-para margin-bottom 0.65rem
+  // Inflation keeps packed pages inside the visible box (no page scroll).
+  const bodyLine = fontSize * 1.75;
+  const paraMargin = fontSize * 0.65;
   let raw: number;
   switch (block.style) {
     case "title":
@@ -202,7 +202,7 @@ export function estimateBlockHeightPx(block: TextBlock, fontSize: number): numbe
     default:
       raw = bodyLine;
   }
-  return Math.ceil(raw * 1.06);
+  return Math.ceil(raw * 1.14);
 }
 
 /** Flatten stored pages back into a single ordered block stream. */
@@ -520,9 +520,9 @@ export function paginateBlocksByHeight(
  * Atomic blocks (especially list-item) are never split across pages.
  */
 export function paginateBlocksByLines(blocks: TextBlock[]): PaginatedPage[] {
-  // Convert line budgets to a height model shared with the reader (~17px body).
-  const fontSize = 17;
-  const linePx = fontSize * 1.8;
+  // Match BookReader default fontSize (16) and globals.css line-height 1.75.
+  const fontSize = 16;
+  const linePx = fontSize * 1.75;
   return paginateBlocksByHeight(blocks, {
     leftHeightPx: LEFT_PAGE_LINES * linePx,
     rightHeightPx: RIGHT_PAGE_LINES * linePx,
@@ -678,22 +678,23 @@ export function extractTOC(pages: PaginatedPage[]): TOCItem[] {
   return toc;
 }
 
+/** Marker stored only if legacy code swallowed extraction errors — never save new books with this. */
+export const PDF_EXTRACT_FAILURE_MESSAGE =
+  "No se pudo extraer el texto del PDF. Verifica que el archivo contenga texto seleccionable.";
+
 export async function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> {
+  const { PDFParse } = await import("pdf-parse");
+  // Standalone copy — Node Buffer views can break pdfjs transfer inside pdf-parse on Vercel.
+  const data = Uint8Array.from(buffer);
+  const parser = new PDFParse({ data });
   try {
-    const { PDFParse } = await import("pdf-parse");
-    const parser = new PDFParse({ data: new Uint8Array(buffer) });
-    try {
-      const result = await parser.getText({ lineEnforce: true, pageJoiner: "\n" });
-      if (result.pages && result.pages.length > 0) {
-        return result.pages.map((p) => p.text).join("\n");
-      }
-      return result.text || "";
-    } finally {
-      await parser.destroy();
+    const result = await parser.getText({ lineEnforce: true, pageJoiner: "\n" });
+    if (result.pages && result.pages.length > 0) {
+      return result.pages.map((p) => p.text).join("\n");
     }
-  } catch (err) {
-    console.error("extractTextFromPdfBuffer failed:", err);
-    return "No se pudo extraer el texto del PDF. Verifica que el archivo contenga texto seleccionable.";
+    return result.text || "";
+  } finally {
+    await parser.destroy();
   }
 }
 

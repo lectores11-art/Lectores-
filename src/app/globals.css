@@ -108,10 +108,10 @@ body {
   position: relative;
   display: flex;
   flex-direction: column;
-  padding: 3rem 3.25rem 3.5rem;
-  line-height: 1.8;
-  height: calc(100vh - 10rem);
-  max-height: calc(100vh - 10rem);
+  padding: 2.25rem 2.5rem 2.75rem;
+  line-height: 1.75;
+  height: calc(100vh - 9rem);
+  max-height: calc(100vh - 9rem);
   background:
     linear-gradient(180deg, #fdfbf4 0%, #f7f3e8 100%);
   color: #2c2a26;
@@ -121,12 +121,10 @@ body {
 .book-page-body {
   flex: 1;
   min-height: 0;
-  /* Auto as safety if a single block still overflows; packing uses real DOM heights. */
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-width: thin;
+  /* No per-page scroll — upload packs to this box; clip rare overflow. */
+  overflow: hidden;
   /* Reserve space so the absolute page number does not cover the last line */
-  padding-bottom: 1.75rem;
+  padding-bottom: 1.5rem;
 }
 
 .book-page-body-right {
@@ -192,9 +190,9 @@ body {
 
 /* Reader typography */
 .book-para {
-  margin-bottom: 0.85rem;
+  margin-bottom: 0.65rem;
   text-align: justify;
-  text-indent: 1.4rem;
+  text-indent: 1.25rem;
   hyphens: auto;
 }
 .book-para:first-of-type,

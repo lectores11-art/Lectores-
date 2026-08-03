@@ -9,6 +9,7 @@ import {
   normalizeExtractedText,
   paginateBlocksByLines,
   paginateText,
+  PDF_EXTRACT_FAILURE_MESSAGE,
   PIPELINE_VERSION,
 } from "@/lib/pdf/paginator";
 import {
@@ -237,6 +238,18 @@ export async function POST(
         pages = pages.slice(0, MAX_STORED_PAGES);
       }
       toc = extractTOC(pages);
+
+      const joined = pages.map((p) => p.content).join("\n");
+      const looksEmpty =
+        pages.length === 0 ||
+        !joined.trim() ||
+        joined.includes(PDF_EXTRACT_FAILURE_MESSAGE) ||
+        joined.includes("Este libro no tiene contenido extraíble");
+      if (looksEmpty) {
+        throw new Error(
+          "No se pudo leer texto del PDF (¿es un escaneo sin texto seleccionable?). Probá otro archivo."
+        );
+      }
     } catch (processErr) {
       await removeStorageObjects(serviceClient, {
         coverPath: coverStoragePath,

@@ -20,6 +20,7 @@ type TextContentItem = {
 };
 
 type PdfJsModule = {
+  GlobalWorkerOptions: { workerSrc: string };
   getDocument: (src: {
     data: Uint8Array;
     useSystemFonts?: boolean;
@@ -56,17 +57,19 @@ export function toTransferablePdfBytes(buffer: Buffer): Uint8Array {
 /**
  * Load pdfjs without a static import path — Turbopack cannot resolve the
  * legacy .mjs subpath when analyzing the module graph.
- * Do NOT override GlobalWorkerOptions.workerSrc with a file:// URL in Node:
- * that path also triggers transfer failures.
+ * Resolve worker via absolute file:// so Vercel/Node fake-worker setup finds it.
  */
 async function loadPdfJs(): Promise<PdfJsModule> {
   const require = createRequire(import.meta.url);
   const pdfPath = require.resolve("pdfjs-dist/legacy/build/pdf.mjs");
+  const workerPath = require.resolve("pdfjs-dist/legacy/build/pdf.worker.mjs");
   const dynamicImport = new Function(
     "specifier",
     "return import(specifier)"
   ) as (specifier: string) => Promise<PdfJsModule>;
-  return dynamicImport(pathToFileURL(pdfPath).href);
+  const pdfjs = await dynamicImport(pathToFileURL(pdfPath).href);
+  pdfjs.GlobalWorkerOptions.workerSrc = pathToFileURL(workerPath).href;
+  return pdfjs;
 }
 
 /**
