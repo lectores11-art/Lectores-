@@ -7,7 +7,7 @@ import {
   ChevronRight,
   List,
   Search,
-  Type,
+  Star,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -276,13 +276,17 @@ export function BookReader({
   const fontClass = settings.fontFamily === "serif" ? "reader-serif" : "";
 
   const iconBtn =
-    "flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-black/5 hover:text-slate-800";
+    "flex h-8 w-8 items-center justify-center text-[#5a5a5a] transition-colors hover:text-[#1a1a1a]";
 
   // Only warn for known-broken content — not every pipeline bump or long books.
   const showLegacyBanner =
     legacyWarning ||
     hasLegacyPaginationBug(pages) ||
     (pipelineVersion > 0 && pipelineVersion < 4);
+
+  const displayPageNumber = leftPage
+    ? leftPage.pageNumber + 1
+    : Math.min(safePage + 1, Math.max(totalPageCount, 1));
 
   return (
     <div
@@ -297,15 +301,22 @@ export function BookReader({
           para ver el texto correctamente.
         </p>
       )}
+
       <div
         className={cn(
-          "book-frame relative w-full",
+          "book-reader-stage w-full",
           compact ? "book-compact max-w-3xl" : "max-w-5xl"
         )}
       >
+        <header className="book-external-title">
+          <p className="book-external-title-name">{title}</p>
+          {author ? <p className="book-external-title-author">{author}</p> : null}
+        </header>
+
+        <div className="book-frame relative w-full">
         {preparing && (
           <div
-            className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 rounded-md bg-slate-900/80 px-6 text-center text-white"
+            className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 bg-slate-900/80 px-6 text-center text-white"
             role="status"
             aria-live="polite"
           >
@@ -317,253 +328,237 @@ export function BookReader({
             </p>
           </div>
         )}
-        <div className={cn("book-spread", themeClass, fontClass)}>
-          <div className="book-spine" />
 
-          {/* LEFT PAGE */}
-          <div className="book-page book-page-left">
-            {onClose && (
-              <button
-                onClick={onClose}
-                className={cn(iconBtn, "absolute left-3 top-3 z-10")}
-                aria-label="Cerrar"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-            {/* Fixed-height chrome (identical on both pages). Toolbar is NOT inside
-                this box — absolute children would collapse min-height layouts. */}
-            <div className="book-page-chrome text-center">
-              {spreadIdx === 0 && leftPage?.pageNumber === 0 ? (
-                <>
-                  <p className="text-sm font-semibold tracking-wide text-slate-700">
-                    {title}
-                  </p>
-                  {author && (
-                    <p className="text-xs italic text-slate-500">{author}</p>
-                  )}
-                </>
-              ) : (
-                <span className="invisible select-none" aria-hidden>
-                  .
-                </span>
-              )}
-            </div>
+        <div className={cn("book-block", themeClass, fontClass)}>
+          <div className="book-edge book-edge-left" aria-hidden />
 
-            <div className="book-page-body" ref={leftBodyRef}>
-              <PageContent page={leftPage} fontSize={settings.fontSize} />
-            </div>
+          <div className="book-spread">
+            <div className="book-spine" />
 
-            {leftPage && (
-              <span className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs text-slate-400">
-                {leftPage.pageNumber + 1}
-              </span>
-            )}
-            <div className="page-curl page-curl-left" />
-          </div>
-
-          {/* RIGHT PAGE */}
-          <div className="book-page book-page-right">
-            <div className="absolute right-3 top-3 z-10 flex items-center gap-1">
-              <button onClick={() => togglePanel("toc")} className={iconBtn} aria-label="Índice">
-                <List className="h-4 w-4" />
-              </button>
-              <button onClick={() => togglePanel("settings")} className={iconBtn} aria-label="Tipografía">
-                <Type className="h-4 w-4" />
-              </button>
-              {onBookmark && (
+            <div className="book-chrome-header">
+              {onClose ? (
                 <button
-                  onClick={handleBookmark}
-                  className={cn(iconBtn, justBookmarked && "text-sky-500")}
-                  aria-label="Marcador"
+                  onClick={onClose}
+                  className={cn(iconBtn, "justify-self-start")}
+                  aria-label="Cerrar"
                 >
-                  <Bookmark className="h-4 w-4" fill={justBookmarked ? "currentColor" : "none"} />
+                  <X className="h-4 w-4" strokeWidth={1.75} />
                 </button>
-              )}
-              <button onClick={() => togglePanel("search")} className={iconBtn} aria-label="Buscar">
-                <Search className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="book-page-chrome">
-              <span className="invisible select-none" aria-hidden>
-                .
-              </span>
-            </div>
-
-            <div className="book-page-body" ref={rightBodyRef}>
-              <PageContent page={rightPage} fontSize={settings.fontSize} />
-            </div>
-
-            {rightPage && (
-              <span className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs text-slate-400">
-                {rightPage.pageNumber + 1}
-              </span>
-            )}
-            <div className="page-curl page-curl-right" />
-          </div>
-
-          {panel === "toc" && (
-            <div className="absolute right-3 top-12 z-10 max-h-[70%] w-64 overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 shadow-xl scrollbar-thin">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Índice
-              </p>
-              {displayToc.length === 0 ? (
-                <p className="text-sm text-slate-400">Sin índice disponible</p>
               ) : (
-                displayToc.map((item, i) => (
-                  <button
-                    key={i}
-                    onClick={() => {
-                      goToPage(item.pageNumber);
-                      setPanel(null);
-                    }}
-                    className="block w-full truncate rounded px-2 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-100"
-                  >
-                    {item.title}
-                  </button>
-                ))
+                <span />
               )}
-            </div>
-          )}
-
-          {panel === "settings" && (
-            <div className="absolute right-3 top-12 z-10 w-60 rounded-lg border border-slate-200 bg-white p-4 shadow-xl">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Tipografía
-              </p>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs text-slate-500">
-                    Tamaño de letra
-                  </label>
-                  <input
-                    type="range"
-                    min={16}
-                    max={16}
-                    value={16}
-                    disabled
-                    title="El tamaño está fijado al de la paginación (16px) para evitar cortes"
-                    className="w-full accent-sky-500 opacity-50"
-                  />
-                  <p className="mt-1 text-[10px] leading-snug text-slate-400">
-                    Fijado en 16px (mismo tamaño con el que se arman las páginas).
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  {(["serif", "sans"] as const).map((f) => (
-                    <button
-                      key={f}
-                      onClick={() => setSettings({ ...settings, fontFamily: f })}
-                      className={cn(
-                        "flex-1 rounded-md border px-3 py-1.5 text-sm",
-                        settings.fontFamily === f
-                          ? "border-sky-500 bg-sky-50 text-sky-700"
-                          : "border-slate-200 text-slate-600"
-                      )}
-                    >
-                      {f === "serif" ? "Serif" : "Sans"}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  {(["light", "sepia"] as const).map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => setSettings({ ...settings, theme: t })}
-                      className={cn(
-                        "flex-1 rounded-md border px-3 py-1.5 text-sm",
-                        settings.theme === t
-                          ? "border-sky-500 bg-sky-50 text-sky-700"
-                          : "border-slate-200 text-slate-600"
-                      )}
-                    >
-                      {t === "light" ? "Claro" : "Sepia"}
-                    </button>
-                  ))}
-                </div>
+              <div className="flex items-center justify-end gap-0.5 justify-self-end">
+                <button onClick={() => togglePanel("toc")} className={iconBtn} aria-label="Índice">
+                  <List className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+                <button
+                  onClick={() => togglePanel("settings")}
+                  className={cn(iconBtn, "text-[11px] font-semibold tracking-tight")}
+                  aria-label="Tipografía"
+                >
+                  AA
+                </button>
+                <button className={iconBtn} aria-label="Favorito" type="button">
+                  <Star className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+                {onBookmark && (
+                  <button
+                    onClick={handleBookmark}
+                    className={cn(iconBtn, justBookmarked && "text-sky-600")}
+                    aria-label="Marcador"
+                  >
+                    <Bookmark
+                      className="h-4 w-4"
+                      strokeWidth={1.75}
+                      fill={justBookmarked ? "currentColor" : "none"}
+                    />
+                  </button>
+                )}
+                <button onClick={() => togglePanel("search")} className={iconBtn} aria-label="Buscar">
+                  <Search className="h-4 w-4" strokeWidth={1.75} />
+                </button>
               </div>
             </div>
-          )}
 
-          {panel === "search" && (
-            <div className="absolute right-3 top-12 z-10 w-72 rounded-lg border border-slate-200 bg-white p-4 shadow-xl">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Buscar en el libro
-              </p>
-              <Input
-                autoFocus
-                placeholder="Escribe y presiona Enter..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+            {/* LEFT PAGE */}
+            <div className="book-page book-page-left">
+              <div className="book-page-body" ref={leftBodyRef}>
+                <PageContent page={leftPage} fontSize={settings.fontSize} />
+              </div>
+              <div className="page-curl page-curl-left" />
+            </div>
+
+            {/* RIGHT PAGE */}
+            <div className="book-page book-page-right">
+              <div className="book-page-body" ref={rightBodyRef}>
+                <PageContent page={rightPage} fontSize={settings.fontSize} />
+              </div>
+              <div className="page-curl page-curl-right" />
+            </div>
+
+            <div className="book-progress">
+              <input
+                type="range"
+                min={0}
+                max={Math.max(0, totalSpreads(totalPageCount) - 1)}
+                value={spreadIdx}
+                disabled={preparing}
+                onChange={(e) => goToPage(Number(e.target.value) * 2)}
+                className="book-progress-track disabled:opacity-40"
+                aria-label="Progreso de lectura"
               />
-              {searchResults.length > 0 && (
-                <div className="mt-3 max-h-40 overflow-y-auto scrollbar-thin">
-                  <p className="mb-1 text-xs text-slate-400">
-                    {searchResults.length} resultado(s)
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {searchResults.slice(0, 12).map((p) => (
+              <span className="book-progress-label">
+                {displayPageNumber} de {totalPageCount || 0}
+              </span>
+            </div>
+
+            {panel === "toc" && (
+              <div className="absolute right-3 top-12 z-20 max-h-[70%] w-64 overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 shadow-xl scrollbar-thin">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Índice
+                </p>
+                {displayToc.length === 0 ? (
+                  <p className="text-sm text-slate-400">Sin índice disponible</p>
+                ) : (
+                  displayToc.map((item, i) => (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        goToPage(item.pageNumber);
+                        setPanel(null);
+                      }}
+                      className="block w-full truncate rounded px-2 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-100"
+                    >
+                      {item.title}
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+
+            {panel === "settings" && (
+              <div className="absolute right-3 top-12 z-20 w-60 rounded-lg border border-slate-200 bg-white p-4 shadow-xl">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Tipografía
+                </p>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs text-slate-500">
+                      Tamaño de letra
+                    </label>
+                    <input
+                      type="range"
+                      min={16}
+                      max={16}
+                      value={16}
+                      disabled
+                      title="El tamaño está fijado al de la paginación (16px) para evitar cortes"
+                      className="w-full accent-sky-500 opacity-50"
+                    />
+                    <p className="mt-1 text-[10px] leading-snug text-slate-400">
+                      Fijado en 16px (mismo tamaño con el que se arman las páginas).
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    {(["serif", "sans"] as const).map((f) => (
                       <button
-                        key={p}
-                        onClick={() => {
-                          goToPage(p);
-                          setPanel(null);
-                        }}
-                        className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                        key={f}
+                        onClick={() => setSettings({ ...settings, fontFamily: f })}
+                        className={cn(
+                          "flex-1 rounded-md border px-3 py-1.5 text-sm",
+                          settings.fontFamily === f
+                            ? "border-sky-500 bg-sky-50 text-sky-700"
+                            : "border-slate-200 text-slate-600"
+                        )}
                       >
-                        Pág. {p + 1}
+                        {f === "serif" ? "Serif" : "Sans"}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    {(["light", "sepia"] as const).map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => setSettings({ ...settings, theme: t })}
+                        className={cn(
+                          "flex-1 rounded-md border px-3 py-1.5 text-sm",
+                          settings.theme === t
+                            ? "border-sky-500 bg-sky-50 text-sky-700"
+                            : "border-slate-200 text-slate-600"
+                        )}
+                      >
+                        {t === "light" ? "Claro" : "Sepia"}
                       </button>
                     ))}
                   </div>
                 </div>
-              )}
-              {searchQuery && searchResults.length === 0 && (
-                <p className="mt-2 text-xs text-slate-400">Sin resultados</p>
-              )}
-            </div>
-          )}
+              </div>
+            )}
+
+            {panel === "search" && (
+              <div className="absolute right-3 top-12 z-20 w-72 rounded-lg border border-slate-200 bg-white p-4 shadow-xl">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Buscar en el libro
+                </p>
+                <Input
+                  autoFocus
+                  placeholder="Escribe y presiona Enter..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                />
+                {searchResults.length > 0 && (
+                  <div className="mt-3 max-h-40 overflow-y-auto scrollbar-thin">
+                    <p className="mb-1 text-xs text-slate-400">
+                      {searchResults.length} resultado(s)
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {searchResults.slice(0, 12).map((p) => (
+                        <button
+                          key={p}
+                          onClick={() => {
+                            goToPage(p);
+                            setPanel(null);
+                          }}
+                          className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                        >
+                          Pág. {p + 1}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {searchQuery && searchResults.length === 0 && (
+                  <p className="mt-2 text-xs text-slate-400">Sin resultados</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="book-edge book-edge-right" aria-hidden />
         </div>
 
-        <div className="flex items-center gap-3 px-3 pt-3">
-          <button
-            onClick={goPrevSpread}
-            disabled={preparing || spreadIdx <= 0}
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-white/25 text-white transition hover:bg-white/40 disabled:opacity-30"
-            aria-label="Anterior"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-
-          <input
-            type="range"
-            min={0}
-            max={Math.max(0, totalSpreads(totalPageCount) - 1)}
-            value={spreadIdx}
-            disabled={preparing}
-            onChange={(e) => goToPage(Number(e.target.value) * 2)}
-            className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-white/30 accent-white disabled:opacity-40"
-          />
-
-          <span className="min-w-[72px] text-center text-xs font-medium text-white/90">
-            {leftPage ? leftPage.pageNumber + 1 : safePage + 1}
-            {rightPage ? `–${rightPage.pageNumber + 1}` : ""} de {totalPageCount}
-          </span>
-
-          <button
-            onClick={goNextSpread}
-            disabled={preparing || spreadIdx >= totalSpreads(totalPageCount) - 1}
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-white/25 text-white transition hover:bg-white/40 disabled:opacity-30"
-            aria-label="Siguiente"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
+        <button
+          onClick={goPrevSpread}
+          disabled={preparing || spreadIdx <= 0}
+          className="book-nav-btn book-nav-prev"
+          aria-label="Anterior"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+        <button
+          onClick={goNextSpread}
+          disabled={preparing || spreadIdx >= totalSpreads(totalPageCount) - 1}
+          className="book-nav-btn book-nav-next"
+          aria-label="Siguiente"
+        >
+          <ChevronRight className="h-5 w-5" />
+        </button>
         </div>
       </div>
 
       {!compact && (
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="sr-only">
           {Math.round(progressPercent)}% · Doble página {spreadIdx + 1} de{" "}
           {totalSpreads(totalPageCount)}
         </p>
