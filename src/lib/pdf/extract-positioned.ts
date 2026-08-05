@@ -32,6 +32,8 @@ type PdfJsModule = {
       numPages: number;
       getPage(pageNum: number): Promise<{
         getViewport(params: { scale: number }): {
+          width: number;
+          height: number;
           convertToViewportPoint(x: number, y: number): [number, number];
         };
         getTextContent(params: {
