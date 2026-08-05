@@ -17,10 +17,12 @@ import {
   hasLegacyPaginationBug,
   mergeContinuationParagraphs,
   needsDomPack,
+  packMetricsStale,
   pagesForSpread,
   getPageBlocks,
   totalSpreads,
   clampToSpreadStart,
+  type PackMetrics,
   type PaginatedPage,
   type TOCItem,
 } from "@/lib/pdf/paginator";
@@ -36,11 +38,16 @@ interface BookReaderProps {
   initialPage?: number;
   onPageChange?: (page: number, percent: number) => void;
   onBookmark?: (page: number) => void;
-  /** Called once after DOM measure-and-pack (pipeline upgrade). */
-  onDomPacked?: (pages: PaginatedPage[]) => void | Promise<void>;
+  /** Called after DOM measure-and-pack (pipeline upgrade or viewport re-pack). */
+  onDomPacked?: (
+    pages: PaginatedPage[],
+    metrics: PackMetrics
+  ) => void | Promise<void>;
   compact?: boolean;
   onClose?: () => void;
   pipelineVersion?: number;
+  /** Viewport used for the pages currently in `pages` (from DB). */
+  packMetrics?: PackMetrics | null;
   legacyWarning?: boolean;
 }
 
@@ -74,11 +81,14 @@ export function BookReader({
   compact = false,
   onClose,
   pipelineVersion = 0,
+  packMetrics = null,
   legacyWarning = false,
 }: BookReaderProps) {
   const [livePages, setLivePages] = useState(pages);
-  const [preparing, setPreparing] = useState(() => needsDomPack(pipelineVersion));
-  const packedOnceRef = useRef(false);
+  const [preparing, setPreparing] = useState(
+    () => needsDomPack(pipelineVersion) || !packMetrics
+  );
+  const packingRef = useRef(false);
   const onDomPackedRef = useRef(onDomPacked);
   const leftBodyRef = useRef<HTMLDivElement>(null);
   const rightBodyRef = useRef<HTMLDivElement>(null);
@@ -98,15 +108,10 @@ export function BookReader({
 
   useEffect(() => {
     setLivePages(pages);
-    if (!needsDomPack(pipelineVersion)) {
-      setPreparing(false);
-      packedOnceRef.current = true;
-    }
-  }, [pages, pipelineVersion]);
+  }, [pages]);
 
-  // One-shot DOM measure + pack for estimated uploads (quality G1/G2).
+  // Pack when pipeline is outdated OR the saved viewport no longer matches this screen.
   useEffect(() => {
-    if (!needsDomPack(pipelineVersion) || packedOnceRef.current) return;
     if (pages.length === 0) {
       setPreparing(false);
       return;
@@ -115,7 +120,8 @@ export function BookReader({
     let cancelled = false;
 
     async function runPack() {
-      setPreparing(true);
+      if (packingRef.current) return;
+
       // Wait for book frame layout so column width/height are real.
       await new Promise<void>((resolve) => {
         requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
@@ -123,7 +129,6 @@ export function BookReader({
       if (cancelled) return;
 
       try {
-        // Literata must be loaded — fallback fonts measure shorter and over-pack.
         if (document.fonts?.ready) {
           await document.fonts.ready;
         }
@@ -142,31 +147,49 @@ export function BookReader({
 
         const left = pageBodyMetrics(leftEl);
         const right = rightEl ? pageBodyMetrics(rightEl) : left;
-        const columnWidthPx = left.widthPx;
-        const leftHeightPx = left.heightPx;
-        const rightHeightPx = right.heightPx;
+        const currentMetrics: PackMetrics = {
+          widthPx: left.widthPx,
+          leftHeightPx: left.heightPx,
+          rightHeightPx: right.heightPx,
+          fontSize: PACK_FONT_SIZE,
+        };
 
-        if (columnWidthPx < 80 || leftHeightPx < 80) {
+        if (currentMetrics.widthPx < 80 || currentMetrics.leftHeightPx < 80) {
           setPreparing(false);
           return;
         }
 
+        const mustPack =
+          needsDomPack(pipelineVersion) ||
+          packMetricsStale(packMetrics, currentMetrics);
+
+        if (!mustPack) {
+          setPreparing(false);
+          return;
+        }
+
+        packingRef.current = true;
+        setPreparing(true);
+
         const blocks = flattenPageBlocks(pages);
         const packed = measureAndPackBlocks(blocks, {
-          columnWidthPx,
-          leftHeightPx,
-          rightHeightPx,
+          columnWidthPx: currentMetrics.widthPx,
+          leftHeightPx: currentMetrics.leftHeightPx,
+          rightHeightPx: currentMetrics.rightHeightPx,
           fontSize: PACK_FONT_SIZE,
         });
-        if (cancelled) return;
-        packedOnceRef.current = true;
-        // Keep display size locked to pack size so the slider cannot reintroduce clipping.
+        if (cancelled) {
+          packingRef.current = false;
+          return;
+        }
         setSettings((s) => ({ ...s, fontSize: PACK_FONT_SIZE }));
         setLivePages(packed);
         setPreparing(false);
-        await onDomPackedRef.current?.(packed);
+        await onDomPackedRef.current?.(packed, currentMetrics);
+        packingRef.current = false;
       } catch (err) {
         console.error("DOM pack failed; showing estimated pages:", err);
+        packingRef.current = false;
         if (!cancelled) setPreparing(false);
       }
     }
@@ -175,7 +198,7 @@ export function BookReader({
     return () => {
       cancelled = true;
     };
-  }, [pipelineVersion, pages]);
+  }, [pipelineVersion, pages, packMetrics]);
 
   // Stable stored / packed pages — never continuous reflow.
   const displayPages = useMemo(() => normalizePages(livePages), [livePages]);

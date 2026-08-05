@@ -43,7 +43,7 @@ export const READER_WORDS_PER_PAGE = LEFT_PAGE_WORDS;
  * Final layout: pages packed with real DOM heights (Literata / reader CSS).
  * Bump when pack or measure rules change; stored on each book row after DOM pack.
  */
-export const PIPELINE_VERSION = 11;
+export const PIPELINE_VERSION = 12;
 
 /**
  * Server-side estimate only (upload). Reader runs DOM pack once and upgrades to
@@ -54,6 +54,28 @@ export const ESTIMATED_PIPELINE_VERSION = 7;
 /** True when stored pages are not yet DOM-packed. */
 export function needsDomPack(pipelineVersion: number): boolean {
   return pipelineVersion > 0 && pipelineVersion < PIPELINE_VERSION;
+}
+
+/** Viewport used when pages were last packed (persisted on the book row). */
+export type PackMetrics = {
+  widthPx: number;
+  leftHeightPx: number;
+  rightHeightPx: number;
+  fontSize: number;
+};
+
+/** Re-pack when height/width differs by more than this ratio (e.g. Cursor preview → 15" Mac). */
+export const PACK_VIEWPORT_TOLERANCE = 0.1;
+
+export function packMetricsStale(
+  stored: PackMetrics | null | undefined,
+  current: PackMetrics
+): boolean {
+  if (!stored?.leftHeightPx || !stored.widthPx) return true;
+  const h =
+    Math.abs(current.leftHeightPx - stored.leftHeightPx) / stored.leftHeightPx;
+  const w = Math.abs(current.widthPx - stored.widthPx) / stored.widthPx;
+  return h > PACK_VIEWPORT_TOLERANCE || w > PACK_VIEWPORT_TOLERANCE;
 }
 
 /** Safety cap for content_json size in DB. */

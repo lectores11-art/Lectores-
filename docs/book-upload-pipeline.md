@@ -27,7 +27,7 @@ Primera apertura del lector (cualquier miembro):
   → medir bloques con CSS real (Literata / .book-para)
   → packBlocksWithMeasuredHeights
   → POST /api/c/[slug]/books/[bookId]/paginate
-  → DB: content_json + pipeline_version = 11 (DOM-packed)
+  → DB: content_json + pipeline_version = 12 + pack_metrics (DOM-packed)
 
 Lecturas siguientes: navegar spreads; sin reflow continuo.
 ```
@@ -42,7 +42,7 @@ Los archivos **no** pasan por el body de Vercel (límite ~4.5 MB). Tope práctic
 | `CHARS_PER_LINE` | 42 | Estimación servidor |
 | `MAX_STORED_PAGES` | 1500 | Techo JSONB |
 | `ESTIMATED_PIPELINE_VERSION` | 7 | Upload: páginas estimadas; necesita DOM pack |
-| `PIPELINE_VERSION` | 11 | Final: overflow-probe + partir párrafos para llenar hoja + chrome fijo |
+| `PIPELINE_VERSION` | 12 | Overflow-probe + fill-remaining + **re-pack si cambia el tamaño de pantalla** |
 
 `needsDomPack(version)` es true si `0 < version < 8`.
 
@@ -59,27 +59,24 @@ Los archivos **no** pasan por el body de Vercel (límite ~4.5 MB). Tope práctic
 
 ## Persistencia DOM pack
 
-- `src/lib/pdf/measure-and-pack.ts` — mide en un contenedor oculto con las mismas clases del lector.
-- `POST .../paginate` — cualquier miembro autenticado de la comunidad; escribe con `service_role` (RLS de books UPDATE es admin-only) solo si `pipeline_version < 8`.
+- `src/lib/pdf/measure-and-pack.ts` — overflow-probe con el CSS del lector.
+- `POST .../paginate` — guarda páginas + `pack_metrics`; re-empaqueta si el viewport cambió (>10%).
+- Migración `009_books_pack_metrics.sql` requerida en Supabase.
 
 ## Checklist post-subida (manual)
 
-1. Abrir el libro: overlay “Preparando páginas…” una vez; luego lectura estable.
+1. Abrir el libro a pantalla completa (no en panel chico de Cursor): overlay “Preparando páginas…”.
 2. **Sin scroll** en el cuerpo de la hoja.
-3. **Sin franja vacía** absurda en prosa normal; hojas se sienten llenas.
-4. Sección **Introducción** (u otra prosa): párrafos justificados, no renglones cortos centrados.
+3. **Sin franja vacía** absurda en prosa normal; hojas se sienten llenas en *esa* pantalla.
+4. Sección **Introducción**: párrafos justificados; el texto sigue después del título en la misma hoja si cabe.
 5. Índice / `Libro N:` legibles y centrados.
-6. Comparar una sección con el PDF original (mismo orden de texto).
-7. Reabrir el libro: no vuelve a “preparar páginas” (`pipeline_version = 11`).
+6. Cambiar de monitor/tamaño: si el alto cambia mucho, vuelve a preparar una vez.
+7. Reabrir en la misma pantalla: no vuelve a preparar.
 
 ## Libros ya subidos (reprocesar)
 
-Libros con `pipeline_version` 4–10 se empaquetan solos en la **primera apertura** tras deployar este código (quedan en 11).
-
-Si el contenido está realmente roto (`pipeline_version < 4` o banner legacy):
-
-1. Borrar el libro.
-2. Volver a subir el PDF (con el deploy nuevo).
+Libros con `pipeline_version` &lt; 12 o sin `pack_metrics` se re-empaquetan al abrir.
+Si abriste el libro en una ventana chica y después en una Mac grande: se re-empaqueta solo.
 
 ## Tests
 

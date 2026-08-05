@@ -5,6 +5,7 @@ import {
   assertPackedPageQuality,
   needsDomPack,
   packBlocksWithMeasuredHeights,
+  packMetricsStale,
   PIPELINE_VERSION,
   ESTIMATED_PIPELINE_VERSION,
   type TextBlock,
@@ -47,11 +48,29 @@ function centeredLine(
 
 describe("quality contract pipeline flags", () => {
   it("estimated upload needs DOM pack; final does not", () => {
-    expect(PIPELINE_VERSION).toBe(11);
+    expect(PIPELINE_VERSION).toBe(12);
     expect(ESTIMATED_PIPELINE_VERSION).toBe(7);
     expect(needsDomPack(ESTIMATED_PIPELINE_VERSION)).toBe(true);
     expect(needsDomPack(PIPELINE_VERSION)).toBe(false);
     expect(needsDomPack(0)).toBe(false);
+  });
+
+  it("detects stale pack metrics when viewport grows (e.g. Cursor → 15\" Mac)", () => {
+    const small = {
+      widthPx: 400,
+      leftHeightPx: 400,
+      rightHeightPx: 420,
+      fontSize: 16,
+    };
+    const large = {
+      widthPx: 480,
+      leftHeightPx: 620,
+      rightHeightPx: 640,
+      fontSize: 16,
+    };
+    expect(packMetricsStale(small, large)).toBe(true);
+    expect(packMetricsStale(large, large)).toBe(false);
+    expect(packMetricsStale(null, large)).toBe(true);
   });
 });
 
