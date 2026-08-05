@@ -21,8 +21,9 @@ const BOOK_SELECT =
   "id, community_id, title, author, description, cover_url, pdf_storage_path, total_pages, table_of_contents, is_published, pipeline_version, created_at, updated_at";
 
 /**
- * Persist DOM-packed pages (pipeline 8). Any community member can trigger this
- * on first open; service_role writes because books UPDATE is admin-only in RLS.
+ * Persist DOM-packed pages (current PIPELINE_VERSION). Any community member can
+ * trigger this on first open; service_role writes because books UPDATE is
+ * admin-only in RLS.
  */
 export async function POST(
   request: Request,

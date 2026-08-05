@@ -27,7 +27,7 @@ Primera apertura del lector (cualquier miembro):
   → medir bloques con CSS real (Literata / .book-para)
   → packBlocksWithMeasuredHeights
   → POST /api/c/[slug]/books/[bookId]/paginate
-  → DB: content_json + pipeline_version = 10 (DOM-packed)
+  → DB: content_json + pipeline_version = 11 (DOM-packed)
 
 Lecturas siguientes: navegar spreads; sin reflow continuo.
 ```
@@ -42,7 +42,7 @@ Los archivos **no** pasan por el body de Vercel (límite ~4.5 MB). Tope práctic
 | `CHARS_PER_LINE` | 42 | Estimación servidor |
 | `MAX_STORED_PAGES` | 1500 | Techo JSONB |
 | `ESTIMATED_PIPELINE_VERSION` | 7 | Upload: páginas estimadas; necesita DOM pack |
-| `PIPELINE_VERSION` | 10 | Final: pack por desborde real (scrollHeight) + chrome fijo simétrico |
+| `PIPELINE_VERSION` | 11 | Final: overflow-probe + partir párrafos para llenar hoja + chrome fijo |
 
 `needsDomPack(version)` es true si `0 < version < 8`.
 
@@ -70,11 +70,11 @@ Los archivos **no** pasan por el body de Vercel (límite ~4.5 MB). Tope práctic
 4. Sección **Introducción** (u otra prosa): párrafos justificados, no renglones cortos centrados.
 5. Índice / `Libro N:` legibles y centrados.
 6. Comparar una sección con el PDF original (mismo orden de texto).
-7. Reabrir el libro: no vuelve a “preparar páginas” (`pipeline_version = 9`).
+7. Reabrir el libro: no vuelve a “preparar páginas” (`pipeline_version = 11`).
 
 ## Libros ya subidos (reprocesar)
 
-Libros con `pipeline_version` 4–8 se empaquetan solos en la **primera apertura** tras deployar este código (quedan en 9).
+Libros con `pipeline_version` 4–10 se empaquetan solos en la **primera apertura** tras deployar este código (quedan en 11).
 
 Si el contenido está realmente roto (`pipeline_version < 4` o banner legacy):
 
@@ -94,7 +94,7 @@ Cubren calidad G1–G3, `packBlocksWithMeasuredHeights`, layout prosa, extracci�
 | Síntoma | Causa probable | Acción |
 |---------|----------------|--------|
 | “Preparando páginas…” eterno | Medición falló (ancho 0) | Revisar consola; reabrir a pantalla completa |
-| Texto cortado abajo (~1–2 renglones) | Pack usó clientHeight con padding (v8) | Abrir de nuevo con pipeline 9; no achicar letra |
+| Texto cortado abajo (~1–2 renglones) | Pack viejo (v8–10) | Abrir de nuevo (pipeline 11); letra fijada en 16px |
 | Texto empieza más abajo a la izquierda | Chrome asimétrico (viejo CSS) | Confirmar `.book-page-chrome` en ambas hojas |
 | Huecos/cortes tras pack | CSS del host distinto | Verificar Literata / `.book-para` cargados |
 | `supabaseKey is required` | Falta `SUPABASE_SERVICE_ROLE_KEY` | Vercel Production + Preview |
