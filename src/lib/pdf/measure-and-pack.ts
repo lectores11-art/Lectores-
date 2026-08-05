@@ -1,6 +1,9 @@
 /**
  * Client-only: measure reader blocks with real CSS (Literata / .book-para) and
  * pack pages with {@link packBlocksWithMeasuredHeights}.
+ *
+ * Critical: pack budgets must use the *content box* (clientHeight minus padding),
+ * not the full clientHeight — otherwise ~1–2 lines overflow and get clipped.
  */
 import {
   mergeContinuationParagraphs,
@@ -18,6 +21,31 @@ export type MeasurePackOptions = {
 };
 
 const PACK_FONT_SIZE = 16;
+
+/** Extra px reserved so rounding / subpixel layout never clips a line. */
+export const PACK_SAFETY_PX = 10;
+
+/**
+ * Usable height inside a `.book-page-body` (excludes padding + safety).
+ * Using raw clientHeight over-packs by padding-bottom (~1.5rem ≈ 2 lines).
+ */
+export function contentBoxHeightPx(
+  el: HTMLElement,
+  safetyPx: number = PACK_SAFETY_PX
+): number {
+  const style = getComputedStyle(el);
+  const padTop = parseFloat(style.paddingTop) || 0;
+  const padBottom = parseFloat(style.paddingBottom) || 0;
+  return Math.max(80, Math.floor(el.clientHeight - padTop - padBottom - safetyPx));
+}
+
+/** Content-box width for wrapping (matches where blocks actually lay out). */
+export function contentBoxWidthPx(el: HTMLElement): number {
+  const style = getComputedStyle(el);
+  const padLeft = parseFloat(style.paddingLeft) || 0;
+  const padRight = parseFloat(style.paddingRight) || 0;
+  return Math.max(80, Math.floor(el.clientWidth - padLeft - padRight));
+}
 
 function classNameForBlock(block: TextBlock): string {
   switch (block.style) {
@@ -76,15 +104,19 @@ function createMeasureHost(columnWidthPx: number): {
     "overflow:visible",
     "background:transparent",
     "box-shadow:none",
+    "line-height:1.75",
   ].join(";");
 
   const column = document.createElement("div");
+  // Match reader body width/typography; no vertical padding here — budgets
+  // already exclude real body padding via contentBoxHeightPx.
   column.className = "book-page-body";
   column.style.cssText = [
     `width:${Math.max(120, columnWidthPx)}px`,
-    "padding-bottom:0",
+    "padding:0",
     "overflow:visible",
     "min-height:0",
+    "height:auto",
   ].join(";");
 
   page.appendChild(column);
@@ -168,6 +200,7 @@ export function splitBlockToFitMeasured(
 /**
  * Measure blocks in a hidden reader column and pack into pages.
  * Must run in the browser (uses document + computed CSS).
+ * Call after `document.fonts.ready` so Literata metrics match the reader.
  */
 export function measureAndPackBlocks(
   blocks: TextBlock[],
@@ -178,7 +211,9 @@ export function measureAndPackBlocks(
   }
 
   const fontSize = options.fontSize || PACK_FONT_SIZE;
-  const pageCap = Math.min(options.leftHeightPx, options.rightHeightPx);
+  const leftH = Math.max(80, Math.floor(options.leftHeightPx));
+  const rightH = Math.max(80, Math.floor(options.rightHeightPx));
+  const pageCap = Math.min(leftH, rightH);
   const { host, column } = createMeasureHost(options.columnWidthPx);
 
   try {
@@ -200,8 +235,8 @@ export function measureAndPackBlocks(
     }
 
     return packBlocksWithMeasuredHeights(prepared, heights, {
-      leftHeightPx: options.leftHeightPx,
-      rightHeightPx: options.rightHeightPx,
+      leftHeightPx: leftH,
+      rightHeightPx: rightH,
     });
   } finally {
     host.remove();

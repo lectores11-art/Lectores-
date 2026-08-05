@@ -127,8 +127,11 @@ body {
   padding-bottom: 1.5rem;
 }
 
-.book-page-body-right {
-  padding-top: 2rem;
+/* Same top chrome on both pages so body text shares a baseline across the spread. */
+.book-page-chrome {
+  flex-shrink: 0;
+  min-height: 2.75rem;
+  margin-bottom: 1.5rem;
 }
 
 .book-compact .book-page {

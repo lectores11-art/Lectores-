@@ -14,6 +14,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useDetailPanel } from "@/components/layout/detail-panel-context";
+import {
+  PIPELINE_VERSION,
+  type PaginatedPage,
+} from "@/lib/pdf/paginator";
 import type { Book, BookPage, BookTOCItem, Meeting, MeetingChatMessage } from "@/lib/types/database";
 
 interface MeetingRoomClientProps {
@@ -292,7 +296,7 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
                             ...prev,
                             content_json: packed as BookPage[],
                             total_pages: packed.length,
-                            pipeline_version: 8,
+                            pipeline_version: PIPELINE_VERSION,
                           }
                         : prev
                     );

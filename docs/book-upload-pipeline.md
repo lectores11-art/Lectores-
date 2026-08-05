@@ -27,7 +27,7 @@ Primera apertura del lector (cualquier miembro):
   → medir bloques con CSS real (Literata / .book-para)
   → packBlocksWithMeasuredHeights
   → POST /api/c/[slug]/books/[bookId]/paginate
-  → DB: content_json + pipeline_version = 8 (DOM-packed)
+  → DB: content_json + pipeline_version = 9 (DOM-packed)
 
 Lecturas siguientes: navegar spreads; sin reflow continuo.
 ```
@@ -42,7 +42,7 @@ Los archivos **no** pasan por el body de Vercel (límite ~4.5 MB). Tope práctic
 | `CHARS_PER_LINE` | 42 | Estimación servidor |
 | `MAX_STORED_PAGES` | 1500 | Techo JSONB |
 | `ESTIMATED_PIPELINE_VERSION` | 7 | Upload: páginas estimadas; necesita DOM pack |
-| `PIPELINE_VERSION` | 8 | Final: páginas empaquetadas con medición DOM |
+| `PIPELINE_VERSION` | 9 | Final: DOM pack con content-box (sin padding) + chrome simétrico |
 
 `needsDomPack(version)` es true si `0 < version < 8`.
 
@@ -70,11 +70,11 @@ Los archivos **no** pasan por el body de Vercel (límite ~4.5 MB). Tope práctic
 4. Sección **Introducción** (u otra prosa): párrafos justificados, no renglones cortos centrados.
 5. Índice / `Libro N:` legibles y centrados.
 6. Comparar una sección con el PDF original (mismo orden de texto).
-7. Reabrir el libro: no vuelve a “preparar páginas” (`pipeline_version = 8`).
+7. Reabrir el libro: no vuelve a “preparar páginas” (`pipeline_version = 9`).
 
 ## Libros ya subidos (reprocesar)
 
-Libros con `pipeline_version` 4–7 se empaquetan solos en la **primera apertura** tras deployar este código (quedan en 8).
+Libros con `pipeline_version` 4–8 se empaquetan solos en la **primera apertura** tras deployar este código (quedan en 9).
 
 Si el contenido está realmente roto (`pipeline_version < 4` o banner legacy):
 
@@ -94,6 +94,8 @@ Cubren calidad G1–G3, `packBlocksWithMeasuredHeights`, layout prosa, extracci�
 | Síntoma | Causa probable | Acción |
 |---------|----------------|--------|
 | “Preparando páginas…” eterno | Medición falló (ancho 0) | Revisar consola; reabrir a pantalla completa |
+| Texto cortado abajo (~1–2 renglones) | Pack usó clientHeight con padding (v8) | Abrir de nuevo con pipeline 9; no achicar letra |
+| Texto empieza más abajo a la izquierda | Chrome asimétrico (viejo CSS) | Confirmar `.book-page-chrome` en ambas hojas |
 | Huecos/cortes tras pack | CSS del host distinto | Verificar Literata / `.book-para` cargados |
 | `supabaseKey is required` | Falta `SUPABASE_SERVICE_ROLE_KEY` | Vercel Production + Preview |
 | Upload viejo sigue mal | Deploy sin este código | Commit + push; no re-subir hasta Ready |

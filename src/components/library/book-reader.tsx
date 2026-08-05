@@ -122,21 +122,32 @@ export function BookReader({
       });
       if (cancelled) return;
 
-      const leftEl = leftBodyRef.current;
-      const rightEl = rightBodyRef.current;
-      const columnWidthPx = leftEl?.clientWidth ?? 0;
-      const leftHeightPx = leftEl?.clientHeight ?? 0;
-      const rightHeightPx = rightEl?.clientHeight ?? leftHeightPx;
-
-      if (columnWidthPx < 80 || leftHeightPx < 80) {
-        setPreparing(false);
-        return;
-      }
-
       try {
-        const { measureAndPackBlocks, PACK_FONT_SIZE } = await import(
-          "@/lib/pdf/measure-and-pack"
-        );
+        // Literata must be loaded — fallback fonts measure shorter and over-pack.
+        if (document.fonts?.ready) {
+          await document.fonts.ready;
+        }
+        const {
+          measureAndPackBlocks,
+          PACK_FONT_SIZE,
+          contentBoxHeightPx,
+          contentBoxWidthPx,
+        } = await import("@/lib/pdf/measure-and-pack");
+
+        const leftEl = leftBodyRef.current;
+        const rightEl = rightBodyRef.current;
+        // Content box only — raw clientHeight includes padding-bottom and over-packs ~2 lines.
+        const columnWidthPx = leftEl ? contentBoxWidthPx(leftEl) : 0;
+        const leftHeightPx = leftEl ? contentBoxHeightPx(leftEl) : 0;
+        const rightHeightPx = rightEl
+          ? contentBoxHeightPx(rightEl)
+          : leftHeightPx;
+
+        if (columnWidthPx < 80 || leftHeightPx < 80) {
+          setPreparing(false);
+          return;
+        }
+
         const blocks = flattenPageBlocks(pages);
         const packed = measureAndPackBlocks(blocks, {
           columnWidthPx,
@@ -286,14 +297,14 @@ export function BookReader({
             {onClose && (
               <button
                 onClick={onClose}
-                className={cn(iconBtn, "absolute left-3 top-3")}
+                className={cn(iconBtn, "absolute left-3 top-3 z-10")}
                 aria-label="Cerrar"
               >
                 <X className="h-4 w-4" />
               </button>
             )}
-            {/* Fixed chrome height so the body column does not jump between spreads. */}
-            <div className="mb-6 min-h-[2.75rem] text-center">
+            {/* Same chrome height as right page so text baselines match across the spread. */}
+            <div className="book-page-chrome text-center">
               {spreadIdx === 0 && leftPage?.pageNumber === 0 ? (
                 <>
                   <p className="text-sm font-semibold tracking-wide text-slate-700">
@@ -320,28 +331,30 @@ export function BookReader({
 
           {/* RIGHT PAGE */}
           <div className="book-page book-page-right">
-            <div className="absolute right-3 top-3 flex items-center gap-1">
-              <button onClick={() => togglePanel("toc")} className={iconBtn} aria-label="Índice">
-                <List className="h-4 w-4" />
-              </button>
-              <button onClick={() => togglePanel("settings")} className={iconBtn} aria-label="Tipografía">
-                <Type className="h-4 w-4" />
-              </button>
-              {onBookmark && (
-                <button
-                  onClick={handleBookmark}
-                  className={cn(iconBtn, justBookmarked && "text-sky-500")}
-                  aria-label="Marcador"
-                >
-                  <Bookmark className="h-4 w-4" fill={justBookmarked ? "currentColor" : "none"} />
+            <div className="book-page-chrome relative">
+              <div className="absolute right-0 top-0 flex items-center gap-1">
+                <button onClick={() => togglePanel("toc")} className={iconBtn} aria-label="Índice">
+                  <List className="h-4 w-4" />
                 </button>
-              )}
-              <button onClick={() => togglePanel("search")} className={iconBtn} aria-label="Buscar">
-                <Search className="h-4 w-4" />
-              </button>
+                <button onClick={() => togglePanel("settings")} className={iconBtn} aria-label="Tipografía">
+                  <Type className="h-4 w-4" />
+                </button>
+                {onBookmark && (
+                  <button
+                    onClick={handleBookmark}
+                    className={cn(iconBtn, justBookmarked && "text-sky-500")}
+                    aria-label="Marcador"
+                  >
+                    <Bookmark className="h-4 w-4" fill={justBookmarked ? "currentColor" : "none"} />
+                  </button>
+                )}
+                <button onClick={() => togglePanel("search")} className={iconBtn} aria-label="Buscar">
+                  <Search className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
-            <div className="book-page-body book-page-body-right" ref={rightBodyRef}>
+            <div className="book-page-body" ref={rightBodyRef}>
               <PageContent page={rightPage} fontSize={settings.fontSize} />
             </div>
 
