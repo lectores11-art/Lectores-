@@ -139,6 +139,13 @@ export interface Book {
   table_of_contents: BookTOCItem[];
   is_published: boolean;
   pipeline_version?: number;
+  /** Viewport used for last DOM pack; null = unknown / needs measure. */
+  pack_metrics?: {
+    widthPx: number;
+    leftHeightPx: number;
+    rightHeightPx: number;
+    fontSize: number;
+  } | null;
   created_at: string;
   updated_at: string;
   reading_progress?: ReadingProgress;

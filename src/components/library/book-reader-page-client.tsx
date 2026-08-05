@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import type { Book, BookPage, BookTOCItem } from "@/lib/types/database";
 import {
   PIPELINE_VERSION,
+  type PackMetrics,
   type PaginatedPage,
 } from "@/lib/pdf/paginator";
 
@@ -19,6 +20,7 @@ export function BookReaderPageClient({
   const [book, setBook] = useState<Book | null>(null);
   const [pages, setPages] = useState<PaginatedPage[]>([]);
   const [pipelineVersion, setPipelineVersion] = useState(0);
+  const [packMetrics, setPackMetrics] = useState<PackMetrics | null>(null);
   const [initialPage, setInitialPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [pdfError, setPdfError] = useState("");
@@ -38,6 +40,7 @@ export function BookReaderPageClient({
         setBook(loaded);
         setPages((loaded.content_json as BookPage[]) || []);
         setPipelineVersion(loaded.pipeline_version ?? 0);
+        setPackMetrics((loaded.pack_metrics as PackMetrics | null) ?? null);
         setInitialPage(page ?? 0);
         setLoading(false);
       }
@@ -72,9 +75,10 @@ export function BookReaderPageClient({
   );
 
   const persistDomPack = useCallback(
-    async (packed: PaginatedPage[]) => {
+    async (packed: PaginatedPage[], metrics: PackMetrics) => {
       setPages(packed);
       setPipelineVersion(PIPELINE_VERSION);
+      setPackMetrics(metrics);
       setBook((prev) =>
         prev
           ? {
@@ -82,6 +86,7 @@ export function BookReaderPageClient({
               content_json: packed as BookPage[],
               total_pages: packed.length,
               pipeline_version: PIPELINE_VERSION,
+              pack_metrics: metrics,
             }
           : prev
       );
@@ -90,7 +95,11 @@ export function BookReaderPageClient({
         const res = await fetch(`/api/c/${slug}/books/${bookId}/paginate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pages: packed }),
+          body: JSON.stringify({
+            pages: packed,
+            packMetrics: metrics,
+            force: true,
+          }),
         });
         if (!res.ok) {
           console.error("paginate persist failed", await res.text());
@@ -104,10 +113,15 @@ export function BookReaderPageClient({
                   ...prev,
                   ...data.book,
                   content_json: packed as BookPage[],
+                  pack_metrics:
+                    (data.book.pack_metrics as PackMetrics | null) ?? metrics,
                 }
               : prev
           );
           setPipelineVersion(data.book.pipeline_version ?? PIPELINE_VERSION);
+          setPackMetrics(
+            (data.book.pack_metrics as PackMetrics | null) ?? metrics
+          );
         }
       } catch (err) {
         console.error("paginate persist error", err);
@@ -185,6 +199,7 @@ export function BookReaderPageClient({
         onBookmark={saveBookmark}
         onDomPacked={persistDomPack}
         pipelineVersion={pipelineVersion}
+        packMetrics={packMetrics}
       />
     </div>
   );

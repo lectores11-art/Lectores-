@@ -107,7 +107,7 @@ function createProbeColumn(columnWidthPx: number): {
   column.style.cssText = [
     `width:${columnWidthPx}px`,
     "box-sizing:border-box",
-    "padding-bottom:1.5rem",
+    "padding-bottom:1.25rem",
     "overflow:hidden",
     "min-height:0",
     "flex:none",

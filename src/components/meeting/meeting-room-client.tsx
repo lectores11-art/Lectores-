@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useDetailPanel } from "@/components/layout/detail-panel-context";
 import {
   PIPELINE_VERSION,
+  type PackMetrics,
   type PaginatedPage,
 } from "@/lib/pdf/paginator";
 import type { Book, BookPage, BookTOCItem, Meeting, MeetingChatMessage } from "@/lib/types/database";
@@ -288,8 +289,9 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
                   pages={(selectedBook.content_json as BookPage[]) || []}
                   tableOfContents={(selectedBook.table_of_contents as BookTOCItem[]) || []}
                   pipelineVersion={selectedBook.pipeline_version ?? 0}
+                  packMetrics={(selectedBook.pack_metrics as PackMetrics | null) ?? null}
                   compact
-                  onDomPacked={async (packed) => {
+                  onDomPacked={async (packed, metrics) => {
                     setSelectedBook((prev) =>
                       prev
                         ? {
@@ -297,6 +299,7 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
                             content_json: packed as BookPage[],
                             total_pages: packed.length,
                             pipeline_version: PIPELINE_VERSION,
+                            pack_metrics: metrics,
                           }
                         : prev
                     );
@@ -304,7 +307,11 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
                       await fetch(`/api/c/${slug}/books/${selectedBook.id}/paginate`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ pages: packed }),
+                        body: JSON.stringify({
+                          pages: packed,
+                          packMetrics: metrics,
+                          force: true,
+                        }),
                       });
                     } catch (err) {
                       console.error("meeting paginate persist failed", err);

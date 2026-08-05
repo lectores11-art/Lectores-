@@ -86,6 +86,16 @@ export const bookPaginateSchema = z.object({
     )
     .max(2000)
     .optional(),
+  packMetrics: z
+    .object({
+      widthPx: z.number().positive().max(4000),
+      leftHeightPx: z.number().positive().max(4000),
+      rightHeightPx: z.number().positive().max(4000),
+      fontSize: z.number().positive().max(72),
+    })
+    .optional(),
+  /** Re-pack for a different viewport even if pipeline is already current. */
+  force: z.boolean().optional(),
 });
 
 export const forumThreadCreateSchema = z.object({

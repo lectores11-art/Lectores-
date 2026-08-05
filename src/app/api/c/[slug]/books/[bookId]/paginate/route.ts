@@ -4,7 +4,9 @@ import { requireApiCommunityAccess } from "@/lib/auth/helpers";
 import {
   extractTOC,
   MAX_STORED_PAGES,
+  packMetricsStale,
   PIPELINE_VERSION,
+  type PackMetrics,
   type PaginatedPage,
 } from "@/lib/pdf/paginator";
 import {
@@ -18,12 +20,12 @@ import {
 export const runtime = "nodejs";
 
 const BOOK_SELECT =
-  "id, community_id, title, author, description, cover_url, pdf_storage_path, total_pages, table_of_contents, is_published, pipeline_version, created_at, updated_at";
+  "id, community_id, title, author, description, cover_url, pdf_storage_path, total_pages, table_of_contents, is_published, pipeline_version, pack_metrics, created_at, updated_at";
 
 /**
  * Persist DOM-packed pages (current PIPELINE_VERSION). Any community member can
- * trigger this on first open; service_role writes because books UPDATE is
- * admin-only in RLS.
+ * trigger this on first open or when the viewport changed enough to need a
+ * re-pack; service_role writes because books UPDATE is admin-only in RLS.
  */
 export async function POST(
   request: Request,
@@ -45,7 +47,6 @@ export async function POST(
     pages = pages.slice(0, MAX_STORED_PAGES);
   }
 
-  // Normalize page numbers to a contiguous 0..n-1 sequence.
   pages = pages.map((page, index) => ({
     ...page,
     pageNumber: index,
@@ -60,20 +61,46 @@ export async function POST(
       ? bodyResult.data.tableOfContents
       : extractTOC(pages);
 
+  const incomingMetrics = bodyResult.data.packMetrics as
+    | PackMetrics
+    | undefined;
+
   const supabase = await createClient();
   const { data: existing, error: fetchError } = await supabase
     .from("books")
-    .select("id, pipeline_version, community_id")
+    .select("id, pipeline_version, community_id, pack_metrics")
     .eq("id", bookId)
     .eq("community_id", community.id)
     .maybeSingle();
 
-  if (fetchError || !existing) {
+  // If pack_metrics column is missing (migration 009 pending), retry without it.
+  let existingRow = existing;
+  let fetchErr = fetchError;
+  if (fetchError && /pack_metrics/i.test(fetchError.message ?? "")) {
+    const fallback = await supabase
+      .from("books")
+      .select("id, pipeline_version, community_id")
+      .eq("id", bookId)
+      .eq("community_id", community.id)
+      .maybeSingle();
+    existingRow = fallback.data
+      ? { ...fallback.data, pack_metrics: null }
+      : null;
+    fetchErr = fallback.error;
+  }
+
+  if (fetchErr || !existingRow) {
     return NextResponse.json({ error: "Libro no encontrado" }, { status: 404 });
   }
 
-  // Idempotent: already DOM-packed — return current metadata without overwrite.
-  if ((existing.pipeline_version ?? 0) >= PIPELINE_VERSION) {
+  const storedMetrics = existingRow.pack_metrics as PackMetrics | null;
+  const viewportChanged =
+    !!incomingMetrics && packMetricsStale(storedMetrics, incomingMetrics);
+  const force = bodyResult.data.force === true || viewportChanged;
+  const alreadyCurrent =
+    (existingRow.pipeline_version ?? 0) >= PIPELINE_VERSION && !force;
+
+  if (alreadyCurrent) {
     const { data: book } = await supabase
       .from("books")
       .select(BOOK_SELECT)
@@ -88,26 +115,43 @@ export async function POST(
 
   try {
     const serviceClient = await createServiceClient();
-    const { data: book, error } = await serviceClient
+    const payload = {
+      content_json: pages,
+      total_pages: pages.length,
+      table_of_contents: toc,
+      pipeline_version: PIPELINE_VERSION,
+      pack_metrics: incomingMetrics ?? storedMetrics ?? null,
+      updated_at: new Date().toISOString(),
+    };
+
+    let { data: book, error } = await serviceClient
       .from("books")
-      .update({
-        content_json: pages,
-        total_pages: pages.length,
-        table_of_contents: toc,
-        pipeline_version: PIPELINE_VERSION,
-        updated_at: new Date().toISOString(),
-      })
+      .update(payload)
       .eq("id", bookId)
       .eq("community_id", community.id)
-      .lt("pipeline_version", PIPELINE_VERSION)
       .select(BOOK_SELECT)
       .maybeSingle();
+
+    // Migration 009 not applied yet — persist pages without pack_metrics.
+    if (error && /pack_metrics/i.test(error.message ?? "")) {
+      const { pack_metrics: _drop, ...withoutMetrics } = payload;
+      const retry = await serviceClient
+        .from("books")
+        .update(withoutMetrics)
+        .eq("id", bookId)
+        .eq("community_id", community.id)
+        .select(
+          "id, community_id, title, author, description, cover_url, pdf_storage_path, total_pages, table_of_contents, is_published, pipeline_version, created_at, updated_at"
+        )
+        .maybeSingle();
+      book = retry.data as typeof book;
+      error = retry.error;
+    }
 
     if (error) {
       return internalErrorResponse("Error al guardar paginación:", error);
     }
 
-    // Race: another request finished first.
     if (!book) {
       const { data: current } = await supabase
         .from("books")
