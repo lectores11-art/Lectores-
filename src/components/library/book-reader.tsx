@@ -301,12 +301,19 @@ export function BookReader({
           para ver el texto correctamente.
         </p>
       )}
+
       <div
         className={cn(
-          "book-frame relative w-full",
+          "book-reader-stage w-full",
           compact ? "book-compact max-w-3xl" : "max-w-5xl"
         )}
       >
+        <header className="book-external-title">
+          <p className="book-external-title-name">{title}</p>
+          {author ? <p className="book-external-title-author">{author}</p> : null}
+        </header>
+
+        <div className="book-frame relative w-full">
         {preparing && (
           <div
             className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 bg-slate-900/80 px-6 text-center text-white"
@@ -329,7 +336,7 @@ export function BookReader({
             <div className="book-spine" />
 
             <div className="book-chrome-header">
-              {onClose && (
+              {onClose ? (
                 <button
                   onClick={onClose}
                   className={cn(iconBtn, "justify-self-start")}
@@ -337,15 +344,10 @@ export function BookReader({
                 >
                   <X className="h-4 w-4" strokeWidth={1.75} />
                 </button>
+              ) : (
+                <span />
               )}
-              {!onClose && <span />}
-              <div className="min-w-0 text-center">
-                <p className="book-chrome-title truncate">{title}</p>
-                {author ? (
-                  <p className="book-chrome-author truncate">{author}</p>
-                ) : null}
-              </div>
-              <div className="flex items-center justify-end gap-0.5">
+              <div className="flex items-center justify-end gap-0.5 justify-self-end">
                 <button onClick={() => togglePanel("toc")} className={iconBtn} aria-label="Índice">
                   <List className="h-4 w-4" strokeWidth={1.75} />
                 </button>
@@ -552,6 +554,7 @@ export function BookReader({
         >
           <ChevronRight className="h-5 w-5" />
         </button>
+        </div>
       </div>
 
       {!compact && (

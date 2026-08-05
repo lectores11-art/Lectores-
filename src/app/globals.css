@@ -79,24 +79,56 @@ body {
   background: #1a1d22;
 }
 
-/* Red hardcover that peeks around the cream pages */
-.book-frame {
+.book-reader-stage {
   position: relative;
-  border-radius: 1px;
-  padding: 4px;
-  background:
-    linear-gradient(180deg, #d40f18 0%, #b80d14 55%, #9a0b11 100%);
-  box-shadow:
-    0 28px 56px -18px rgba(0, 0, 0, 0.72),
-    0 10px 24px -10px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.16);
 }
 
-/* Stacked paper edges between cover and active pages */
+.book-external-title {
+  margin: 0 0 0.85rem;
+  text-align: center;
+  padding: 0 1rem;
+}
+
+.book-external-title-name {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.92);
+  line-height: 1.25;
+}
+
+.book-external-title-author {
+  margin: 0.2rem 0 0;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.55);
+  line-height: 1.3;
+}
+
+.book-compact .book-external-title {
+  margin-bottom: 0.55rem;
+}
+
+.book-compact .book-external-title-name {
+  font-size: 0.82rem;
+}
+
+/* Book frame — soft lift, no hardcover border */
+.book-frame {
+  position: relative;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow:
+    0 28px 56px -18px rgba(0, 0, 0, 0.72),
+    0 10px 24px -10px rgba(0, 0, 0, 0.45);
+}
+
+/* Stacked paper edges — thicker block so the book reads as many pages */
 .book-block {
   position: relative;
   display: grid;
-  grid-template-columns: 12px 1fr 12px;
+  grid-template-columns: 28px 1fr 28px;
   min-height: 0;
   background: #ebe6da;
 }
@@ -112,18 +144,23 @@ body {
   background:
     repeating-linear-gradient(
       90deg,
-      #f7f3ea 0px,
-      #f7f3ea 1px,
-      #cfcab8 1px,
-      #cfcab8 1.5px,
-      #e7e1d3 1.5px,
-      #e7e1d3 2.5px,
-      #bdb7a6 2.5px,
-      #bdb7a6 3px
-    );
+      #f8f4eb 0px,
+      #f8f4eb 1.5px,
+      #d4cebe 1.5px,
+      #d4cebe 2px,
+      #ebe5d7 2px,
+      #ebe5d7 3.5px,
+      #c4bead 3.5px,
+      #c4bead 4px,
+      #f3eee4 4px,
+      #f3eee4 5.5px,
+      #b8b19f 5.5px,
+      #b8b19f 6px
+    ),
+    linear-gradient(90deg, #b0aa98 0%, #f0ebe1 100%);
   box-shadow:
-    inset 4px 0 7px rgba(0, 0, 0, 0.16),
-    inset -1px 0 0 rgba(255, 255, 255, 0.4);
+    inset 6px 0 10px rgba(0, 0, 0, 0.18),
+    inset -2px 0 0 rgba(255, 255, 255, 0.35);
 }
 
 .book-edge-left::before,
@@ -133,8 +170,8 @@ body {
   left: 0;
   right: 0;
   top: 0;
-  height: 10px;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.12), transparent);
+  height: 14px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.14), transparent);
 }
 
 .book-edge-left::after,
@@ -144,26 +181,31 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  height: 10px;
-  background: linear-gradient(0deg, rgba(0, 0, 0, 0.1), transparent);
+  height: 14px;
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.12), transparent);
 }
 
 .book-edge-right {
   background:
     repeating-linear-gradient(
       90deg,
-      #bdb7a6 0px,
-      #bdb7a6 0.5px,
-      #e7e1d3 0.5px,
-      #e7e1d3 1.5px,
-      #cfcab8 1.5px,
-      #cfcab8 2px,
-      #f7f3ea 2px,
-      #f7f3ea 3px
-    );
+      #b8b19f 0px,
+      #b8b19f 0.5px,
+      #f3eee4 0.5px,
+      #f3eee4 2px,
+      #c4bead 2px,
+      #c4bead 2.5px,
+      #ebe5d7 2.5px,
+      #ebe5d7 4px,
+      #d4cebe 4px,
+      #d4cebe 4.5px,
+      #f8f4eb 4.5px,
+      #f8f4eb 6px
+    ),
+    linear-gradient(90deg, #f0ebe1 0%, #b0aa98 100%);
   box-shadow:
-    inset -4px 0 7px rgba(0, 0, 0, 0.16),
-    inset 1px 0 0 rgba(255, 255, 255, 0.4);
+    inset -6px 0 10px rgba(0, 0, 0, 0.18),
+    inset 2px 0 0 rgba(255, 255, 255, 0.35);
 }
 
 .book-spread {
@@ -184,10 +226,10 @@ body {
   right: 0;
   z-index: 8;
   display: grid;
-  grid-template-columns: 1fr minmax(0, 2.4fr) 1fr;
+  grid-template-columns: 1fr 1fr;
   align-items: start;
   gap: 0.5rem;
-  padding: 0.7rem 0.85rem 0.35rem;
+  padding: 0.55rem 0.85rem 0.25rem;
   pointer-events: none;
 }
 
@@ -199,10 +241,10 @@ body {
   position: relative;
   display: flex;
   flex-direction: column;
-  padding: 3.4rem 3rem 3.4rem;
+  padding: 2.6rem 3rem 3.4rem;
   line-height: 1.8;
-  height: calc(100vh - 8.5rem);
-  max-height: calc(100vh - 8.5rem);
+  height: calc(100vh - 10rem);
+  max-height: calc(100vh - 10rem);
   background: #f5f1e8;
   color: #1a1a1a;
   overflow: hidden;
@@ -225,7 +267,7 @@ body {
 }
 
 .book-compact .book-block {
-  grid-template-columns: 6px 1fr 6px;
+  grid-template-columns: 16px 1fr 16px;
 }
 
 /* Outer curve + gutter depth on each leaf */
@@ -363,21 +405,6 @@ body {
     #ebe6da 44%,
     transparent 44.5%
   );
-}
-
-.book-chrome-title {
-  font-size: 0.8rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  color: #2a2a2a;
-  line-height: 1.2;
-}
-
-.book-chrome-author {
-  font-size: 0.68rem;
-  color: #6b6b6b;
-  line-height: 1.25;
-  margin-top: 0.1rem;
 }
 
 .book-progress {
