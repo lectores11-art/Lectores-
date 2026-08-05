@@ -1,51 +1,26 @@
 /**
- * Client-only: measure reader blocks with real CSS (Literata / .book-para) and
- * pack pages with {@link packBlocksWithMeasuredHeights}.
+ * Client-only page packing.
  *
- * Critical: pack budgets must use the *content box* (clientHeight minus padding),
- * not the full clientHeight — otherwise ~1–2 lines overflow and get clipped.
+ * Truth signal: render blocks together in a fixed-height clone of `.book-page-body`
+ * and use scrollHeight > clientHeight. Summing per-block offsetHeights is NOT
+ * reliable (margin collapse, :first-of-type, stacking) and caused clipped lines.
  */
 import {
   mergeContinuationParagraphs,
-  packBlocksWithMeasuredHeights,
   type PaginatedPage,
   type TextBlock,
 } from "./paginator";
 
 export type MeasurePackOptions = {
   columnWidthPx: number;
+  /** Full clientHeight of left `.book-page-body` (includes padding). */
   leftHeightPx: number;
+  /** Full clientHeight of right `.book-page-body` (includes padding). */
   rightHeightPx: number;
-  /** Pack font size — launch default matches BookReader (16). */
   fontSize: number;
 };
 
 const PACK_FONT_SIZE = 16;
-
-/** Extra px reserved so rounding / subpixel layout never clips a line. */
-export const PACK_SAFETY_PX = 10;
-
-/**
- * Usable height inside a `.book-page-body` (excludes padding + safety).
- * Using raw clientHeight over-packs by padding-bottom (~1.5rem ≈ 2 lines).
- */
-export function contentBoxHeightPx(
-  el: HTMLElement,
-  safetyPx: number = PACK_SAFETY_PX
-): number {
-  const style = getComputedStyle(el);
-  const padTop = parseFloat(style.paddingTop) || 0;
-  const padBottom = parseFloat(style.paddingBottom) || 0;
-  return Math.max(80, Math.floor(el.clientHeight - padTop - padBottom - safetyPx));
-}
-
-/** Content-box width for wrapping (matches where blocks actually lay out). */
-export function contentBoxWidthPx(el: HTMLElement): number {
-  const style = getComputedStyle(el);
-  const padLeft = parseFloat(style.paddingLeft) || 0;
-  const padRight = parseFloat(style.paddingRight) || 0;
-  return Math.max(80, Math.floor(el.clientWidth - padLeft - padRight));
-}
 
 function classNameForBlock(block: TextBlock): string {
   switch (block.style) {
@@ -77,7 +52,28 @@ function fontSizeForBlock(block: TextBlock, base: number): number {
   }
 }
 
-function createMeasureHost(columnWidthPx: number): {
+function renderBlockEl(block: TextBlock, fontSize: number): HTMLElement {
+  const tag =
+    block.style === "title" || block.style === "heading" ? "h2" : "p";
+  const el = document.createElement(tag);
+  el.className = classNameForBlock(block);
+  el.style.fontSize = `${fontSizeForBlock(block, fontSize)}px`;
+  el.textContent = block.text;
+  return el;
+}
+
+/** Live body metrics — use full client box (padding included); probe mirrors CSS. */
+export function pageBodyMetrics(el: HTMLElement): {
+  widthPx: number;
+  heightPx: number;
+} {
+  return {
+    widthPx: Math.max(80, Math.floor(el.clientWidth)),
+    heightPx: Math.max(80, Math.floor(el.clientHeight)),
+  };
+}
+
+function createProbeColumn(columnWidthPx: number): {
   host: HTMLElement;
   column: HTMLElement;
 } {
@@ -90,9 +86,7 @@ function createMeasureHost(columnWidthPx: number): {
     "top:0",
     "visibility:hidden",
     "pointer-events:none",
-    "height:auto",
-    "overflow:visible",
-    `width:${Math.max(120, columnWidthPx)}px`,
+    `width:${columnWidthPx}px`,
   ].join(";");
 
   const page = document.createElement("div");
@@ -108,15 +102,15 @@ function createMeasureHost(columnWidthPx: number): {
   ].join(";");
 
   const column = document.createElement("div");
-  // Match reader body width/typography; no vertical padding here — budgets
-  // already exclude real body padding via contentBoxHeightPx.
   column.className = "book-page-body";
+  // Mirror reader body: same padding-bottom, fixed height set per page, clip overflow.
   column.style.cssText = [
-    `width:${Math.max(120, columnWidthPx)}px`,
-    "padding:0",
-    "overflow:visible",
+    `width:${columnWidthPx}px`,
+    "box-sizing:border-box",
+    "padding-bottom:1.5rem",
+    "overflow:hidden",
     "min-height:0",
-    "height:auto",
+    "flex:none",
   ].join(";");
 
   page.appendChild(column);
@@ -125,82 +119,125 @@ function createMeasureHost(columnWidthPx: number): {
   return { host, column };
 }
 
-function renderBlockEl(block: TextBlock, fontSize: number): HTMLElement {
-  const tag =
-    block.style === "title" || block.style === "heading" ? "h2" : "p";
-  const el = document.createElement(tag);
-  el.className = classNameForBlock(block);
-  el.style.fontSize = `${fontSizeForBlock(block, fontSize)}px`;
-  el.textContent = block.text;
-  return el;
-}
-
-/** Measure a single block's offsetHeight in the reader column. */
-export function measureBlockHeightPx(
-  column: HTMLElement,
-  block: TextBlock,
-  fontSize: number
-): number {
-  const el = renderBlockEl(block, fontSize);
-  column.appendChild(el);
-  const h = el.offsetHeight;
-  column.removeChild(el);
-  return Math.max(0, h);
+function overflows(column: HTMLElement): boolean {
+  // Subpixel tolerance — only treat real overflow as failure.
+  return column.scrollHeight > column.clientHeight + 1;
 }
 
 /**
- * Split a paragraph by words so each chunk fits maxHeightPx (measured).
- * Non-paragraphs are never split.
+ * Binary-search word split so the first chunk fits alone in an empty probe column.
  */
-export function splitBlockToFitMeasured(
+function splitParagraphToFitProbe(
   column: HTMLElement,
   block: TextBlock,
-  maxHeightPx: number,
   fontSize: number
 ): TextBlock[] {
-  if (block.style !== "paragraph") return [{ ...block }];
-
-  const fullH = measureBlockHeightPx(column, block, fontSize);
-  if (fullH <= maxHeightPx) return [{ ...block }];
-
   const words = block.text.trim().split(/\s+/).filter(Boolean);
   if (words.length <= 1) return [{ ...block }];
 
-  const chunks: TextBlock[] = [];
-  let current: string[] = [];
+  let lo = 1;
+  let hi = words.length;
+  let best = 1;
 
-  for (const word of words) {
-    const trial = [...current, word].join(" ");
-    const trialH = measureBlockHeightPx(
-      column,
-      { ...block, text: trial },
-      fontSize
-    );
-    if (trialH > maxHeightPx && current.length > 0) {
-      chunks.push({
-        ...block,
-        text: current.join(" "),
-        continued: block.continued === true || chunks.length > 0,
-      });
-      current = [word];
+  while (lo <= hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    const trial: TextBlock = {
+      ...block,
+      text: words.slice(0, mid).join(" "),
+      continued: block.continued === true,
+    };
+    column.replaceChildren(renderBlockEl(trial, fontSize));
+    if (!overflows(column)) {
+      best = mid;
+      lo = mid + 1;
     } else {
-      current.push(word);
+      hi = mid - 1;
     }
   }
-  if (current.length > 0) {
-    chunks.push({
-      ...block,
-      text: current.join(" "),
-      continued: block.continued === true || chunks.length > 0,
-    });
-  }
-  return chunks.length > 0 ? chunks : [{ ...block }];
+
+  column.replaceChildren();
+
+  if (best >= words.length) return [{ ...block }];
+
+  const first: TextBlock = {
+    ...block,
+    text: words.slice(0, best).join(" "),
+    continued: block.continued === true,
+  };
+  const rest: TextBlock = {
+    ...block,
+    text: words.slice(best).join(" "),
+    continued: true,
+  };
+  return [first, rest];
+}
+
+function serializeBlocks(blocks: TextBlock[]): string {
+  return blocks.map((b) => b.text).join("\n\n");
 }
 
 /**
- * Measure blocks in a hidden reader column and pack into pages.
- * Must run in the browser (uses document + computed CSS).
- * Call after `document.fonts.ready` so Literata metrics match the reader.
+ * With existing page content already in `column`, find how much of `block` still
+ * fits. Returns [chunk, remainder] or null if nothing fits (caller should
+ * flush the page).
+ */
+function splitParagraphIntoRemaining(
+  column: HTMLElement,
+  block: TextBlock,
+  fontSize: number
+): TextBlock[] | null {
+  if (block.style !== "paragraph") return null;
+
+  const words = block.text.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return null;
+
+  let lo = 1;
+  let hi = words.length;
+  let best = 0;
+
+  while (lo <= hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    const trial: TextBlock = {
+      ...block,
+      text: words.slice(0, mid).join(" "),
+      continued: block.continued === true,
+    };
+    const el = renderBlockEl(trial, fontSize);
+    column.appendChild(el);
+    const ok = !overflows(column);
+    column.removeChild(el);
+    if (ok) {
+      best = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+
+  if (best <= 0) return null;
+
+  const first: TextBlock = {
+    ...block,
+    text: words.slice(0, best).join(" "),
+    continued: block.continued === true,
+  };
+  const restWords = words.slice(best);
+  if (restWords.length === 0) return [first];
+
+  return [
+    first,
+    {
+      ...block,
+      text: restWords.join(" "),
+      continued: true,
+    },
+  ];
+}
+
+/**
+ * Pack by overflow probe: add blocks until the real stacked layout no longer fits.
+ * When a paragraph does not fit the remainder of a page, split it so the page
+ * fills (avoids large blank regions after a heading / short end of paragraph).
  */
 export function measureAndPackBlocks(
   blocks: TextBlock[],
@@ -213,34 +250,146 @@ export function measureAndPackBlocks(
   const fontSize = options.fontSize || PACK_FONT_SIZE;
   const leftH = Math.max(80, Math.floor(options.leftHeightPx));
   const rightH = Math.max(80, Math.floor(options.rightHeightPx));
-  const pageCap = Math.min(leftH, rightH);
-  const { host, column } = createMeasureHost(options.columnWidthPx);
+  const { host, column } = createProbeColumn(options.columnWidthPx);
+
+  function limitFor(pageIndex: number): number {
+    return pageIndex % 2 === 0 ? leftH : rightH;
+  }
 
   try {
-    const source = mergeContinuationParagraphs(blocks);
-    const prepared: TextBlock[] = [];
-    const heights: number[] = [];
+    const queue = [...mergeContinuationParagraphs(blocks)];
+    const pages: PaginatedPage[] = [];
 
-    for (const block of source) {
-      const pieces = splitBlockToFitMeasured(
-        column,
-        block,
-        Math.max(80, pageCap),
-        fontSize
-      );
-      for (const piece of pieces) {
-        prepared.push(piece);
-        heights.push(measureBlockHeightPx(column, piece, fontSize));
-      }
+    if (queue.length === 0) {
+      const fallback = "Este libro no tiene contenido extraíble.";
+      return [
+        {
+          pageNumber: 0,
+          content: fallback,
+          blocks: [{ style: "paragraph", text: fallback }],
+        },
+      ];
     }
 
-    return packBlocksWithMeasuredHeights(prepared, heights, {
-      leftHeightPx: leftH,
-      rightHeightPx: rightH,
-    });
+    let pageBlocks: TextBlock[] = [];
+
+    function flushPage() {
+      if (pageBlocks.length === 0) return;
+      pages.push({
+        pageNumber: pages.length,
+        content: serializeBlocks(pageBlocks),
+        blocks: [...pageBlocks],
+      });
+      pageBlocks = [];
+      column.replaceChildren();
+    }
+
+    /** Re-render current pageBlocks into the probe (after splits / retries). */
+    function paintPageBlocks() {
+      column.replaceChildren(
+        ...pageBlocks.map((b) => renderBlockEl(b, fontSize))
+      );
+    }
+
+    let guard = 0;
+    const maxSteps = Math.max(10_000, queue.length * 40);
+
+    while (queue.length > 0) {
+      if (++guard > maxSteps) {
+        throw new Error("measureAndPackBlocks: exceeded safety iteration cap");
+      }
+
+      const limit = limitFor(pages.length);
+      column.style.height = `${limit}px`;
+
+      if (pageBlocks.length === 0) {
+        column.replaceChildren();
+      }
+
+      const next = queue[0];
+      const el = renderBlockEl(next, fontSize);
+      column.appendChild(el);
+
+      if (!overflows(column)) {
+        pageBlocks.push(next);
+        queue.shift();
+        continue;
+      }
+
+      // Does not fit with current page content.
+      column.removeChild(el);
+
+      if (pageBlocks.length === 0) {
+        // Alone and still too tall — split paragraphs only.
+        if (next.style === "paragraph") {
+          const [first, ...rest] = splitParagraphToFitProbe(
+            column,
+            next,
+            fontSize
+          );
+          queue.shift();
+          column.replaceChildren(renderBlockEl(first, fontSize));
+          if (overflows(column) && first.text.trim().split(/\s+/).length <= 1) {
+            pageBlocks.push(first);
+            flushPage();
+          } else if (overflows(column)) {
+            const words = first.text.trim().split(/\s+/).filter(Boolean);
+            const one = { ...first, text: words[0] ?? first.text };
+            const leftover = words.slice(1).join(" ");
+            pageBlocks.push(one);
+            flushPage();
+            if (leftover) {
+              queue.unshift({ ...first, text: leftover, continued: true });
+            }
+            if (rest.length) queue.unshift(...rest);
+          } else {
+            pageBlocks.push(first);
+            if (rest.length) queue.unshift(...rest);
+          }
+          continue;
+        }
+
+        pageBlocks.push(next);
+        queue.shift();
+        flushPage();
+        continue;
+      }
+
+      // Page already has content. Fill remaining space with the start of a
+      // paragraph instead of leaving a large blank and moving the whole block.
+      if (next.style === "paragraph") {
+        paintPageBlocks();
+        const pieces = splitParagraphIntoRemaining(column, next, fontSize);
+        if (pieces && pieces[0]?.text.trim()) {
+          queue.shift();
+          const first = pieces[0];
+          column.appendChild(renderBlockEl(first, fontSize));
+          pageBlocks.push(first);
+          if (pieces[1]) queue.unshift(pieces[1]);
+          flushPage();
+          continue;
+        }
+      }
+
+      // Non-paragraph (heading/list) or nothing fits in the remainder — new page.
+      flushPage();
+    }
+
+    flushPage();
+    return pages;
   } finally {
     host.remove();
   }
+}
+
+/** @deprecated kept for call sites that imported the old name */
+export function contentBoxHeightPx(el: HTMLElement): number {
+  return pageBodyMetrics(el).heightPx;
+}
+
+/** @deprecated kept for call sites that imported the old name */
+export function contentBoxWidthPx(el: HTMLElement): number {
+  return pageBodyMetrics(el).widthPx;
 }
 
 export { PACK_FONT_SIZE };

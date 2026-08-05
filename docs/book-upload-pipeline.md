@@ -27,7 +27,7 @@ Primera apertura del lector (cualquier miembro):
   → medir bloques con CSS real (Literata / .book-para)
   → packBlocksWithMeasuredHeights
   → POST /api/c/[slug]/books/[bookId]/paginate
-  → DB: content_json + pipeline_version = 9 (DOM-packed)
+  → DB: content_json + pipeline_version = 10 (DOM-packed)
 
 Lecturas siguientes: navegar spreads; sin reflow continuo.
 ```
@@ -42,7 +42,7 @@ Los archivos **no** pasan por el body de Vercel (límite ~4.5 MB). Tope práctic
 | `CHARS_PER_LINE` | 42 | Estimación servidor |
 | `MAX_STORED_PAGES` | 1500 | Techo JSONB |
 | `ESTIMATED_PIPELINE_VERSION` | 7 | Upload: páginas estimadas; necesita DOM pack |
-| `PIPELINE_VERSION` | 9 | Final: DOM pack con content-box (sin padding) + chrome simétrico |
+| `PIPELINE_VERSION` | 10 | Final: pack por desborde real (scrollHeight) + chrome fijo simétrico |
 
 `needsDomPack(version)` es true si `0 < version < 8`.
 

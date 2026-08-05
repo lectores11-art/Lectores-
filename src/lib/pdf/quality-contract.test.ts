@@ -47,7 +47,7 @@ function centeredLine(
 
 describe("quality contract pipeline flags", () => {
   it("estimated upload needs DOM pack; final does not", () => {
-    expect(PIPELINE_VERSION).toBe(9);
+    expect(PIPELINE_VERSION).toBe(11);
     expect(ESTIMATED_PIPELINE_VERSION).toBe(7);
     expect(needsDomPack(ESTIMATED_PIPELINE_VERSION)).toBe(true);
     expect(needsDomPack(PIPELINE_VERSION)).toBe(false);

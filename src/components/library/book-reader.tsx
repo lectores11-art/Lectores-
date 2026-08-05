@@ -130,18 +130,21 @@ export function BookReader({
         const {
           measureAndPackBlocks,
           PACK_FONT_SIZE,
-          contentBoxHeightPx,
-          contentBoxWidthPx,
+          pageBodyMetrics,
         } = await import("@/lib/pdf/measure-and-pack");
 
         const leftEl = leftBodyRef.current;
         const rightEl = rightBodyRef.current;
-        // Content box only — raw clientHeight includes padding-bottom and over-packs ~2 lines.
-        const columnWidthPx = leftEl ? contentBoxWidthPx(leftEl) : 0;
-        const leftHeightPx = leftEl ? contentBoxHeightPx(leftEl) : 0;
-        const rightHeightPx = rightEl
-          ? contentBoxHeightPx(rightEl)
-          : leftHeightPx;
+        if (!leftEl) {
+          setPreparing(false);
+          return;
+        }
+
+        const left = pageBodyMetrics(leftEl);
+        const right = rightEl ? pageBodyMetrics(rightEl) : left;
+        const columnWidthPx = left.widthPx;
+        const leftHeightPx = left.heightPx;
+        const rightHeightPx = right.heightPx;
 
         if (columnWidthPx < 80 || leftHeightPx < 80) {
           setPreparing(false);
@@ -157,6 +160,8 @@ export function BookReader({
         });
         if (cancelled) return;
         packedOnceRef.current = true;
+        // Keep display size locked to pack size so the slider cannot reintroduce clipping.
+        setSettings((s) => ({ ...s, fontSize: PACK_FONT_SIZE }));
         setLivePages(packed);
         setPreparing(false);
         await onDomPackedRef.current?.(packed);
@@ -303,7 +308,8 @@ export function BookReader({
                 <X className="h-4 w-4" />
               </button>
             )}
-            {/* Same chrome height as right page so text baselines match across the spread. */}
+            {/* Fixed-height chrome (identical on both pages). Toolbar is NOT inside
+                this box — absolute children would collapse min-height layouts. */}
             <div className="book-page-chrome text-center">
               {spreadIdx === 0 && leftPage?.pageNumber === 0 ? (
                 <>
@@ -314,7 +320,11 @@ export function BookReader({
                     <p className="text-xs italic text-slate-500">{author}</p>
                   )}
                 </>
-              ) : null}
+              ) : (
+                <span className="invisible select-none" aria-hidden>
+                  .
+                </span>
+              )}
             </div>
 
             <div className="book-page-body" ref={leftBodyRef}>
@@ -331,27 +341,31 @@ export function BookReader({
 
           {/* RIGHT PAGE */}
           <div className="book-page book-page-right">
-            <div className="book-page-chrome relative">
-              <div className="absolute right-0 top-0 flex items-center gap-1">
-                <button onClick={() => togglePanel("toc")} className={iconBtn} aria-label="Índice">
-                  <List className="h-4 w-4" />
+            <div className="absolute right-3 top-3 z-10 flex items-center gap-1">
+              <button onClick={() => togglePanel("toc")} className={iconBtn} aria-label="Índice">
+                <List className="h-4 w-4" />
+              </button>
+              <button onClick={() => togglePanel("settings")} className={iconBtn} aria-label="Tipografía">
+                <Type className="h-4 w-4" />
+              </button>
+              {onBookmark && (
+                <button
+                  onClick={handleBookmark}
+                  className={cn(iconBtn, justBookmarked && "text-sky-500")}
+                  aria-label="Marcador"
+                >
+                  <Bookmark className="h-4 w-4" fill={justBookmarked ? "currentColor" : "none"} />
                 </button>
-                <button onClick={() => togglePanel("settings")} className={iconBtn} aria-label="Tipografía">
-                  <Type className="h-4 w-4" />
-                </button>
-                {onBookmark && (
-                  <button
-                    onClick={handleBookmark}
-                    className={cn(iconBtn, justBookmarked && "text-sky-500")}
-                    aria-label="Marcador"
-                  >
-                    <Bookmark className="h-4 w-4" fill={justBookmarked ? "currentColor" : "none"} />
-                  </button>
-                )}
-                <button onClick={() => togglePanel("search")} className={iconBtn} aria-label="Buscar">
-                  <Search className="h-4 w-4" />
-                </button>
-              </div>
+              )}
+              <button onClick={() => togglePanel("search")} className={iconBtn} aria-label="Buscar">
+                <Search className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="book-page-chrome">
+              <span className="invisible select-none" aria-hidden>
+                .
+              </span>
             </div>
 
             <div className="book-page-body" ref={rightBodyRef}>
@@ -402,14 +416,16 @@ export function BookReader({
                   </label>
                   <input
                     type="range"
-                    min={13}
-                    max={26}
-                    value={settings.fontSize}
-                    onChange={(e) =>
-                      setSettings({ ...settings, fontSize: Number(e.target.value) })
-                    }
-                    className="w-full accent-sky-500"
+                    min={16}
+                    max={16}
+                    value={16}
+                    disabled
+                    title="El tamaño está fijado al de la paginación (16px) para evitar cortes"
+                    className="w-full accent-sky-500 opacity-50"
                   />
+                  <p className="mt-1 text-[10px] leading-snug text-slate-400">
+                    Fijado en 16px (mismo tamaño con el que se arman las páginas).
+                  </p>
                 </div>
                 <div className="flex gap-2">
                   {(["serif", "sans"] as const).map((f) => (

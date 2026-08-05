@@ -43,7 +43,7 @@ export const READER_WORDS_PER_PAGE = LEFT_PAGE_WORDS;
  * Final layout: pages packed with real DOM heights (Literata / reader CSS).
  * Bump when pack or measure rules change; stored on each book row after DOM pack.
  */
-export const PIPELINE_VERSION = 9;
+export const PIPELINE_VERSION = 11;
 
 /**
  * Server-side estimate only (upload). Reader runs DOM pack once and upgrades to
