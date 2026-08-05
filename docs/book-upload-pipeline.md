@@ -1,109 +1,102 @@
 # Pipeline de subida de libros (PDF → lector)
 
-Este documento define el flujo estándar para subir un PDF a la biblioteca de una comunidad y cómo verificar que quedó bien procesado.
+Este documento define el flujo estándar para subir un PDF y cómo se garantiza la calidad visual del libro virtual.
+
+## Contrato de calidad (obligatorio)
+
+| # | Garantía | Cómo se asegura |
+|---|----------|-----------------|
+| G1 | Texto sin cortes en el borde de la hoja | Empaquetado con **alturas medidas** en el DOM real; si no entra, pasa a la hoja siguiente |
+| G2 | Sin huecos grandes en prosa | Se llena cada hoja hasta que el próximo bloque no quepa (`packBlocksWithMeasuredHeights`) |
+| G3 | Sin saltos raros entre párrafos | Extracción une renglones PDF en prosa (`mergeProseLayoutBlocks`); cuerpo justificado |
+| G4 | Fiel al PDF en lo importante | Mismo orden de texto, títulos reconocibles, prosa legible (no pixel-perfect de márgenes) |
+
+Tests: `src/lib/pdf/quality-contract.test.ts`.
 
 ## Flujo
 
 ```
-POST /api/c/[slug]/books
-  → validatePdfFile + zod (título, autor, descripción)
-  → extractTextFromPdfBuffer (pdf-parse, serverExternalPackages)
-  → normalizeExtractedText (espacios, líneas duplicadas consecutivas)
-  → buildBlocks + paginateText (hojas ~80/105 palabras + bloques con estilo)
-  → extractTOC
-  → Storage: PDF original en bucket `books`
-  → DB: books (content_json con `blocks[]`, pipeline_version, …)
+Browser (admin):
+  → Storage upload portada → bucket `book-covers`
+  → Storage upload PDF → bucket `books`
+POST /api/c/[slug]/books  (JSON: metadatos + storage paths)
+  → extract (Nivel B / fallback A) → bloques → estimado de páginas
+  → DB: content_json + pipeline_version = 7 (estimado)
+
+Primera apertura del lector (cualquier miembro):
+  → medir bloques con CSS real (Literata / .book-para)
+  → packBlocksWithMeasuredHeights
+  → POST /api/c/[slug]/books/[bookId]/paginate
+  → DB: content_json + pipeline_version = 11 (DOM-packed)
+
+Lecturas siguientes: navegar spreads; sin reflow continuo.
 ```
+
+Los archivos **no** pasan por el body de Vercel (límite ~4.5 MB). Tope práctico: policies Storage (PDF 50 MB, portada 5 MB).
 
 ## Constantes (`src/lib/pdf/paginator.ts`)
 
 | Constante | Valor | Motivo |
 |-----------|-------|--------|
-| `LEFT_PAGE_WORDS` | 80 | Páginas pares (izquierda): caben con título solo en spread 1 |
-| `RIGHT_PAGE_WORDS` | 105 | Páginas impares (derecha): caben con barra de herramientas |
-| `LEFT_PAGE_LINES` | 20 | Presupuesto visual hoja izquierda |
-| `RIGHT_PAGE_LINES` | 22 | Presupuesto visual hoja derecha |
-| `CHARS_PER_LINE` | 48 | Ancho real de columna (~half page) |
-| `MAX_STORED_PAGES` | 1500 | Techo de seguridad para JSONB en Postgres |
-| `PIPELINE_VERSION` | 5 | Lector reflow por altura; upload con presupuesto conservador |
+| `LEFT_PAGE_LINES` / `RIGHT_PAGE_LINES` | 13 / 15 | Solo estimación de upload (no layout final) |
+| `CHARS_PER_LINE` | 42 | Estimación servidor |
+| `MAX_STORED_PAGES` | 1500 | Techo JSONB |
+| `ESTIMATED_PIPELINE_VERSION` | 7 | Upload: páginas estimadas; necesita DOM pack |
+| `PIPELINE_VERSION` | 11 | Final: overflow-probe + partir párrafos para llenar hoja + chrome fijo |
 
-## Nivel A — preservación de formato (v3)
+`needsDomPack(version)` es true si `0 < version < 8`.
 
-- **Extracción:** `getText({ lineEnforce: true })` mantiene saltos de línea del PDF.
-- **Bloques:** `buildBlocks` no fusiona líneas de índice/título; solo une líneas de prosa partidas (guiones, minúscula inicial).
-- **Estilos heurísticos:** `title`, `subtitle`, `list-item` (p. ej. `Libro 1:`), `heading`, `paragraph`.
-- **Lector:** `PageContent` renderiza cada bloque con CSS (centrado para TOC, ítems de lista, etc.).
-- **Persistencia:** cada página en `content_json` incluye `{ pageNumber, content, blocks[] }`.
+## Nivel A — texto
 
-## Nivel B — layout-aware (v4/v5)
+- Extracción de texto + `buildBlocks` / `paginateText`.
+- Estilos: `title`, `subtitle`, `list-item`, `heading`, `paragraph`.
 
-- **Extracción:** `extractPositionedTextFromPdfBuffer` obtiene `PositionedTextItem[]` con X/Y.
-- **Inferencia:** `inferLayoutBlocks` agrupa por línea, detecta centrado (±15%) y `fontSize` relativo.
-- **Paginación upload:** `paginateBlocksByHeight` con presupuesto conservador (14/16 líneas).
-- **Paginación lector (v5):** reflow en cliente midiendo `.book-page-body` con ResizeObserver — **arregla libros ya subidos sin re-subir**.
-- **Regla:** los bloques `list-item` nunca se parten entre páginas; párrafos largos sí.
-- **Upload:** `POST /api/c/[slug]/books` intenta pipeline B y hace fallback a Nivel A si falla.
+## Nivel B — layout-aware
 
-### Checklist índice sin recorte (Nivel B)
+- `extractPositionedTextFromPdfBuffer` → `inferLayoutBlocks` (centrado, prosa unida).
+- Upload: `paginateBlocksByLines` solo como **borrador**.
+- Lector: una vez mide y empaqueta; **no** hay `ResizeObserver` / reflow continuo.
 
-1. Abrir libro (reflow del lector debería bastar; re-subir opcional para v5 en DB).
-2. Spread 1 muestra `Tabla de Contenido`, título y primeros `Libro N:` sin recorte vertical.
-3. Los `Libro N:` restantes continúan en hoja 2+.
-4. Ninguna hoja corta texto a media letra en el borde inferior.
-5. Re-subir actualiza `pipeline_version` a 5.
+## Persistencia DOM pack
 
-## Migraciones Supabase requeridas
-
-1. `003_storage_setup.sql` — bucket `books`
-2. `004_storage_books_rls.sql` — políticas storage (opcional si usás service_role en upload)
-3. `005_books_pipeline_version.sql` — columna `pipeline_version`
+- `src/lib/pdf/measure-and-pack.ts` — mide en un contenedor oculto con las mismas clases del lector.
+- `POST .../paginate` — cualquier miembro autenticado de la comunidad; escribe con `service_role` (RLS de books UPDATE es admin-only) solo si `pipeline_version < 8`.
 
 ## Checklist post-subida (manual)
 
-Después de subir un PDF en **Biblioteca → Subir y procesar**:
+1. Abrir el libro: overlay “Preparando páginas…” una vez; luego lectura estable.
+2. **Sin scroll** en el cuerpo de la hoja.
+3. **Sin franja vacía** absurda en prosa normal; hojas se sienten llenas.
+4. Sección **Introducción** (u otra prosa): párrafos justificados, no renglones cortos centrados.
+5. Índice / `Libro N:` legibles y centrados.
+6. Comparar una sección con el PDF original (mismo orden de texto).
+7. Reabrir el libro: no vuelve a “preparar páginas” (`pipeline_version = 11`).
 
-1. **Sin frases repetidas progresivas** — la primera hoja no debe mostrar "Palabra", "Palabra siguiente", "Palabra siguiente otra…" en líneas separadas.
-2. **Spread correcto** — hoja izquierda ≠ hoja derecha (salvo última hoja impar en blanco a la derecha).
-3. **Sin scroll vertical** — el libro ocupa la pantalla; navegás con flechas o el slider, no scrolleando el cuerpo de la página.
-4. **Páginas razonables** — un libro mediano suele dar ~50–300 hojas, no 1500.
-5. **Texto real** — no el mensaje fallback *"No se pudo extraer el texto del PDF…"*.
+## Libros ya subidos (reprocesar)
 
-6. **Índice legible** — "Tabla de Contenido", título en mayúsculas y entradas `Libro N:` aparecen en líneas separadas y centradas, sin recorte en hoja 1 (v4).
+Libros con `pipeline_version` 4–10 se empaquetan solos en la **primera apertura** tras deployar este código (quedan en 11).
 
-## Libros procesados antes del fix (legacy)
+Si el contenido está realmente roto (`pipeline_version < 4` o banner legacy):
 
-Los libros subidos **antes** de `PIPELINE_VERSION = 5` pueden tener paginación de servidor demasiado densa. El **lector v5 reflowea en cliente**, así que el recorte debería desaparecer al refrescar. Re-subir sigue siendo recomendable para dejar `pipeline_version = 5` en DB.
+1. Borrar el libro.
+2. Volver a subir el PDF (con el deploy nuevo).
 
-Acción:
-
-1. Borrar el libro en la biblioteca (o desde Supabase).
-2. Volver a subir el mismo PDF.
-
-El lector muestra un banner amarillo si detecta legacy (`pipeline_version < 4`, >500 páginas, o patrón de repetición progresiva).
-
-## Tests automatizados
+## Tests
 
 ```bash
 npm run test
 ```
 
-Cubren `buildBlocks`, `classifyLineStyle`, `paginateText`, `normalizeExtractedText`, `hasLegacyPaginationBug` y `extractTOC`.
-
-## Configuración Next.js
-
-En `next.config.ts`:
-
-```ts
-serverExternalPackages: ["pdf-parse", "pdfjs-dist"],
-```
-
-Reiniciar `npm run dev` después de cambiar esta config.
+Cubren calidad G1–G3, `packBlocksWithMeasuredHeights`, layout prosa, extracción, TOC, etc.
 
 ## Troubleshooting
 
 | Síntoma | Causa probable | Acción |
 |---------|----------------|--------|
-| "Error interno" al subir | Storage RLS o timeout DB | Ver terminal del servidor; correr migraciones 003/004 |
-| Texto fallback en lector | Worker pdfjs (Turbopack) | Confirmar `serverExternalPackages` y reiniciar dev |
-| 1500 páginas / frases repetidas | Libro legacy | Borrar y re-subir |
-| Column `pipeline_version` error | Migración 005 pendiente | Ejecutar SQL en Supabase |
+| “Preparando páginas…” eterno | Medición falló (ancho 0) | Revisar consola; reabrir a pantalla completa |
+| Texto cortado abajo (~1–2 renglones) | Pack viejo (v8–10) | Abrir de nuevo (pipeline 11); letra fijada en 16px |
+| Texto empieza más abajo a la izquierda | Chrome asimétrico (viejo CSS) | Confirmar `.book-page-chrome` en ambas hojas |
+| Huecos/cortes tras pack | CSS del host distinto | Verificar Literata / `.book-para` cargados |
+| `supabaseKey is required` | Falta `SUPABASE_SERVICE_ROLE_KEY` | Vercel Production + Preview |
+| Upload viejo sigue mal | Deploy sin este código | Commit + push; no re-subir hasta Ready |
+| Column `pipeline_version` error | Migración 005 pendiente | SQL en Supabase |

@@ -27,20 +27,34 @@ export const RIGHT_PAGE_WORDS = 105;
 
 /**
  * Visual line budget per half-page (server-side estimate).
- * Half-page column ≈ 50–55 chars at 17px; body fits ~20–22 lines on a
- * typical laptop after padding (tuned against live reader fill).
+ * Conservative so content fits `calc(100vh - 10rem)` minus chrome/padding
+ * without per-page scroll on typical laptop viewports (~768–900px tall).
  */
-export const LEFT_PAGE_LINES = 20;
-export const RIGHT_PAGE_LINES = 22;
+export const LEFT_PAGE_LINES = 13;
+export const RIGHT_PAGE_LINES = 15;
 
-/** Approx characters per wrapped line in a reader half-page. */
-export const CHARS_PER_LINE = 48;
+/** Approx characters per wrapped line in a reader half-page (serif ~16px). */
+export const CHARS_PER_LINE = 42;
 
 /** @deprecated Use LEFT_PAGE_WORDS / RIGHT_PAGE_WORDS per page index. */
 export const READER_WORDS_PER_PAGE = LEFT_PAGE_WORDS;
 
-/** Bump when extraction/pagination logic changes; stored on each book row. */
-export const PIPELINE_VERSION = 5;
+/**
+ * Final layout: pages packed with real DOM heights (Literata / reader CSS).
+ * Bump when pack or measure rules change; stored on each book row after DOM pack.
+ */
+export const PIPELINE_VERSION = 11;
+
+/**
+ * Server-side estimate only (upload). Reader runs DOM pack once and upgrades to
+ * {@link PIPELINE_VERSION}. Anything in (0, PIPELINE_VERSION) needs that pass.
+ */
+export const ESTIMATED_PIPELINE_VERSION = 7;
+
+/** True when stored pages are not yet DOM-packed. */
+export function needsDomPack(pipelineVersion: number): boolean {
+  return pipelineVersion > 0 && pipelineVersion < PIPELINE_VERSION;
+}
 
 /** Safety cap for content_json size in DB. */
 export const MAX_STORED_PAGES = 1500;
@@ -77,12 +91,15 @@ export function classifyLineStyle(line: string): TextBlockStyle {
   return "paragraph";
 }
 
-function shouldJoinProseLines(prev: string, next: string): boolean {
+/** Whether two consecutive PDF lines should become one flowing paragraph. */
+export function shouldJoinProseLines(prev: string, next: string): boolean {
   if (prev.endsWith("-")) return true;
   if (/[.!?:;]$/.test(prev)) return false;
   if (next.length > 0 && next[0] === next[0].toLowerCase() && /[a-záéíóúñ]/.test(next[0])) {
     return true;
   }
+  // Same sentence / clause continued on the next visual line of the PDF.
+  if (!/[.!?…]["»')"\]]*$/.test(prev.trim())) return true;
   return false;
 }
 
@@ -175,10 +192,10 @@ export function blockLineCost(block: TextBlock): number {
 
 /** Estimate rendered height in px for a block at the given font size. */
 export function estimateBlockHeightPx(block: TextBlock, fontSize: number): number {
-  // Match globals.css: line-height 1.8, .book-para margin-bottom 0.85rem
-  // Slight inflation (+6%) so we never pack past the visible box.
-  const bodyLine = fontSize * 1.8;
-  const paraMargin = fontSize * 0.85;
+  // Match globals.css: line-height 1.75, .book-para margin-bottom 0.65rem
+  // Inflation keeps packed pages inside the visible box (no page scroll).
+  const bodyLine = fontSize * 1.75;
+  const paraMargin = fontSize * 0.65;
   let raw: number;
   switch (block.style) {
     case "title":
@@ -202,7 +219,7 @@ export function estimateBlockHeightPx(block: TextBlock, fontSize: number): numbe
     default:
       raw = bodyLine;
   }
-  return Math.ceil(raw * 1.06);
+  return Math.ceil(raw * 1.14);
 }
 
 /** Flatten stored pages back into a single ordered block stream. */
@@ -308,6 +325,53 @@ export type HeightPaginationOptions = {
   rightHeightPx: number;
   fontSize: number;
 };
+
+/**
+ * G1/G2 helper: packed page heights must not exceed limits; non-final pages
+ * should be filled until the next block does not fit (low slack).
+ */
+export function assertPackedPageQuality(
+  pages: PaginatedPage[],
+  blockHeights: number[],
+  options: Pick<HeightPaginationOptions, "leftHeightPx" | "rightHeightPx">,
+  opts?: { maxSlackRatio?: number }
+): { ok: true } | { ok: false; reason: string } {
+  const maxSlack = opts?.maxSlackRatio ?? 0.35;
+  const minHeight = 80;
+
+  function limitFor(pageIndex: number): number {
+    const raw =
+      pageIndex % 2 === 0 ? options.leftHeightPx : options.rightHeightPx;
+    return Math.max(minHeight, raw);
+  }
+
+  let globalIndex = 0;
+  for (let p = 0; p < pages.length; p++) {
+    const blocks = pages[p].blocks ?? [];
+    let used = 0;
+    for (let i = 0; i < blocks.length; i++) {
+      used += Math.max(0, blockHeights[globalIndex] ?? 0);
+      globalIndex += 1;
+    }
+    const limit = limitFor(p);
+    if (used > limit + 1) {
+      return {
+        ok: false,
+        reason: `G1: page ${p} used ${used}px > limit ${limit}px`,
+      };
+    }
+    if (p < pages.length - 1 && blocks.length > 0) {
+      const slack = (limit - used) / limit;
+      if (slack > maxSlack) {
+        return {
+          ok: false,
+          reason: `G2: page ${p} slack ${(slack * 100).toFixed(0)}% exceeds ${(maxSlack * 100).toFixed(0)}%`,
+        };
+      }
+    }
+  }
+  return { ok: true };
+}
 
 /**
  * Pack already-measured blocks into pages without exceeding page height.
@@ -520,9 +584,9 @@ export function paginateBlocksByHeight(
  * Atomic blocks (especially list-item) are never split across pages.
  */
 export function paginateBlocksByLines(blocks: TextBlock[]): PaginatedPage[] {
-  // Convert line budgets to a height model shared with the reader (~17px body).
-  const fontSize = 17;
-  const linePx = fontSize * 1.8;
+  // Match BookReader default fontSize (16) and globals.css line-height 1.75.
+  const fontSize = 16;
+  const linePx = fontSize * 1.75;
   return paginateBlocksByHeight(blocks, {
     leftHeightPx: LEFT_PAGE_LINES * linePx,
     rightHeightPx: RIGHT_PAGE_LINES * linePx,
@@ -678,22 +742,23 @@ export function extractTOC(pages: PaginatedPage[]): TOCItem[] {
   return toc;
 }
 
+/** Marker stored only if legacy code swallowed extraction errors — never save new books with this. */
+export const PDF_EXTRACT_FAILURE_MESSAGE =
+  "No se pudo extraer el texto del PDF. Verifica que el archivo contenga texto seleccionable.";
+
 export async function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> {
+  const { PDFParse } = await import("pdf-parse");
+  // Standalone copy — Node Buffer views can break pdfjs transfer inside pdf-parse on Vercel.
+  const data = Uint8Array.from(buffer);
+  const parser = new PDFParse({ data });
   try {
-    const { PDFParse } = await import("pdf-parse");
-    const parser = new PDFParse({ data: new Uint8Array(buffer) });
-    try {
-      const result = await parser.getText({ lineEnforce: true, pageJoiner: "\n" });
-      if (result.pages && result.pages.length > 0) {
-        return result.pages.map((p) => p.text).join("\n");
-      }
-      return result.text || "";
-    } finally {
-      await parser.destroy();
+    const result = await parser.getText({ lineEnforce: true, pageJoiner: "\n" });
+    if (result.pages && result.pages.length > 0) {
+      return result.pages.map((p) => p.text).join("\n");
     }
-  } catch (err) {
-    console.error("extractTextFromPdfBuffer failed:", err);
-    return "No se pudo extraer el texto del PDF. Verifica que el archivo contenga texto seleccionable.";
+    return result.text || "";
+  } finally {
+    await parser.destroy();
   }
 }
 
@@ -738,6 +803,17 @@ export function pagesForSpread(
 
 export function totalSpreads(totalPages: number): number {
   return Math.ceil(totalPages / 2);
+}
+
+/**
+ * Clamp a page index to the start of a valid two-page spread.
+ * Always returns an even index in [0, maxEven] so bookmarks/progress stay aligned.
+ */
+export function clampToSpreadStart(page: number, totalPages: number): number {
+  if (totalPages <= 0) return 0;
+  const even = Math.floor(Math.max(0, page) / 2) * 2;
+  const maxEven = Math.floor((totalPages - 1) / 2) * 2;
+  return Math.min(even, maxEven);
 }
 
 export const _test = { countWords, buildBlocks, classifyLineStyle, blockLineCost, linesLimitForPage };

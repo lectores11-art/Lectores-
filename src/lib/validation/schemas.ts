@@ -1,6 +1,9 @@
 import { z } from "zod";
 
 export const MAX_PDF_BYTES = 50 * 1024 * 1024;
+export const MAX_COVER_BYTES = 5 * 1024 * 1024;
+
+export const bookUploadModeSchema = z.enum(["pdf", "catalog"]);
 
 export const slugParamsSchema = z.object({
   slug: z.string().min(1).max(100),
@@ -22,7 +25,28 @@ export const bookUploadFieldsSchema = z.object({
   title: z.string().trim().min(1).max(500),
   author: z.string().trim().max(200).optional().nullable(),
   description: z.string().trim().max(5000).optional().nullable(),
+  mode: bookUploadModeSchema.default("pdf"),
 });
+
+/** Finalize after client uploaded cover/PDF directly to Supabase Storage. */
+export const bookFinalizeUploadSchema = z
+  .object({
+    title: z.string().trim().min(1).max(500),
+    author: z.string().trim().max(200).optional().nullable(),
+    description: z.string().trim().max(5000).optional().nullable(),
+    mode: bookUploadModeSchema.default("pdf"),
+    coverStoragePath: z.string().trim().min(3).max(500),
+    pdfStoragePath: z.string().trim().min(3).max(500).optional().nullable(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.mode === "pdf" && !data.pdfStoragePath) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "pdfStoragePath required",
+        path: ["pdfStoragePath"],
+      });
+    }
+  });
 
 export const readingProgressSchema = z.object({
   currentPage: z.number().int().min(0),
@@ -32,6 +56,36 @@ export const readingProgressSchema = z.object({
 export const bookmarkSchema = z.object({
   pageNumber: z.number().int().min(0),
   label: z.string().trim().max(200).optional().nullable(),
+});
+
+const bookPageBlockSchema = z.object({
+  style: z.enum(["title", "subtitle", "list-item", "heading", "paragraph"]),
+  text: z.string().min(0).max(50000),
+  align: z.enum(["left", "center", "right"]).optional(),
+  fontSize: z.number().positive().max(72).optional(),
+  continued: z.boolean().optional(),
+});
+
+export const bookPaginateSchema = z.object({
+  pages: z
+    .array(
+      z.object({
+        pageNumber: z.number().int().min(0),
+        content: z.string().max(200000),
+        blocks: z.array(bookPageBlockSchema).max(500).optional(),
+      })
+    )
+    .min(1)
+    .max(1500),
+  tableOfContents: z
+    .array(
+      z.object({
+        title: z.string().trim().min(1).max(500),
+        pageNumber: z.number().int().min(0),
+      })
+    )
+    .max(2000)
+    .optional(),
 });
 
 export const forumThreadCreateSchema = z.object({

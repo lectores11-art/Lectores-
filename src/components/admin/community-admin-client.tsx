@@ -7,25 +7,61 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useDetailPanel } from "@/components/layout/detail-panel-context";
+import { formatRelativeTime } from "@/lib/utils";
+
+type InviteRow = {
+  id?: string;
+  token: string;
+  use_count: number;
+  max_uses: number | null;
+  is_active?: boolean;
+  created_at?: string;
+};
+
+function inviteUrl(token: string) {
+  if (typeof window === "undefined") return `/join/${token}`;
+  return `${window.location.origin}/join/${token}`;
+}
 
 export function CommunityAdminClient({ slug }: { slug: string }) {
-  const [invites, setInvites] = useState<{ token: string; use_count: number; max_uses: number | null }[]>([]);
+  const [invites, setInvites] = useState<InviteRow[]>([]);
+  const [loadingInvites, setLoadingInvites] = useState(true);
+  const [listError, setListError] = useState("");
   const [newInviteUrl, setNewInviteUrl] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState("");
   const [creatingInvite, setCreatingInvite] = useState(false);
-  const { setDetail, setSearchPlaceholder } = useDetailPanel();
+  const { setSearchPlaceholder } = useDetailPanel();
 
   useEffect(() => {
     setSearchPlaceholder("Buscar en admin…");
-    setDetail({
-      kind: "admin",
-      title: "Panel admin",
-      description:
-        "Generá links de invitación y saltá a las secciones de contenido de la comunidad.",
-      meta: [{ label: "Invites", value: String(invites.length) }],
-    });
-  }, [invites.length, setDetail, setSearchPlaceholder]);
+  }, [setSearchPlaceholder]);
+
+  useEffect(() => {
+    loadInvites();
+  }, [slug]);
+
+  async function loadInvites() {
+    setLoadingInvites(true);
+    setListError("");
+    try {
+      const res = await fetch(`/api/c/${slug}/invites`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setInvites([]);
+        setListError(
+          data.error || "No se pudieron cargar las invitaciones."
+        );
+        return;
+      }
+      setInvites(data.invites || []);
+    } catch {
+      setInvites([]);
+      setListError("No se pudieron cargar las invitaciones.");
+    } finally {
+      setLoadingInvites(false);
+    }
+  }
 
   async function createInvite() {
     setCreatingInvite(true);
@@ -33,19 +69,24 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
     const res = await fetch(`/api/c/${slug}/invites`, { method: "POST" });
     const data = await res.json();
     if (res.ok && data.invite) {
-      const url = `${window.location.origin}/join/${data.invite.token}`;
+      const url = inviteUrl(data.invite.token);
       setNewInviteUrl(url);
-      setInvites((prev) => [...prev, data.invite]);
+      setInvites((prev) => [data.invite, ...prev]);
     } else {
       setInviteError(data.error || "No se pudo generar el link. Intentá de nuevo.");
     }
     setCreatingInvite(false);
   }
 
-  function copyInvite() {
-    navigator.clipboard.writeText(newInviteUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  async function copyInviteLink(token: string) {
+    const url = inviteUrl(token);
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedToken(token);
+      setTimeout(() => setCopiedToken((current) => (current === token ? null : current)), 2000);
+    } catch {
+      setInviteError("No se pudo copiar al portapapeles.");
+    }
   }
 
   return (
@@ -74,12 +115,73 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
             {newInviteUrl && (
               <div className="flex gap-2">
                 <Input value={newInviteUrl} readOnly />
-                <Button variant="outline" onClick={copyInvite}>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const token = newInviteUrl.split("/").pop() || "";
+                    if (token) copyInviteLink(token);
+                  }}
+                >
                   <Copy className="h-4 w-4" />
-                  {copied ? "Copiado" : "Copiar"}
+                  {copiedToken && newInviteUrl.endsWith(copiedToken)
+                    ? "Copiado"
+                    : "Copiar"}
                 </Button>
               </div>
             )}
+
+            <div className="border-t border-border pt-4">
+              <p className="mb-3 text-sm font-semibold">Invitaciones activas</p>
+              {loadingInvites ? (
+                <p className="text-sm text-muted">Cargando invitaciones…</p>
+              ) : listError ? (
+                <div className="space-y-2">
+                  <p className="text-sm text-red-600">{listError}</p>
+                  <Button type="button" variant="outline" size="sm" onClick={() => loadInvites()}>
+                    Reintentar
+                  </Button>
+                </div>
+              ) : invites.length === 0 ? (
+                <p className="text-sm text-muted">
+                  Todavía no hay invitaciones activas. Generá un link para empezar.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {invites.map((invite) => {
+                    const url = inviteUrl(invite.token);
+                    const usesLabel =
+                      invite.max_uses == null
+                        ? `${invite.use_count} usos`
+                        : `${invite.use_count}/${invite.max_uses} usos`;
+                    return (
+                      <li
+                        key={invite.id || invite.token}
+                        className="flex flex-col gap-2 rounded-md border border-border bg-surface p-3 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-mono text-xs">{url}</p>
+                          <p className="mt-1 text-xs text-muted">
+                            {usesLabel}
+                            {invite.created_at
+                              ? ` · ${formatRelativeTime(invite.created_at)}`
+                              : ""}
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => copyInviteLink(invite.token)}
+                        >
+                          <Copy className="h-4 w-4" />
+                          {copiedToken === invite.token ? "Copiado" : "Copiar link"}
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
           </CardContent>
         </Card>
 

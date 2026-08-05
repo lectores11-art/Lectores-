@@ -8,7 +8,10 @@ const stripe = process.env.STRIPE_SECRET_KEY
 
 export async function POST(request: Request) {
   if (!stripe) {
-    return NextResponse.json({ received: true, demo: true });
+    return NextResponse.json(
+      { error: "Stripe no configurado" },
+      { status: 503 }
+    );
   }
 
   const body = await request.text();

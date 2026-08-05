@@ -5,9 +5,13 @@ export {
   validationErrorResponse,
 } from "./errors";
 export {
+  MAX_COVER_BYTES,
   MAX_PDF_BYTES,
+  bookFinalizeUploadSchema,
   bookParamsSchema,
+  bookPaginateSchema,
   bookUploadFieldsSchema,
+  bookUploadModeSchema,
   bookmarkSchema,
   forumPostCreateSchema,
   forumThreadCreateSchema,
@@ -22,4 +26,10 @@ export {
   subscriptionDeleteSchema,
   threadParamsSchema,
 } from "./schemas";
-export { parseData, parseJsonBody, validatePdfFile } from "./parse";
+export {
+  coverContentType,
+  parseData,
+  parseJsonBody,
+  validateCoverFile,
+  validatePdfFile,
+} from "./parse";

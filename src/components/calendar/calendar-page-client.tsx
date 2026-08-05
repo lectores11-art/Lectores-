@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   format,
   startOfMonth,
@@ -22,6 +22,14 @@ import { useDetailPanel } from "@/components/layout/detail-panel-context";
 import { cn } from "@/lib/utils";
 import type { CalendarEvent } from "@/lib/types/database";
 
+function eventMatchesQuery(event: CalendarEvent, q: string) {
+  if (!q) return true;
+  return (
+    event.title.toLowerCase().includes(q) ||
+    (event.description || "").toLowerCase().includes(q)
+  );
+}
+
 export function CalendarPageClient({
   communityId,
   isAdmin,
@@ -33,7 +41,7 @@ export function CalendarPageClient({
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const { setDetail, setSearchPlaceholder } = useDetailPanel();
+  const { searchQuery, setSearchPlaceholder } = useDetailPanel();
 
   useEffect(() => {
     setSearchPlaceholder("Buscar eventos…");
@@ -61,44 +69,6 @@ export function CalendarPageClient({
 
   function pickDate(day: Date) {
     setSelectedDate(day);
-    const dayEvts = events.filter((e) => isSameDay(new Date(e.starts_at), day));
-    if (dayEvts.length === 0) {
-      setDetail({
-        kind: "day",
-        title: format(day, "d MMMM yyyy", { locale: es }),
-        description: "Sin eventos este día.",
-      });
-      return;
-    }
-    const first = dayEvts[0];
-    setDetail({
-      kind: "event",
-      title: first.title,
-      subtitle: format(day, "d MMMM yyyy", { locale: es }),
-      description:
-        dayEvts.length > 1
-          ? `${dayEvts.length} eventos. Primero: ${first.description || first.title}`
-          : first.description || undefined,
-      meta: [
-        { label: "Hora", value: format(new Date(first.starts_at), "HH:mm") },
-        { label: "Tipo", value: first.event_type },
-        ...(dayEvts.length > 1
-          ? [{ label: "Total", value: String(dayEvts.length) }]
-          : []),
-      ],
-    });
-  }
-
-  function pickEvent(event: CalendarEvent) {
-    setDetail({
-      kind: "event",
-      title: event.title,
-      subtitle: format(new Date(event.starts_at), "d MMMM yyyy · HH:mm", {
-        locale: es,
-      }),
-      description: event.description || undefined,
-      meta: [{ label: "Tipo", value: event.event_type }],
-    });
   }
 
   async function createEvent(e: React.FormEvent<HTMLFormElement>) {
@@ -128,9 +98,18 @@ export function CalendarPageClient({
     end: endOfMonth(currentMonth),
   });
 
+  const q = searchQuery.trim().toLowerCase();
+  const visibleEvents = useMemo(
+    () => events.filter((e) => eventMatchesQuery(e, q)),
+    [events, q]
+  );
+
   const dayEvents = selectedDate
-    ? events.filter((e) => isSameDay(new Date(e.starts_at), selectedDate))
+    ? visibleEvents.filter((e) => isSameDay(new Date(e.starts_at), selectedDate))
     : [];
+
+  const monthEmpty = events.length === 0;
+  const searchEmpty = !monthEmpty && q.length > 0 && visibleEvents.length === 0;
 
   return (
     <div className="p-4 lg:p-6">
@@ -180,6 +159,18 @@ export function CalendarPageClient({
         </Card>
       )}
 
+      {(monthEmpty || searchEmpty) && (
+        <Card className="mb-6 hard-shadow-sm">
+          <CardContent className="py-10 text-center text-sm text-muted">
+            {monthEmpty
+              ? isAdmin
+                ? "No hay eventos este mes. Creá el primero con «Nuevo evento»."
+                : "No hay eventos este mes."
+              : `Ningún evento coincide con «${searchQuery.trim()}».`}
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2 hard-shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between">
@@ -216,7 +207,7 @@ export function CalendarPageClient({
                 <div key={`empty-${i}`} />
               ))}
               {days.map((day) => {
-                const dayEvts = events.filter((e) =>
+                const dayEvts = visibleEvents.filter((e) =>
                   isSameDay(new Date(e.starts_at), day)
                 );
                 const isSelected = selectedDate && isSameDay(day, selectedDate);
@@ -259,15 +250,22 @@ export function CalendarPageClient({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {dayEvents.length === 0 ? (
-              <p className="text-sm text-muted">Sin eventos</p>
+            {!selectedDate ? (
+              <p className="text-sm text-muted">
+                Elegí un día del calendario para ver sus eventos.
+              </p>
+            ) : dayEvents.length === 0 ? (
+              <p className="text-sm text-muted">
+                {q
+                  ? "Sin eventos que coincidan con la búsqueda en este día."
+                  : "Sin eventos este día."}
+              </p>
             ) : (
               <div className="space-y-3">
                 {dayEvents.map((event) => (
                   <button
                     key={event.id}
                     type="button"
-                    onClick={() => pickEvent(event)}
                     className="w-full rounded-md border border-border bg-surface p-3 text-left hard-shadow-sm"
                   >
                     <p className="font-bold">{event.title}</p>

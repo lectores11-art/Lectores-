@@ -1,15 +1,15 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f5e8d6;
+  --background: #ffffff;
   --foreground: #1a1612;
   --surface: #fff8ee;
   --band: #f5c518;
   --accent: #e85d2a;
   --accent-light: #fce8df;
   --muted: #6b5e52;
-  --border: #d6c7b5;
-  --sidebar: #f5e8d6;
+  --border: #e8ddd0;
+  --sidebar: #ffffff;
 }
 
 @theme inline {
@@ -211,11 +211,9 @@ body {
 .book-page-body {
   flex: 1;
   min-height: 0;
-  /* Auto as safety if a single block still overflows; packing uses real DOM heights. */
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  /* Reserve space so the absolute page number does not cover the last line */
+  /* No per-page scroll — upload packs to this box; clip rare overflow. */
+  overflow: hidden;
+  /* Reserve space so the absolute progress chrome does not cover the last line */
   padding-bottom: 2.5rem;
 }
 
@@ -483,9 +481,9 @@ body {
 
 /* Reader typography */
 .book-para {
-  margin-bottom: 0.85rem;
+  margin-bottom: 0.65rem;
   text-align: justify;
-  text-indent: 1.4rem;
+  text-indent: 1.25rem;
   hyphens: auto;
 }
 .book-para:first-of-type,

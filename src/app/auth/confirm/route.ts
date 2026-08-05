@@ -9,21 +9,35 @@ function safeNext(next: string | null): string {
 }
 
 // Handles Supabase email links (signup confirmation, invite, recovery).
-// The email templates must point here with token_hash + type, e.g.:
-//   /auth/confirm?token_hash={{ .TokenHash }}&type=invite&next=/onboarding/set-password
+// Templates should use token_hash, e.g.:
+//   /auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/update-password
+// PKCE flows may land with ?code= instead.
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
   const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type") as EmailOtpType | null;
+  const code = searchParams.get("code");
   const next = safeNext(searchParams.get("next"));
 
+  const supabase = await createClient();
+
+  if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (!error) {
+      return NextResponse.redirect(new URL(next, origin));
+    }
+  }
+
   if (tokenHash && type) {
-    const supabase = await createClient();
     const { error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
     if (!error) {
       return NextResponse.redirect(new URL(next, origin));
     }
   }
 
-  return NextResponse.redirect(new URL("/login?error=auth", origin));
+  const failPath =
+    type === "recovery" || next === "/update-password"
+      ? "/forgot-password"
+      : "/login?error=auth";
+  return NextResponse.redirect(new URL(failPath, origin));
 }

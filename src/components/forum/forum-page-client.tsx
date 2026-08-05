@@ -19,12 +19,13 @@ interface ForumPageClientProps {
 export function ForumPageClient({ slug, isAdmin }: ForumPageClientProps) {
   const [threads, setThreads] = useState<(ForumThread & { author?: Profile })[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const { setDetail, searchQuery, setSearchPlaceholder } = useDetailPanel();
+  const { searchQuery, setSearchPlaceholder } = useDetailPanel();
 
   useEffect(() => {
     setSearchPlaceholder("Buscar hilos o autores…");
@@ -35,28 +36,28 @@ export function ForumPageClient({ slug, isAdmin }: ForumPageClientProps) {
   }, [slug]);
 
   async function loadThreads() {
-    const res = await fetch(`/api/c/${slug}/forum/threads`);
-    const data = await res.json();
-    setThreads(data.threads || []);
-    setLoading(false);
-  }
-
-  function selectThread(thread: ForumThread & { author?: Profile }) {
-    setDetail({
-      kind: "thread",
-      title: thread.title,
-      subtitle: thread.author?.full_name || "Usuario",
-      description: thread.content,
-      meta: [
-        { label: "Publicado", value: formatRelativeTime(thread.created_at) },
-        { label: "Likes", value: String(thread.like_count) },
-        { label: "Respuestas", value: String(thread.reply_count) },
-      ],
-      primaryAction: {
-        label: "Abrir hilo",
-        href: `/c/${slug}/forum/${thread.id}`,
-      },
-    });
+    setLoading(true);
+    setLoadError("");
+    try {
+      const res = await fetch(`/api/c/${slug}/forum/threads`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setThreads([]);
+        setLoadError(
+          data.error ||
+            "No se pudieron cargar los hilos. Intentá de nuevo en un momento."
+        );
+        return;
+      }
+      setThreads(data.threads || []);
+    } catch {
+      setThreads([]);
+      setLoadError(
+        "No se pudieron cargar los hilos. Revisá tu conexión e intentá de nuevo."
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function createThread(e: React.FormEvent) {
@@ -144,9 +145,22 @@ export function ForumPageClient({ slug, isAdmin }: ForumPageClientProps) {
       )}
 
       {loading ? (
-        <p className="text-muted">Cargando hilos...</p>
+        <Card className="hard-shadow-sm">
+          <CardContent className="py-12 text-center text-muted">
+            Cargando hilos…
+          </CardContent>
+        </Card>
+      ) : loadError ? (
+        <Card className="hard-shadow-sm">
+          <CardContent className="space-y-3 py-12 text-center">
+            <p className="text-sm text-red-600">{loadError}</p>
+            <Button type="button" variant="outline" onClick={() => loadThreads()}>
+              Reintentar
+            </Button>
+          </CardContent>
+        </Card>
       ) : filtered.length === 0 ? (
-        <Card>
+        <Card className="hard-shadow-sm">
           <CardContent className="py-12 text-center text-muted">
             {threads.length === 0
               ? "Aún no hay hilos. ¡Sé la primera en publicar!"
@@ -156,11 +170,7 @@ export function ForumPageClient({ slug, isAdmin }: ForumPageClientProps) {
       ) : (
         <div className="space-y-3">
           {filtered.map((thread) => (
-            <Card
-              key={thread.id}
-              className="cursor-pointer transition-transform hard-shadow-sm"
-              onClick={() => selectThread(thread)}
-            >
+            <Card key={thread.id} className="hard-shadow-sm">
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
@@ -173,7 +183,6 @@ export function ForumPageClient({ slug, isAdmin }: ForumPageClientProps) {
                       )}
                       <Link
                         href={`/c/${slug}/forum/${thread.id}`}
-                        onClick={(e) => e.stopPropagation()}
                         className="font-bold hover:text-accent"
                       >
                         {thread.title}
@@ -185,10 +194,7 @@ export function ForumPageClient({ slug, isAdmin }: ForumPageClientProps) {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        togglePin(thread.id, thread.is_pinned);
-                      }}
+                      onClick={() => togglePin(thread.id, thread.is_pinned)}
                     >
                       {thread.is_pinned ? "Desfijar" : "Fijar"}
                     </Button>

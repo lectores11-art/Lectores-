@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
-import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 import { internalErrorResponse, inviteJoinSchema, parseJsonBody } from "@/lib/validation";
+
+type AcceptInviteResult = {
+  community_slug: string;
+  already_member: boolean;
+};
 
 export async function POST(request: Request) {
   try {
@@ -10,29 +15,6 @@ export async function POST(request: Request) {
 
     const supabase = await createClient();
 
-    const { data: invite, error: inviteError } = await supabase
-      .from("invites")
-      .select("*, community:communities(*)")
-      .eq("token", token)
-      .eq("is_active", true)
-      .single();
-
-    if (inviteError || !invite) {
-      return NextResponse.json({ error: "Invitación no válida" }, { status: 404 });
-    }
-
-    if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
-      return NextResponse.json({ error: "Invitación expirada" }, { status: 410 });
-    }
-
-    if (invite.max_uses && invite.use_count >= invite.max_uses) {
-      return NextResponse.json({ error: "Límite de usos alcanzado" }, { status: 410 });
-    }
-
-    if (!invite.community) {
-      return NextResponse.json({ error: "Comunidad no encontrada" }, { status: 404 });
-    }
-
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -41,52 +23,48 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 });
     }
 
-    const { data: existing } = await supabase
-      .from("memberships")
-      .select("id, status")
-      .eq("user_id", user.id)
-      .eq("community_id", invite.community_id)
-      .single();
+    // SECURITY DEFINER: validates token, inserts/activates membership as role=member,
+    // bumps use_count. Replaces open memberships INSERT policy removed in 006.
+    const { data: results, error } = await supabase.rpc("accept_invite", {
+      p_token: token,
+    });
 
-    if (existing?.status === "active") {
+    if (error) {
+      const message = (error.message || "").toLowerCase();
+      if (message.includes("invalid invite")) {
+        return NextResponse.json({ error: "Invitación no válida" }, { status: 404 });
+      }
+      if (message.includes("expired")) {
+        return NextResponse.json({ error: "Invitación expirada" }, { status: 410 });
+      }
+      if (message.includes("max uses")) {
+        return NextResponse.json({ error: "Límite de usos alcanzado" }, { status: 410 });
+      }
+      if (message.includes("not authenticated")) {
+        return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+      }
+      if (message.includes("community not found")) {
+        return NextResponse.json({ error: "Comunidad no encontrada" }, { status: 404 });
+      }
+      return internalErrorResponse("Error al aceptar invitación:", error);
+    }
+
+    const row = (Array.isArray(results) ? results[0] : results) as
+      | AcceptInviteResult
+      | undefined;
+
+    if (!row?.community_slug) {
+      return NextResponse.json({ error: "Invitación no válida" }, { status: 404 });
+    }
+
+    if (row.already_member) {
       return NextResponse.json({
-        slug: invite.community.slug,
+        slug: row.community_slug,
         message: "Ya eres miembro",
       });
     }
 
-    if (existing) {
-      const { error: updateError } = await supabase
-        .from("memberships")
-        .update({ status: "active", joined_at: new Date().toISOString() })
-        .eq("id", existing.id);
-      if (updateError) {
-        return internalErrorResponse("Error al activar membresía:", updateError);
-      }
-    } else {
-      const { error: insertError } = await supabase.from("memberships").insert({
-        user_id: user.id,
-        community_id: invite.community_id,
-        role: "member",
-        status: "active",
-        joined_at: new Date().toISOString(),
-      });
-      if (insertError) {
-        return internalErrorResponse("Error al crear membresía:", insertError);
-      }
-    }
-
-    // service_role: RLS only lets admins update invites; members cannot bump use_count.
-    const serviceClient = await createServiceClient();
-    const { error: useCountError } = await serviceClient
-      .from("invites")
-      .update({ use_count: invite.use_count + 1 })
-      .eq("id", invite.id);
-    if (useCountError) {
-      return internalErrorResponse("Error al actualizar uso de invitación:", useCountError);
-    }
-
-    return NextResponse.json({ slug: invite.community.slug });
+    return NextResponse.json({ slug: row.community_slug });
   } catch (err) {
     return internalErrorResponse("POST /api/invites/join failed:", err);
   }

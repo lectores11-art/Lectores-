@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useDetailPanel } from "@/components/layout/detail-panel-context";
+import { LogoutButton } from "@/components/auth/logout-button";
 import type { Membership, Profile } from "@/lib/types/database";
 
 export function SettingsPageClient({
@@ -19,28 +20,17 @@ export function SettingsPageClient({
   const [fullName, setFullName] = useState(user.full_name || "");
   const [membership, setMembership] = useState<Membership | null>(null);
   const [message, setMessage] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const { setDetail, setSearchPlaceholder } = useDetailPanel();
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState("");
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const { setSearchPlaceholder } = useDetailPanel();
 
   useEffect(() => {
     setSearchPlaceholder("Buscar en cuenta…");
-    setDetail({
-      kind: "account",
-      title: user.full_name || "Tu cuenta",
-      subtitle: user.email,
-      description:
-        "Desde aquí podés actualizar tu perfil, cambiar la contraseña y gestionar la suscripción de esta comunidad.",
-      meta: [
-        {
-          label: "Estado",
-          value:
-            membership?.status === "active"
-              ? "Activa"
-              : membership?.status || "—",
-        },
-      ],
-    });
-  }, [user, membership, setDetail, setSearchPlaceholder]);
+  }, [setSearchPlaceholder]);
 
   useEffect(() => {
     loadMembership();
@@ -70,10 +60,55 @@ export function SettingsPageClient({
 
   async function changePassword(e: React.FormEvent) {
     e.preventDefault();
-    const supabase = createClient();
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    setMessage(error ? error.message : "Contraseña actualizada");
-    setNewPassword("");
+    setPasswordError("");
+    setPasswordSuccess("");
+
+    if (newPassword.length < 8) {
+      setPasswordError("La contraseña nueva debe tener al menos 8 caracteres.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError("La contraseña nueva y la confirmación no coinciden.");
+      return;
+    }
+    if (currentPassword && currentPassword === newPassword) {
+      setPasswordError("La contraseña nueva debe ser distinta a la actual.");
+      return;
+    }
+
+    setPasswordLoading(true);
+    try {
+      const supabase = createClient();
+
+      // Soft reauth: verify current password before rotating (no dashboard flag required).
+      const { error: reauthError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: currentPassword,
+      });
+      if (reauthError) {
+        setPasswordError("La contraseña actual no es correcta.");
+        return;
+      }
+
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+      if (updateError) {
+        setPasswordError(
+          "No pudimos actualizar la contraseña. Intentá de nuevo más tarde."
+        );
+        return;
+      }
+
+      setPasswordSuccess("Contraseña actualizada correctamente.");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch {
+      setPasswordError("No pudimos actualizar la contraseña. Intentá de nuevo.");
+    } finally {
+      setPasswordLoading(false);
+    }
   }
 
   async function cancelSubscription() {
@@ -98,8 +133,11 @@ export function SettingsPageClient({
       body: JSON.stringify({ communityId }),
     });
     const data = await res.json();
-    if (data.url) window.location.href = data.url;
-    else setMessage(data.message || "Error al suscribirse");
+    if (res.ok && data.url) {
+      window.location.href = data.url;
+      return;
+    }
+    setMessage(data.error || data.message || "Error al suscribirse");
   }
 
   return (
@@ -145,18 +183,51 @@ export function SettingsPageClient({
             <CardDescription>Cambiá tu contraseña de acceso</CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={changePassword} className="space-y-4">
+            <form onSubmit={changePassword} className="space-y-4" autoComplete="off">
               <div className="space-y-2">
-                <Label>Nueva contraseña</Label>
+                <Label htmlFor="current-password">Contraseña actual</Label>
                 <Input
+                  id="current-password"
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-password">Nueva contraseña</Label>
+                <Input
+                  id="new-password"
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  minLength={6}
+                  minLength={8}
                   required
+                  autoComplete="new-password"
                 />
               </div>
-              <Button type="submit">Cambiar contraseña</Button>
+              <div className="space-y-2">
+                <Label htmlFor="confirm-password">Confirmar nueva contraseña</Label>
+                <Input
+                  id="confirm-password"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  minLength={8}
+                  required
+                  autoComplete="new-password"
+                />
+              </div>
+              {passwordError && (
+                <p className="text-sm text-red-600">{passwordError}</p>
+              )}
+              {passwordSuccess && (
+                <p className="text-sm font-semibold text-foreground">{passwordSuccess}</p>
+              )}
+              <Button type="submit" disabled={passwordLoading}>
+                {passwordLoading ? "Guardando..." : "Cambiar contraseña"}
+              </Button>
             </form>
           </CardContent>
         </Card>
@@ -179,6 +250,16 @@ export function SettingsPageClient({
                 Cancelar suscripción
               </Button>
             )}
+          </CardContent>
+        </Card>
+
+        <Card className="hard-shadow-sm">
+          <CardHeader>
+            <CardTitle>Sesión</CardTitle>
+            <CardDescription>Cerrar sesión en este dispositivo</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <LogoutButton />
           </CardContent>
         </Card>
       </div>

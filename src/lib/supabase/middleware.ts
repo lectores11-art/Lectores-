@@ -40,6 +40,9 @@ export async function updateSession(request: NextRequest) {
   const isAuthPage =
     pathname.startsWith("/login") ||
     pathname.startsWith("/register") ||
+    pathname.startsWith("/forgot-password") ||
+    pathname.startsWith("/update-password") ||
+    pathname.startsWith("/onboarding/set-password") ||
     pathname.startsWith("/join") ||
     pathname.startsWith("/auth");
   const isPublicPage = pathname === "/" || isAuthPage;

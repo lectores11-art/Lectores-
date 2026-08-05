@@ -20,7 +20,14 @@ type TextContentItem = {
 };
 
 type PdfJsModule = {
-  getDocument: (src: { data: Uint8Array }) => {
+  GlobalWorkerOptions: { workerSrc: string };
+  getDocument: (src: {
+    data: Uint8Array;
+    useSystemFonts?: boolean;
+    isEvalSupported?: boolean;
+    useWorkerFetch?: boolean;
+    useWasm?: boolean;
+  }) => {
     promise: Promise<{
       numPages: number;
       getPage(pageNum: number): Promise<{
@@ -39,44 +46,69 @@ type PdfJsModule = {
 };
 
 /**
+ * Node `Buffer` often views a pooled ArrayBuffer. pdfjs transfers `data.buffer`
+ * to its worker via structuredClone; pooled buffers throw DataCloneError
+ * ("Cannot transfer object of unsupported type") and break upload on Vercel.
+ */
+export function toTransferablePdfBytes(buffer: Buffer): Uint8Array {
+  return Uint8Array.from(buffer);
+}
+
+/**
  * Load pdfjs without a static import path — Turbopack cannot resolve the
  * legacy .mjs subpath when analyzing the module graph.
+ * Resolve worker via absolute file:// so Vercel/Node fake-worker setup finds it.
  */
 async function loadPdfJs(): Promise<PdfJsModule> {
   const require = createRequire(import.meta.url);
-  const resolved = require.resolve("pdfjs-dist/legacy/build/pdf.mjs");
-  const href = pathToFileURL(resolved).href;
-  // Hide from bundler static analysis (Turbopack / webpack).
+  const pdfPath = require.resolve("pdfjs-dist/legacy/build/pdf.mjs");
+  const workerPath = require.resolve("pdfjs-dist/legacy/build/pdf.worker.mjs");
   const dynamicImport = new Function(
     "specifier",
     "return import(specifier)"
   ) as (specifier: string) => Promise<PdfJsModule>;
-  return dynamicImport(href);
+  const pdfjs = await dynamicImport(pathToFileURL(pdfPath).href);
+  pdfjs.GlobalWorkerOptions.workerSrc = pathToFileURL(workerPath).href;
+  return pdfjs;
 }
+
+export type PositionedExtractResult = {
+  items: PositionedTextItem[];
+  /** MediaBox width from pdfjs viewport (not content bbox). */
+  pageWidth: number;
+};
 
 /**
  * Extract text runs with X/Y positions from a PDF buffer using pdf-parse/pdfjs.
- * Server-only — used by layout inference during upload.
+ * Server-only — used by layout inference during upload (Nivel B).
  */
 export async function extractPositionedTextFromPdfBuffer(
   buffer: Buffer
-): Promise<PositionedTextItem[]> {
+): Promise<PositionedExtractResult> {
   const { PDFParse } = await import("pdf-parse");
   const pdfjs = await loadPdfJs();
 
-  const data = new Uint8Array(buffer);
-  const parser = new PDFParse({ data });
+  const data = toTransferablePdfBytes(buffer);
+  const parser = new PDFParse({ data: toTransferablePdfBytes(buffer) });
   const items: PositionedTextItem[] = [];
+  let pageWidth = 612;
 
   try {
     await parser.getInfo();
 
-    const doc = await pdfjs.getDocument({ data }).promise;
+    const doc = await pdfjs.getDocument({
+      data,
+      useSystemFonts: true,
+      isEvalSupported: false,
+      useWorkerFetch: false,
+      useWasm: false,
+    }).promise;
 
     try {
       for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
         const page = await doc.getPage(pageNum);
         const viewport = page.getViewport({ scale: 1 });
+        pageWidth = Math.max(pageWidth, viewport.width);
         const textContent = await page.getTextContent({
           includeMarkedContent: false,
           disableNormalization: false,
@@ -88,7 +120,8 @@ export async function extractPositionedTextFromPdfBuffer(
 
           const tm = item.transform ?? [1, 0, 0, 1, 0, 0];
           const [x, y] = viewport.convertToViewportPoint(tm[4], tm[5]);
-          const fontSize = item.height > 0 ? item.height : Math.abs(tm[0]) || undefined;
+          const fontSize =
+            item.height > 0 ? item.height : Math.abs(tm[0]) || undefined;
 
           items.push({
             text: item.str,
@@ -110,5 +143,5 @@ export async function extractPositionedTextFromPdfBuffer(
     await parser.destroy();
   }
 
-  return items;
+  return { items, pageWidth };
 }

@@ -51,7 +51,7 @@ export function IconRail({ community, isAdmin }: IconRailProps) {
   }
 
   return (
-    <aside className="hidden h-screen w-[88px] shrink-0 flex-col border-r border-border bg-surface lg:flex">
+    <aside className="hidden h-screen w-[88px] shrink-0 flex-col border-r border-border bg-background lg:flex">
       <div className="flex flex-col items-center gap-1 border-b border-border px-2 py-4">
         <Link
           href="/dashboard"
@@ -165,7 +165,7 @@ export function MobileBottomNav({
   }
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 flex h-16 items-stretch border-t border-border bg-surface lg:hidden">
+    <nav className="fixed inset-x-0 bottom-0 z-40 flex h-16 items-stretch border-t border-border bg-background lg:hidden">
       {items.map(({ href, label, icon: Icon }) => {
         const fullHref = `${base}/${href}`;
         const active = pathname.startsWith(fullHref);

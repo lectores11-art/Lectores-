@@ -1,10 +1,10 @@
 import type { PositionedTextItem } from "./extract-positioned";
 import type { TextBlock, TextBlockStyle } from "./paginator";
-import { classifyLineStyle } from "./paginator";
+import { classifyLineStyle, shouldJoinProseLines } from "./paginator";
 
 const LIST_ITEM_PATTERN = /^(libro|capítulo|capitulo|chapter)\s+\d+\s*:/i;
 const Y_TOLERANCE = 4;
-const CENTER_TOLERANCE_RATIO = 0.15;
+const CENTER_TOLERANCE_RATIO = 0.12;
 
 export type TextAlign = "left" | "center" | "right";
 
@@ -69,20 +69,85 @@ function inferAlign(group: LineGroup, pageWidth: number): TextAlign {
   return "left";
 }
 
+/**
+ * Dominant body size (mode). Using min() treated footnotes as body and promoted
+ * every normal line to title/subtitle (centered short lines in the reader).
+ */
 function bodyFontSizeFromItems(items: PositionedTextItem[]): number {
-  const sizes = items.map((i) => i.fontSize ?? i.height).filter((s) => s > 0);
+  const sizes = items
+    .map((i) => i.fontSize ?? i.height)
+    .filter((s) => s > 0);
   if (sizes.length === 0) return 12;
-  return Math.min(...sizes);
+
+  const rounded = sizes.map((s) => Math.round(s * 2) / 2);
+  const counts = new Map<number, number>();
+  for (const s of rounded) counts.set(s, (counts.get(s) || 0) + 1);
+
+  let best = rounded[0]!;
+  let bestCount = 0;
+  for (const [size, count] of counts) {
+    if (count > bestCount || (count === bestCount && size < best)) {
+      best = size;
+      bestCount = count;
+    }
+  }
+  return best;
 }
 
-function inferStyle(text: string, fontSize: number, bodyFontSize: number): TextBlockStyle {
+function inferStyle(
+  text: string,
+  fontSize: number,
+  bodyFontSize: number,
+  align: TextAlign
+): TextBlockStyle {
   if (LIST_ITEM_PATTERN.test(text)) return "list-item";
   const base = classifyLineStyle(text);
+
+  // Named headings / TOC labels keep their style (CSS centers them).
   if (base !== "paragraph") return base;
 
-  if (fontSize >= bodyFontSize * 1.35) return "title";
-  if (fontSize >= bodyFontSize * 1.15) return "subtitle";
-  return base;
+  // Size-based titles only when centered (real headings, not body wrap lines).
+  if (align === "center" && fontSize >= bodyFontSize * 1.45) return "title";
+  if (align === "center" && fontSize >= bodyFontSize * 1.2) return "subtitle";
+
+  // Short body lines from PDF wrap must stay paragraphs (reader justifies them).
+  return "paragraph";
+}
+
+/**
+ * Join consecutive prose lines into flowing paragraphs (like a real book page).
+ * Keeps TOC / titles / list-items as their own blocks.
+ */
+export function mergeProseLayoutBlocks(
+  blocks: LayoutTextBlock[]
+): LayoutTextBlock[] {
+  const out: LayoutTextBlock[] = [];
+
+  for (const block of blocks) {
+    const prev = out[out.length - 1];
+    if (
+      prev &&
+      prev.style === "paragraph" &&
+      block.style === "paragraph" &&
+      shouldJoinProseLines(prev.text, block.text)
+    ) {
+      if (prev.text.endsWith("-")) {
+        prev.text = prev.text.slice(0, -1) + block.text;
+      } else {
+        prev.text = `${prev.text} ${block.text}`;
+      }
+      prev.align = "left";
+      continue;
+    }
+
+    if (block.style === "paragraph") {
+      out.push({ ...block, align: "left" });
+    } else {
+      out.push({ ...block });
+    }
+  }
+
+  return out;
 }
 
 /**
@@ -96,28 +161,29 @@ export function inferLayoutBlocks(
 
   const bodyFontSize = bodyFontSizeFromItems(items);
   const groups = groupItemsByLine(items);
-  const blocks: LayoutTextBlock[] = [];
+  const lineBlocks: LayoutTextBlock[] = [];
 
   for (const group of groups) {
     const text = lineText(group);
     if (!text) continue;
 
-    const lineFontSize = Math.max(
-      ...group.items.map((i) => i.fontSize ?? i.height).filter((s) => s > 0),
-      bodyFontSize
-    );
-    const style = inferStyle(text, lineFontSize, bodyFontSize);
+    const sizes = group.items
+      .map((i) => i.fontSize ?? i.height)
+      .filter((s) => s > 0);
+    const lineFontSize = sizes.length > 0 ? Math.max(...sizes) : bodyFontSize;
     const align = inferAlign(group, pageWidth);
+    const style = inferStyle(text, lineFontSize, bodyFontSize, align);
 
-    blocks.push({
+    lineBlocks.push({
       style,
       text,
-      align,
+      // Body prose is always left; reader CSS justifies paragraphs.
+      align: style === "paragraph" ? "left" : align,
       fontSize: lineFontSize,
     });
   }
 
-  return blocks;
+  return mergeProseLayoutBlocks(lineBlocks);
 }
 
 export const _test = {
@@ -125,4 +191,6 @@ export const _test = {
   lineText,
   inferAlign,
   inferStyle,
+  bodyFontSizeFromItems,
+  mergeProseLayoutBlocks,
 };

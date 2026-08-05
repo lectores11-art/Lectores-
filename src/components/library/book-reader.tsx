@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bookmark,
   ChevronLeft,
@@ -13,12 +13,14 @@ import {
 import { cn } from "@/lib/utils";
 import {
   extractTOC,
+  flattenPageBlocks,
   hasLegacyPaginationBug,
   mergeContinuationParagraphs,
+  needsDomPack,
   pagesForSpread,
-  PIPELINE_VERSION,
   getPageBlocks,
   totalSpreads,
+  clampToSpreadStart,
   type PaginatedPage,
   type TOCItem,
 } from "@/lib/pdf/paginator";
@@ -34,6 +36,8 @@ interface BookReaderProps {
   initialPage?: number;
   onPageChange?: (page: number, percent: number) => void;
   onBookmark?: (page: number) => void;
+  /** Called once after DOM measure-and-pack (pipeline upgrade). */
+  onDomPacked?: (pages: PaginatedPage[]) => void | Promise<void>;
   compact?: boolean;
   onClose?: () => void;
   pipelineVersion?: number;
@@ -41,7 +45,7 @@ interface BookReaderProps {
 }
 
 const defaultSettings: ReaderSettings = {
-  fontSize: 17,
+  fontSize: 16,
   fontFamily: "serif",
   theme: "light",
 };
@@ -66,36 +70,132 @@ export function BookReader({
   initialPage = 0,
   onPageChange,
   onBookmark,
+  onDomPacked,
   compact = false,
   onClose,
   pipelineVersion = 0,
   legacyWarning = false,
 }: BookReaderProps) {
-  const [currentPage, setCurrentPage] = useState(() => Math.floor(initialPage / 2) * 2);
+  const [livePages, setLivePages] = useState(pages);
+  const [preparing, setPreparing] = useState(() => needsDomPack(pipelineVersion));
+  const packedOnceRef = useRef(false);
+  const onDomPackedRef = useRef(onDomPacked);
+  const leftBodyRef = useRef<HTMLDivElement>(null);
+  const rightBodyRef = useRef<HTMLDivElement>(null);
+
+  const [currentPage, setCurrentPage] = useState(() =>
+    clampToSpreadStart(initialPage, pages.length)
+  );
   const [settings, setSettings] = useState<ReaderSettings>(defaultSettings);
   const [panel, setPanel] = useState<"toc" | "settings" | "search" | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<number[]>([]);
   const [justBookmarked, setJustBookmarked] = useState(false);
 
-  // Stable stored pages — never re-paginate on the client (that caused skips / blank screens).
-  const displayPages = useMemo(() => normalizePages(pages), [pages]);
+  useEffect(() => {
+    onDomPackedRef.current = onDomPacked;
+  }, [onDomPacked]);
+
+  useEffect(() => {
+    setLivePages(pages);
+    if (!needsDomPack(pipelineVersion)) {
+      setPreparing(false);
+      packedOnceRef.current = true;
+    }
+  }, [pages, pipelineVersion]);
+
+  // One-shot DOM measure + pack for estimated uploads (quality G1/G2).
+  useEffect(() => {
+    if (!needsDomPack(pipelineVersion) || packedOnceRef.current) return;
+    if (pages.length === 0) {
+      setPreparing(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function runPack() {
+      setPreparing(true);
+      // Wait for book frame layout so column width/height are real.
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+      if (cancelled) return;
+
+      try {
+        // Literata must be loaded — fallback fonts measure shorter and over-pack.
+        if (document.fonts?.ready) {
+          await document.fonts.ready;
+        }
+        const {
+          measureAndPackBlocks,
+          PACK_FONT_SIZE,
+          pageBodyMetrics,
+        } = await import("@/lib/pdf/measure-and-pack");
+
+        const leftEl = leftBodyRef.current;
+        const rightEl = rightBodyRef.current;
+        if (!leftEl) {
+          setPreparing(false);
+          return;
+        }
+
+        const left = pageBodyMetrics(leftEl);
+        const right = rightEl ? pageBodyMetrics(rightEl) : left;
+        const columnWidthPx = left.widthPx;
+        const leftHeightPx = left.heightPx;
+        const rightHeightPx = right.heightPx;
+
+        if (columnWidthPx < 80 || leftHeightPx < 80) {
+          setPreparing(false);
+          return;
+        }
+
+        const blocks = flattenPageBlocks(pages);
+        const packed = measureAndPackBlocks(blocks, {
+          columnWidthPx,
+          leftHeightPx,
+          rightHeightPx,
+          fontSize: PACK_FONT_SIZE,
+        });
+        if (cancelled) return;
+        packedOnceRef.current = true;
+        // Keep display size locked to pack size so the slider cannot reintroduce clipping.
+        setSettings((s) => ({ ...s, fontSize: PACK_FONT_SIZE }));
+        setLivePages(packed);
+        setPreparing(false);
+        await onDomPackedRef.current?.(packed);
+      } catch (err) {
+        console.error("DOM pack failed; showing estimated pages:", err);
+        if (!cancelled) setPreparing(false);
+      }
+    }
+
+    void runPack();
+    return () => {
+      cancelled = true;
+    };
+  }, [pipelineVersion, pages]);
+
+  // Stable stored / packed pages — never continuous reflow.
+  const displayPages = useMemo(() => normalizePages(livePages), [livePages]);
 
   const displayToc = useMemo(() => {
     const rebuilt = extractTOC(displayPages);
     return rebuilt.length > 0 ? rebuilt : tableOfContents;
   }, [displayPages, tableOfContents]);
 
-  const spreadIdx = Math.floor(currentPage / 2);
-  const [leftPage, rightPage] = pagesForSpread(displayPages, spreadIdx);
   const totalPageCount = displayPages.length;
+  // Clamp in render (not an effect) so shrinking page lists cannot leave an OOB index.
+  const safePage = clampToSpreadStart(currentPage, totalPageCount);
+  const spreadIdx = Math.floor(safePage / 2);
+  const [leftPage, rightPage] = pagesForSpread(displayPages, spreadIdx);
   const progressPercent =
-    totalPageCount > 0 ? ((currentPage + 1) / totalPageCount) * 100 : 0;
+    totalPageCount > 0 ? ((safePage + 1) / totalPageCount) * 100 : 0;
 
   const goToPage = useCallback(
     (page: number) => {
-      const even = Math.floor(page / 2) * 2;
-      const clamped = Math.max(0, Math.min(even, Math.max(0, totalPageCount - 1)));
+      const clamped = clampToSpreadStart(page, totalPageCount);
       setCurrentPage(clamped);
       const percent =
         totalPageCount > 0 ? ((clamped + 1) / totalPageCount) * 100 : 0;
@@ -113,13 +213,8 @@ export function BookReader({
   }, [goToPage, spreadIdx]);
 
   useEffect(() => {
-    if (totalPageCount > 0 && currentPage >= totalPageCount) {
-      goToPage(totalPageCount - 1);
-    }
-  }, [totalPageCount, currentPage, goToPage]);
-
-  useEffect(() => {
     function handleKey(e: KeyboardEvent) {
+      if (preparing) return;
       if (e.key === "ArrowRight" || e.key === " ") {
         e.preventDefault();
         goNextSpread();
@@ -130,7 +225,7 @@ export function BookReader({
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [goNextSpread, goPrevSpread]);
+  }, [goNextSpread, goPrevSpread, preparing]);
 
   function handleSearch() {
     if (!searchQuery.trim()) {
@@ -149,7 +244,7 @@ export function BookReader({
   }
 
   function handleBookmark() {
-    onBookmark?.(currentPage);
+    onBookmark?.(safePage);
     setJustBookmarked(true);
     setTimeout(() => setJustBookmarked(false), 1500);
   }
@@ -160,15 +255,15 @@ export function BookReader({
   const iconBtn =
     "flex h-8 w-8 items-center justify-center text-[#5a5a5a] transition-colors hover:text-[#1a1a1a]";
 
+  // Only warn for known-broken content — not every pipeline bump or long books.
   const showLegacyBanner =
     legacyWarning ||
-    pipelineVersion < PIPELINE_VERSION ||
     hasLegacyPaginationBug(pages) ||
-    pages.length > 500;
+    (pipelineVersion > 0 && pipelineVersion < 4);
 
   const displayPageNumber = leftPage
     ? leftPage.pageNumber + 1
-    : Math.min(currentPage + 1, Math.max(totalPageCount, 1));
+    : Math.min(safePage + 1, Math.max(totalPageCount, 1));
 
   return (
     <div
@@ -185,10 +280,25 @@ export function BookReader({
       )}
       <div
         className={cn(
-          "book-frame w-full",
+          "book-frame relative w-full",
           compact ? "book-compact max-w-3xl" : "max-w-5xl"
         )}
       >
+        {preparing && (
+          <div
+            className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 bg-slate-900/80 px-6 text-center text-white"
+            role="status"
+            aria-live="polite"
+          >
+            <p className="text-sm font-semibold tracking-wide">
+              Preparando páginas…
+            </p>
+            <p className="max-w-sm text-xs text-slate-300">
+              Ajustando el texto a la tipografía del libro. Solo hace falta una vez.
+            </p>
+          </div>
+        )}
+
         <div className={cn("book-block", themeClass, fontClass)}>
           <div className="book-edge book-edge-left" aria-hidden />
 
@@ -247,7 +357,7 @@ export function BookReader({
 
             {/* LEFT PAGE */}
             <div className="book-page book-page-left">
-              <div className="book-page-body">
+              <div className="book-page-body" ref={leftBodyRef}>
                 <PageContent page={leftPage} fontSize={settings.fontSize} />
               </div>
               <div className="page-curl page-curl-left" />
@@ -255,7 +365,7 @@ export function BookReader({
 
             {/* RIGHT PAGE */}
             <div className="book-page book-page-right">
-              <div className="book-page-body">
+              <div className="book-page-body" ref={rightBodyRef}>
                 <PageContent page={rightPage} fontSize={settings.fontSize} />
               </div>
               <div className="page-curl page-curl-right" />
@@ -267,8 +377,9 @@ export function BookReader({
                 min={0}
                 max={Math.max(0, totalSpreads(totalPageCount) - 1)}
                 value={spreadIdx}
+                disabled={preparing}
                 onChange={(e) => goToPage(Number(e.target.value) * 2)}
-                className="book-progress-track"
+                className="book-progress-track disabled:opacity-40"
                 aria-label="Progreso de lectura"
               />
               <span className="book-progress-label">
@@ -312,14 +423,16 @@ export function BookReader({
                     </label>
                     <input
                       type="range"
-                      min={13}
-                      max={26}
-                      value={settings.fontSize}
-                      onChange={(e) =>
-                        setSettings({ ...settings, fontSize: Number(e.target.value) })
-                      }
-                      className="w-full accent-sky-500"
+                      min={16}
+                      max={16}
+                      value={16}
+                      disabled
+                      title="El tamaño está fijado al de la paginación (16px) para evitar cortes"
+                      className="w-full accent-sky-500 opacity-50"
                     />
+                    <p className="mt-1 text-[10px] leading-snug text-slate-400">
+                      Fijado en 16px (mismo tamaño con el que se arman las páginas).
+                    </p>
                   </div>
                   <div className="flex gap-2">
                     {(["serif", "sans"] as const).map((f) => (
@@ -402,7 +515,7 @@ export function BookReader({
 
         <button
           onClick={goPrevSpread}
-          disabled={spreadIdx <= 0}
+          disabled={preparing || spreadIdx <= 0}
           className="book-nav-btn book-nav-prev"
           aria-label="Anterior"
         >
@@ -410,7 +523,7 @@ export function BookReader({
         </button>
         <button
           onClick={goNextSpread}
-          disabled={spreadIdx >= totalSpreads(totalPageCount) - 1}
+          disabled={preparing || spreadIdx >= totalSpreads(totalPageCount) - 1}
           className="book-nav-btn book-nav-next"
           aria-label="Siguiente"
         >
