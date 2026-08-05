@@ -39,8 +39,22 @@ export const CHARS_PER_LINE = 42;
 /** @deprecated Use LEFT_PAGE_WORDS / RIGHT_PAGE_WORDS per page index. */
 export const READER_WORDS_PER_PAGE = LEFT_PAGE_WORDS;
 
-/** Bump when extraction/pagination logic changes; stored on each book row. */
-export const PIPELINE_VERSION = 7;
+/**
+ * Final layout: pages packed with real DOM heights (Literata / reader CSS).
+ * Bump when pack or measure rules change; stored on each book row after DOM pack.
+ */
+export const PIPELINE_VERSION = 8;
+
+/**
+ * Server-side estimate only (upload). Reader runs DOM pack once and upgrades to
+ * {@link PIPELINE_VERSION}. Anything in (0, PIPELINE_VERSION) needs that pass.
+ */
+export const ESTIMATED_PIPELINE_VERSION = 7;
+
+/** True when stored pages are not yet DOM-packed. */
+export function needsDomPack(pipelineVersion: number): boolean {
+  return pipelineVersion > 0 && pipelineVersion < PIPELINE_VERSION;
+}
 
 /** Safety cap for content_json size in DB. */
 export const MAX_STORED_PAGES = 1500;
@@ -311,6 +325,53 @@ export type HeightPaginationOptions = {
   rightHeightPx: number;
   fontSize: number;
 };
+
+/**
+ * G1/G2 helper: packed page heights must not exceed limits; non-final pages
+ * should be filled until the next block does not fit (low slack).
+ */
+export function assertPackedPageQuality(
+  pages: PaginatedPage[],
+  blockHeights: number[],
+  options: Pick<HeightPaginationOptions, "leftHeightPx" | "rightHeightPx">,
+  opts?: { maxSlackRatio?: number }
+): { ok: true } | { ok: false; reason: string } {
+  const maxSlack = opts?.maxSlackRatio ?? 0.35;
+  const minHeight = 80;
+
+  function limitFor(pageIndex: number): number {
+    const raw =
+      pageIndex % 2 === 0 ? options.leftHeightPx : options.rightHeightPx;
+    return Math.max(minHeight, raw);
+  }
+
+  let globalIndex = 0;
+  for (let p = 0; p < pages.length; p++) {
+    const blocks = pages[p].blocks ?? [];
+    let used = 0;
+    for (let i = 0; i < blocks.length; i++) {
+      used += Math.max(0, blockHeights[globalIndex] ?? 0);
+      globalIndex += 1;
+    }
+    const limit = limitFor(p);
+    if (used > limit + 1) {
+      return {
+        ok: false,
+        reason: `G1: page ${p} used ${used}px > limit ${limit}px`,
+      };
+    }
+    if (p < pages.length - 1 && blocks.length > 0) {
+      const slack = (limit - used) / limit;
+      if (slack > maxSlack) {
+        return {
+          ok: false,
+          reason: `G2: page ${p} slack ${(slack * 100).toFixed(0)}% exceeds ${(maxSlack * 100).toFixed(0)}%`,
+        };
+      }
+    }
+  }
+  return { ok: true };
+}
 
 /**
  * Pack already-measured blocks into pages without exceeding page height.

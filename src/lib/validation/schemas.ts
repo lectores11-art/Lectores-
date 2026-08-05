@@ -58,6 +58,36 @@ export const bookmarkSchema = z.object({
   label: z.string().trim().max(200).optional().nullable(),
 });
 
+const bookPageBlockSchema = z.object({
+  style: z.enum(["title", "subtitle", "list-item", "heading", "paragraph"]),
+  text: z.string().min(0).max(50000),
+  align: z.enum(["left", "center", "right"]).optional(),
+  fontSize: z.number().positive().max(72).optional(),
+  continued: z.boolean().optional(),
+});
+
+export const bookPaginateSchema = z.object({
+  pages: z
+    .array(
+      z.object({
+        pageNumber: z.number().int().min(0),
+        content: z.string().max(200000),
+        blocks: z.array(bookPageBlockSchema).max(500).optional(),
+      })
+    )
+    .min(1)
+    .max(1500),
+  tableOfContents: z
+    .array(
+      z.object({
+        title: z.string().trim().min(1).max(500),
+        pageNumber: z.number().int().min(0),
+      })
+    )
+    .max(2000)
+    .optional(),
+});
+
 export const forumThreadCreateSchema = z.object({
   title: z.string().trim().min(1).max(200),
   content: z.string().trim().min(1).max(10000),

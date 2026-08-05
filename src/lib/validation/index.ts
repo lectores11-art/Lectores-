@@ -9,6 +9,7 @@ export {
   MAX_PDF_BYTES,
   bookFinalizeUploadSchema,
   bookParamsSchema,
+  bookPaginateSchema,
   bookUploadFieldsSchema,
   bookUploadModeSchema,
   bookmarkSchema,

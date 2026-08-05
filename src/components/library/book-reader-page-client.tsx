@@ -4,6 +4,10 @@ import { useEffect, useState, useCallback } from "react";
 import { BookReader } from "@/components/library/book-reader";
 import { Button } from "@/components/ui/button";
 import type { Book, BookPage, BookTOCItem } from "@/lib/types/database";
+import {
+  PIPELINE_VERSION,
+  type PaginatedPage,
+} from "@/lib/pdf/paginator";
 
 export function BookReaderPageClient({
   slug,
@@ -13,6 +17,8 @@ export function BookReaderPageClient({
   bookId: string;
 }) {
   const [book, setBook] = useState<Book | null>(null);
+  const [pages, setPages] = useState<PaginatedPage[]>([]);
+  const [pipelineVersion, setPipelineVersion] = useState(0);
   const [initialPage, setInitialPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [pdfError, setPdfError] = useState("");
@@ -28,7 +34,10 @@ export function BookReaderPageClient({
       }
       const { book: bookData, initialPage: page } = await res.json();
       if (!cancelled) {
-        setBook(bookData as Book);
+        const loaded = bookData as Book;
+        setBook(loaded);
+        setPages((loaded.content_json as BookPage[]) || []);
+        setPipelineVersion(loaded.pipeline_version ?? 0);
         setInitialPage(page ?? 0);
         setLoading(false);
       }
@@ -58,6 +67,51 @@ export function BookReaderPageClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pageNumber: page }),
       });
+    },
+    [slug, bookId]
+  );
+
+  const persistDomPack = useCallback(
+    async (packed: PaginatedPage[]) => {
+      setPages(packed);
+      setPipelineVersion(PIPELINE_VERSION);
+      setBook((prev) =>
+        prev
+          ? {
+              ...prev,
+              content_json: packed as BookPage[],
+              total_pages: packed.length,
+              pipeline_version: PIPELINE_VERSION,
+            }
+          : prev
+      );
+
+      try {
+        const res = await fetch(`/api/c/${slug}/books/${bookId}/paginate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pages: packed }),
+        });
+        if (!res.ok) {
+          console.error("paginate persist failed", await res.text());
+          return;
+        }
+        const data = await res.json();
+        if (data.book) {
+          setBook((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  ...data.book,
+                  content_json: packed as BookPage[],
+                }
+              : prev
+          );
+          setPipelineVersion(data.book.pipeline_version ?? PIPELINE_VERSION);
+        }
+      } catch (err) {
+        console.error("paginate persist error", err);
+      }
     },
     [slug, bookId]
   );
@@ -108,7 +162,6 @@ export function BookReaderPageClient({
     );
   }
 
-  const pages = (book.content_json as BookPage[]) || [];
   const toc = (book.table_of_contents as BookTOCItem[]) || [];
 
   return (
@@ -130,7 +183,8 @@ export function BookReaderPageClient({
         initialPage={initialPage}
         onPageChange={saveProgress}
         onBookmark={saveBookmark}
-        pipelineVersion={book.pipeline_version ?? 0}
+        onDomPacked={persistDomPack}
+        pipelineVersion={pipelineVersion}
       />
     </div>
   );

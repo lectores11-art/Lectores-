@@ -10,7 +10,7 @@ import {
   paginateBlocksByLines,
   paginateText,
   PDF_EXTRACT_FAILURE_MESSAGE,
-  PIPELINE_VERSION,
+  ESTIMATED_PIPELINE_VERSION,
 } from "@/lib/pdf/paginator";
 import {
   BOOKS_BUCKET,
@@ -276,7 +276,8 @@ export async function POST(
         total_pages: pages.length,
         table_of_contents: toc,
         is_published: true,
-        pipeline_version: PIPELINE_VERSION,
+        // Estimate only — first open DOM-packs and upgrades to PIPELINE_VERSION.
+        pipeline_version: ESTIMATED_PIPELINE_VERSION,
       })
       .select(BOOK_SELECT)
       .single();

@@ -283,7 +283,29 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
                   author={selectedBook.author}
                   pages={(selectedBook.content_json as BookPage[]) || []}
                   tableOfContents={(selectedBook.table_of_contents as BookTOCItem[]) || []}
+                  pipelineVersion={selectedBook.pipeline_version ?? 0}
                   compact
+                  onDomPacked={async (packed) => {
+                    setSelectedBook((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            content_json: packed as BookPage[],
+                            total_pages: packed.length,
+                            pipeline_version: 8,
+                          }
+                        : prev
+                    );
+                    try {
+                      await fetch(`/api/c/${slug}/books/${selectedBook.id}/paginate`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ pages: packed }),
+                      });
+                    } catch (err) {
+                      console.error("meeting paginate persist failed", err);
+                    }
+                  }}
                 />
               </div>
             ) : (
