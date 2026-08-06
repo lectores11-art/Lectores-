@@ -21,6 +21,14 @@ export const inviteTokenParamsSchema = z.object({
   token: z.string().min(1).max(64),
 });
 
+export const inviteParamsSchema = slugParamsSchema.extend({
+  inviteId: z.string().uuid(),
+});
+
+export const invitePatchSchema = z.object({
+  is_active: z.literal(false),
+});
+
 export const bookUploadFieldsSchema = z.object({
   title: z.string().trim().min(1).max(500),
   author: z.string().trim().max(200).optional().nullable(),

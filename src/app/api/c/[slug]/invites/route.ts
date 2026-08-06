@@ -25,7 +25,6 @@ export async function GET(
       .from("invites")
       .select("id, token, use_count, max_uses, is_active, expires_at, created_at")
       .eq("community_id", community.id)
-      .eq("is_active", true)
       .order("created_at", { ascending: false });
 
     if (error) return internalErrorResponse("Error al listar invitaciones:", error);
