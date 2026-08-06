@@ -11,15 +11,20 @@ import { LogoutButton } from "@/components/auth/logout-button";
 import type { Membership, Profile } from "@/lib/types/database";
 
 export function SettingsPageClient({
+  slug,
   communityId,
   user,
+  isOwner,
 }: {
+  slug: string;
   communityId: string;
   user: Profile;
+  isOwner: boolean;
 }) {
   const [fullName, setFullName] = useState(user.full_name || "");
   const [membership, setMembership] = useState<Membership | null>(null);
   const [message, setMessage] = useState("");
+  const [leaving, setLeaving] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -140,6 +145,38 @@ export function SettingsPageClient({
     setMessage(data.error || data.message || "Error al suscribirse");
   }
 
+  async function leaveCommunity() {
+    if (isOwner) {
+      setMessage(
+        "No podés salir siendo dueña de la comunidad. Transferí la propiedad primero."
+      );
+      return;
+    }
+    if (
+      !confirm(
+        "¿Salir de esta comunidad? Vas a perder el acceso. Si tenés suscripción, se cancelará al final del período."
+      )
+    ) {
+      return;
+    }
+
+    setLeaving(true);
+    setMessage("");
+    try {
+      const res = await fetch(`/api/c/${slug}/membership`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMessage(data.error || "No se pudo salir de la comunidad.");
+        return;
+      }
+      window.location.assign(data.redirect || "/dashboard");
+    } catch {
+      setMessage("No se pudo salir de la comunidad.");
+    } finally {
+      setLeaving(false);
+    }
+  }
+
   return (
     <div className="p-4 lg:p-6">
       <div className="mb-5">
@@ -248,6 +285,31 @@ export function SettingsPageClient({
             ) : (
               <Button variant="destructive" onClick={cancelSubscription}>
                 Cancelar suscripción
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="hard-shadow-sm">
+          <CardHeader>
+            <CardTitle>Comunidad</CardTitle>
+            <CardDescription>
+              Abandonar el acceso a esta comunidad (además de cancelar Stripe)
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {isOwner ? (
+              <p className="text-sm text-muted">
+                No podés salir siendo dueña de la comunidad. Transferí la propiedad
+                primero.
+              </p>
+            ) : (
+              <Button
+                variant="destructive"
+                onClick={leaveCommunity}
+                disabled={leaving}
+              >
+                {leaving ? "Saliendo…" : "Salir de la comunidad"}
               </Button>
             )}
           </CardContent>
