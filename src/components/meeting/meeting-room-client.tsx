@@ -209,6 +209,32 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
     });
   }
 
+  async function endMeeting() {
+    if (!activeMeeting) return;
+    if (
+      !confirm(
+        "¿Finalizar esta reunión? Quienes estén en la sala ya no podrán seguir participando."
+      )
+    ) {
+      return;
+    }
+    const res = await fetch(`/api/c/${slug}/meetings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "end", meetingId: activeMeeting.id }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setJoinError(data.error || "No se pudo finalizar la reunión.");
+      return;
+    }
+    setActiveMeeting(null);
+    setToken(null);
+    setSelectedBook(null);
+    setIsHost(false);
+    await loadMeetings();
+  }
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
@@ -244,23 +270,34 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
                 <BookOpen className="mr-2 h-4 w-4" />
                 Ver libros
               </Button>
-              {isAdmin && (
-                <Button size="sm" onClick={startMeeting}>
-                  Iniciar transmisión
+              <div className="flex items-center gap-2">
+                {(isAdmin || isHost) && activeMeeting.status !== "ended" && (
+                  <>
+                    <Button size="sm" onClick={startMeeting}>
+                      Iniciar transmisión
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => void endMeeting()}
+                    >
+                      Finalizar reunión
+                    </Button>
+                  </>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setActiveMeeting(null);
+                    setToken(null);
+                    setSelectedBook(null);
+                  }}
+                  className="text-white"
+                >
+                  Salir
                 </Button>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setActiveMeeting(null);
-                  setToken(null);
-                  setSelectedBook(null);
-                }}
-                className="text-white"
-              >
-                Salir
-              </Button>
+              </div>
             </div>
 
             {showBooks && (
