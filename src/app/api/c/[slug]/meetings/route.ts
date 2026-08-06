@@ -99,23 +99,40 @@ export async function POST(
       });
     }
 
-    if (body.action === "start") {
-      if (!admin) return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+    if (body.action === "start" || body.action === "end") {
       const supabase = await createClient();
-      await supabase
+      const { data: meeting } = await supabase
         .from("meetings")
-        .update({ status: "live", started_at: new Date().toISOString() })
-        .eq("id", body.meetingId);
-      return NextResponse.json({ success: true });
-    }
+        .select("id, host_id, status")
+        .eq("id", body.meetingId)
+        .eq("community_id", community.id)
+        .maybeSingle();
 
-    if (body.action === "end") {
-      if (!admin) return NextResponse.json({ error: "No autorizado" }, { status: 403 });
-      const supabase = await createClient();
-      await supabase
+      if (!meeting) {
+        return NextResponse.json({ error: "Reunión no encontrada" }, { status: 404 });
+      }
+
+      const canControl = admin || meeting.host_id === user.id;
+      if (!canControl) {
+        return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+      }
+
+      if (body.action === "start") {
+        const { error } = await supabase
+          .from("meetings")
+          .update({ status: "live", started_at: new Date().toISOString() })
+          .eq("id", meeting.id)
+          .eq("community_id", community.id);
+        if (error) return internalErrorResponse("Error al iniciar reunión:", error);
+        return NextResponse.json({ success: true });
+      }
+
+      const { error } = await supabase
         .from("meetings")
         .update({ status: "ended", ended_at: new Date().toISOString() })
-        .eq("id", body.meetingId);
+        .eq("id", meeting.id)
+        .eq("community_id", community.id);
+      if (error) return internalErrorResponse("Error al finalizar reunión:", error);
       return NextResponse.json({ success: true });
     }
 
@@ -142,6 +159,7 @@ export async function GET(
     .from("meetings")
     .select("*, host:profiles(id, full_name), active_book:books(id, title)")
     .eq("community_id", community.id)
+    .neq("status", "ended")
     .order("created_at", { ascending: false });
 
   return NextResponse.json({ meetings: meetings || [] });
