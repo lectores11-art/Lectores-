@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   bookParamsSchema,
+  bookPatchSchema,
   forumThreadCreateSchema,
   forumThreadPatchSchema,
   inviteJoinSchema,
