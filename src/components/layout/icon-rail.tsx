@@ -146,7 +146,7 @@ export function IconRail({ community, isAdmin }: IconRailProps) {
   );
 }
 
-/** Mobile bottom nav */
+/** Mobile bottom nav — primary destinations + "Más" sheet (Agenda, Admin, Cuenta) */
 export function MobileBottomNav({
   community,
   isAdmin,
@@ -156,33 +156,93 @@ export function MobileBottomNav({
 }) {
   const pathname = usePathname();
   const base = `/c/${community.slug}`;
-  const items = [
-    ...mainNav.slice(0, 4),
-    { href: "settings", label: "Más", icon: Settings },
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  const primary = mainNav.slice(0, 4); // Foro, Aula, Biblio, Sala
+  const moreItems = [
+    { href: `${base}/calendar`, label: "Agenda", icon: Calendar },
+    ...(isAdmin
+      ? [{ href: `${base}/admin`, label: "Admin", icon: Users }]
+      : []),
+    { href: `${base}/settings`, label: "Cuenta", icon: Settings },
   ];
-  if (isAdmin && pathname.includes("/admin")) {
-    // keep settings as last
-  }
+
+  const moreActive = moreItems.some((item) => pathname.startsWith(item.href));
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 flex h-16 items-stretch border-t border-border bg-background lg:hidden">
-      {items.map(({ href, label, icon: Icon }) => {
-        const fullHref = `${base}/${href}`;
-        const active = pathname.startsWith(fullHref);
-        return (
-          <Link
-            key={href}
-            href={fullHref}
+    <>
+      {moreOpen && (
+        <button
+          type="button"
+          aria-label="Cerrar menú"
+          className="fixed inset-0 z-40 bg-black/30 lg:hidden"
+          onClick={() => setMoreOpen(false)}
+        />
+      )}
+      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-background lg:hidden">
+        {moreOpen && (
+          <div className="border-b border-border px-3 py-2">
+            <p className="mb-1 px-1 text-[10px] font-bold uppercase tracking-wide text-muted">
+              Más
+            </p>
+            <ul className="space-y-1">
+              {moreItems.map(({ href, label, icon: Icon }) => {
+                const active = pathname.startsWith(href);
+                return (
+                  <li key={href}>
+                    <Link
+                      href={href}
+                      onClick={() => setMoreOpen(false)}
+                      className={cn(
+                        "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold",
+                        active
+                          ? "bg-accent-light text-accent"
+                          : "text-foreground hover:bg-accent-light"
+                      )}
+                    >
+                      <Icon className="h-5 w-5" />
+                      {label}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+        <div className="flex h-16 items-stretch">
+          {primary.map(({ href, label, icon: Icon }) => {
+            const fullHref = `${base}/${href}`;
+            const active = pathname.startsWith(fullHref);
+            return (
+              <Link
+                key={href}
+                href={fullHref}
+                onClick={() => setMoreOpen(false)}
+                className={cn(
+                  "flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-bold uppercase",
+                  active ? "text-accent" : "text-foreground"
+                )}
+              >
+                <Icon className="h-5 w-5" />
+                {label}
+              </Link>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => setMoreOpen((open) => !open)}
             className={cn(
               "flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-bold uppercase",
-              active ? "text-accent" : "text-foreground"
+              moreActive || moreOpen ? "text-accent" : "text-foreground"
             )}
+            aria-expanded={moreOpen}
+            aria-label="Más opciones"
           >
-            <Icon className="h-5 w-5" />
-            {label}
-          </Link>
-        );
-      })}
-    </nav>
+            <Settings className="h-5 w-5" />
+            Más
+          </button>
+        </div>
+      </nav>
+    </>
   );
 }

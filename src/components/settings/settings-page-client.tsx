@@ -119,11 +119,14 @@ export function SettingsPageClient({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ membershipId: membership.id }),
     });
+    const data = await res.json().catch(() => ({}));
 
     if (res.ok) {
       setMessage("Suscripción cancelada al final del período");
       loadMembership();
+      return;
     }
+    setMessage(data.error || data.message || "No se pudo cancelar la suscripción");
   }
 
   async function subscribe() {

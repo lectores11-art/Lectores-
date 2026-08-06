@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { mapAuthErrorMessage } from "@/lib/auth/map-auth-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,7 +47,7 @@ export function InviteAuthForm({ token, communityName, onAuthenticated }: Invite
       });
 
       if (authError) {
-        setError(authError.message);
+        setError(mapAuthErrorMessage(authError.message));
         setLoading(false);
         return;
       }
@@ -68,7 +69,7 @@ export function InviteAuthForm({ token, communityName, onAuthenticated }: Invite
     });
 
     if (authError) {
-      setError(authError.message);
+      setError(mapAuthErrorMessage(authError.message));
       setLoading(false);
       return;
     }
