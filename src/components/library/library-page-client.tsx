@@ -79,6 +79,27 @@ export function LibraryPageClient({
     setSearchPlaceholder("Título, autor o tema…");
   }, [setSearchPlaceholder]);
 
+  async function togglePublish(book: BookRow) {
+    const next = !book.is_published;
+    const res = await fetch(`/api/c/${slug}/books/${book.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_published: next }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setUploadError(data.error || "No se pudo actualizar la publicación.");
+      return;
+    }
+    setBooks((prev) =>
+      prev.map((row) =>
+        row.id === book.id
+          ? { ...row, is_published: data.book?.is_published ?? next }
+          : row
+      )
+    );
+  }
+
   async function refreshBooks() {
     const res = await fetch(`/api/c/${slug}/books`);
     const data = await res.json();
@@ -486,7 +507,7 @@ export function LibraryPageClient({
                 >
                   <Card className="h-full transition-transform hard-shadow-sm">
                     <CardContent className="p-4">
-                      <div className="mb-3 flex h-36 items-center justify-center overflow-hidden rounded-md border border-border bg-accent-light">
+                      <div className="relative mb-3 flex h-36 items-center justify-center overflow-hidden rounded-md border border-border bg-accent-light">
                         {book.cover_url ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
@@ -497,10 +518,30 @@ export function LibraryPageClient({
                         ) : (
                           <BookOpen className="h-10 w-10 text-foreground" />
                         )}
+                        {isAdmin && !book.is_published && (
+                          <span className="absolute left-2 top-2 rounded bg-stone-800/90 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                            Borrador
+                          </span>
+                        )}
                       </div>
                       <h3 className="font-bold leading-snug">{book.title}</h3>
                       {book.author && (
                         <p className="mt-1 text-sm text-muted">{book.author}</p>
+                      )}
+                      {isAdmin && (
+                        <div className="mt-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void togglePublish(book);
+                            }}
+                          >
+                            {book.is_published ? "Despublicar" : "Publicar"}
+                          </Button>
+                        </div>
                       )}
                       <div className="mt-3">
                         {digital ? (
