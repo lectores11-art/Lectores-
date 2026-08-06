@@ -13,6 +13,10 @@ export const bookParamsSchema = slugParamsSchema.extend({
   bookId: z.string().uuid(),
 });
 
+export const bookPatchSchema = z.object({
+  is_published: z.boolean(),
+});
+
 export const threadParamsSchema = slugParamsSchema.extend({
   threadId: z.string().uuid(),
 });

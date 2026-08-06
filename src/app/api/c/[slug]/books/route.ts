@@ -326,13 +326,20 @@ export async function GET(
   if (access instanceof NextResponse) return access;
   const { user, community } = access;
 
+  const admin = await isCommunityAdmin(community.id, user.id, user.is_super_admin);
+
   const supabase = await createClient();
-  const { data: books } = await supabase
+  let query = supabase
     .from("books")
     .select("*")
     .eq("community_id", community.id)
-    .eq("is_published", true)
     .order("created_at", { ascending: false });
+
+  if (!admin) {
+    query = query.eq("is_published", true);
+  }
+
+  const { data: books } = await query;
 
   const bookList = books || [];
   const bookIds = bookList.map((book) => book.id);
