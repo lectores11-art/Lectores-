@@ -29,9 +29,13 @@ export async function DELETE(
     const { user, community, membership } = access;
 
     const isOwner =
-      community.owner_id === user.id || membership.role === "community_owner";
+      community.owner_id === user.id || membership?.role === "community_owner";
     if (isOwner) {
       return NextResponse.json({ error: OWNER_LEAVE_MESSAGE }, { status: 403 });
+    }
+
+    if (!membership) {
+      return NextResponse.json({ error: "Membresía no encontrada" }, { status: 404 });
     }
 
     const supabase = await createClient();
