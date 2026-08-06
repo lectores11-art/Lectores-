@@ -10,11 +10,11 @@ import { useDetailPanel } from "@/components/layout/detail-panel-context";
 import { formatRelativeTime } from "@/lib/utils";
 
 type InviteRow = {
-  id?: string;
+  id: string;
   token: string;
   use_count: number;
   max_uses: number | null;
-  is_active?: boolean;
+  is_active: boolean;
   created_at?: string;
 };
 
@@ -31,6 +31,7 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState("");
   const [creatingInvite, setCreatingInvite] = useState(false);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
   const { setSearchPlaceholder } = useDetailPanel();
 
   useEffect(() => {
@@ -89,6 +90,38 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
     }
   }
 
+  async function revokeInvite(invite: InviteRow) {
+    if (!invite.id || !invite.is_active) return;
+    const confirmed = window.confirm(
+      "¿Revocar esta invitación? Quienes tengan el link ya no podrán unirse."
+    );
+    if (!confirmed) return;
+
+    setRevokingId(invite.id);
+    setInviteError("");
+    try {
+      const res = await fetch(`/api/c/${slug}/invites/${invite.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setInviteError(data.error || "No se pudo revocar la invitación.");
+        return;
+      }
+      setInvites((prev) =>
+        prev.map((row) =>
+          row.id === invite.id
+            ? { ...row, ...(data.invite || { is_active: false }) }
+            : row
+        )
+      );
+    } catch {
+      setInviteError("No se pudo revocar la invitación.");
+    } finally {
+      setRevokingId(null);
+    }
+  }
+
   return (
     <div className="p-4 lg:p-6">
       <div className="mb-5">
@@ -131,7 +164,7 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
             )}
 
             <div className="border-t border-border pt-4">
-              <p className="mb-3 text-sm font-semibold">Invitaciones activas</p>
+              <p className="mb-3 text-sm font-semibold">Invitaciones</p>
               {loadingInvites ? (
                 <p className="text-sm text-muted">Cargando invitaciones…</p>
               ) : listError ? (
@@ -143,12 +176,13 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
                 </div>
               ) : invites.length === 0 ? (
                 <p className="text-sm text-muted">
-                  Todavía no hay invitaciones activas. Generá un link para empezar.
+                  Todavía no hay invitaciones. Generá un link para empezar.
                 </p>
               ) : (
                 <ul className="space-y-2">
                   {invites.map((invite) => {
                     const url = inviteUrl(invite.token);
+                    const active = invite.is_active !== false;
                     const usesLabel =
                       invite.max_uses == null
                         ? `${invite.use_count} usos`
@@ -159,7 +193,18 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
                         className="flex flex-col gap-2 rounded-md border border-border bg-surface p-3 sm:flex-row sm:items-center sm:justify-between"
                       >
                         <div className="min-w-0 flex-1">
-                          <p className="truncate font-mono text-xs">{url}</p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={
+                                active
+                                  ? "rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-800"
+                                  : "rounded bg-stone-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-stone-700"
+                              }
+                            >
+                              {active ? "Activa" : "Revocada"}
+                            </span>
+                            <p className="truncate font-mono text-xs">{url}</p>
+                          </div>
                           <p className="mt-1 text-xs text-muted">
                             {usesLabel}
                             {invite.created_at
@@ -167,15 +212,30 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
                               : ""}
                           </p>
                         </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => copyInviteLink(invite.token)}
-                        >
-                          <Copy className="h-4 w-4" />
-                          {copiedToken === invite.token ? "Copiado" : "Copiar link"}
-                        </Button>
+                        <div className="flex shrink-0 gap-2">
+                          {active && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => copyInviteLink(invite.token)}
+                            >
+                              <Copy className="h-4 w-4" />
+                              {copiedToken === invite.token ? "Copiado" : "Copiar link"}
+                            </Button>
+                          )}
+                          {active && (
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              disabled={revokingId === invite.id}
+                              onClick={() => revokeInvite(invite)}
+                            >
+                              {revokingId === invite.id ? "Revocando…" : "Revocar"}
+                            </Button>
+                          )}
+                        </div>
                       </li>
                     );
                   })}

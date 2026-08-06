@@ -4,6 +4,8 @@ import {
   forumThreadCreateSchema,
   forumThreadPatchSchema,
   inviteJoinSchema,
+  inviteParamsSchema,
+  invitePatchSchema,
   inviteTokenParamsSchema,
   meetingActionSchema,
   platformCommunityCreateSchema,
@@ -59,6 +61,29 @@ describe("inviteTokenParamsSchema / inviteJoinSchema", () => {
     expect(
       inviteJoinSchema.safeParse({ token: "t".repeat(65) }).success
     ).toBe(false);
+  });
+});
+
+describe("inviteParamsSchema / invitePatchSchema", () => {
+  it("accepts slug + inviteId uuid", () => {
+    expect(inviteParamsSchema.parse({ slug: "demo", inviteId: UUID })).toEqual({
+      slug: "demo",
+      inviteId: UUID,
+    });
+  });
+
+  it("rejects non-uuid inviteId", () => {
+    expect(
+      inviteParamsSchema.safeParse({ slug: "demo", inviteId: "nope" }).success
+    ).toBe(false);
+  });
+
+  it("only allows soft-revoke via is_active false", () => {
+    expect(invitePatchSchema.parse({ is_active: false })).toEqual({
+      is_active: false,
+    });
+    expect(invitePatchSchema.safeParse({ is_active: true }).success).toBe(false);
+    expect(invitePatchSchema.safeParse({}).success).toBe(false);
   });
 });
 
