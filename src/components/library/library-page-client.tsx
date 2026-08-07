@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, startTransition } from "react";
 import Link from "next/link";
-import { BookOpen, Upload } from "lucide-react";
+import { BookOpen, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -69,6 +69,7 @@ export function LibraryPageClient({
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("");
   const [uploadError, setUploadError] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "reading" | "new">("all");
   const {
     setDetail,
@@ -84,6 +85,34 @@ export function LibraryPageClient({
     const data = await res.json();
     setBooks(data.books || []);
     setLoading(false);
+  }
+
+  async function deleteBook(book: BookRow) {
+    if (
+      !confirm(
+        `¿Eliminar “${book.title}”? Se borrará la ficha y los archivos (PDF/portada). Esta acción no se puede deshacer.`
+      )
+    ) {
+      return;
+    }
+
+    setDeletingId(book.id);
+    setUploadError("");
+    try {
+      const res = await fetch(`/api/c/${slug}/books/${book.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setUploadError(data.error || "No se pudo eliminar el libro.");
+        return;
+      }
+      setBooks((prev) => prev.filter((row) => row.id !== book.id));
+    } catch {
+      setUploadError("No se pudo eliminar el libro.");
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   useEffect(() => {
@@ -375,6 +404,10 @@ export function LibraryPageClient({
         </FilterPill>
       </div>
 
+      {uploadError && !showUpload && (
+        <p className="mb-4 text-sm text-red-600">{uploadError}</p>
+      )}
+
       {showUpload && isAdmin && (
         <Card className="mb-6 hard-shadow-sm">
           <CardHeader>
@@ -501,6 +534,23 @@ export function LibraryPageClient({
                       <h3 className="font-bold leading-snug">{book.title}</h3>
                       {book.author && (
                         <p className="mt-1 text-sm text-muted">{book.author}</p>
+                      )}
+                      {isAdmin && (
+                        <div className="mt-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={deletingId === book.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void deleteBook(book);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            {deletingId === book.id ? "Eliminando…" : "Eliminar"}
+                          </Button>
+                        </div>
                       )}
                       <div className="mt-3">
                         {digital ? (
