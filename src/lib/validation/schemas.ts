@@ -13,8 +13,16 @@ export const bookParamsSchema = slugParamsSchema.extend({
   bookId: z.string().uuid(),
 });
 
+export const membershipParamsSchema = slugParamsSchema.extend({
+  membershipId: z.string().uuid(),
+});
+
 export const threadParamsSchema = slugParamsSchema.extend({
   threadId: z.string().uuid(),
+});
+
+export const membershipStatusPatchSchema = z.object({
+  status: z.enum(["cancelled"]),
 });
 
 export const inviteTokenParamsSchema = z.object({

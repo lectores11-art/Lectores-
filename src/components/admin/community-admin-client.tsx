@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, Link as LinkIcon, Users } from "lucide-react";
+import { Copy, Link as LinkIcon, UserMinus, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,9 +18,38 @@ type InviteRow = {
   created_at?: string;
 };
 
+type MemberProfile = {
+  id: string;
+  email: string;
+  full_name: string | null;
+  avatar_url: string | null;
+};
+
+type MemberRow = {
+  id: string;
+  user_id: string;
+  role: string;
+  status: string;
+  joined_at: string | null;
+  created_at?: string;
+  is_owner?: boolean;
+  profile: MemberProfile | MemberProfile[] | null;
+};
+
 function inviteUrl(token: string) {
   if (typeof window === "undefined") return `/join/${token}`;
   return `${window.location.origin}/join/${token}`;
+}
+
+function memberProfile(member: MemberRow): MemberProfile | null {
+  if (!member.profile) return null;
+  return Array.isArray(member.profile) ? member.profile[0] ?? null : member.profile;
+}
+
+function roleLabel(role: string) {
+  if (role === "community_owner") return "Dueña";
+  if (role === "super_admin") return "Super admin";
+  return "Miembro";
 }
 
 export function CommunityAdminClient({ slug }: { slug: string }) {
@@ -31,6 +60,10 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState("");
   const [creatingInvite, setCreatingInvite] = useState(false);
+  const [members, setMembers] = useState<MemberRow[]>([]);
+  const [loadingMembers, setLoadingMembers] = useState(true);
+  const [membersError, setMembersError] = useState("");
+  const [kickingId, setKickingId] = useState<string | null>(null);
   const { setSearchPlaceholder } = useDetailPanel();
 
   useEffect(() => {
@@ -39,6 +72,7 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
 
   useEffect(() => {
     loadInvites();
+    loadMembers();
   }, [slug]);
 
   async function loadInvites() {
@@ -60,6 +94,26 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
       setListError("No se pudieron cargar las invitaciones.");
     } finally {
       setLoadingInvites(false);
+    }
+  }
+
+  async function loadMembers() {
+    setLoadingMembers(true);
+    setMembersError("");
+    try {
+      const res = await fetch(`/api/c/${slug}/members`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMembers([]);
+        setMembersError(data.error || "No se pudieron cargar los miembros.");
+        return;
+      }
+      setMembers(data.members || []);
+    } catch {
+      setMembers([]);
+      setMembersError("No se pudieron cargar los miembros.");
+    } finally {
+      setLoadingMembers(false);
     }
   }
 
@@ -89,6 +143,36 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
     }
   }
 
+  async function kickMember(member: MemberRow) {
+    const profile = memberProfile(member);
+    const label = profile?.full_name || profile?.email || "este miembro";
+    if (
+      !confirm(
+        `¿Expulsar a ${label}? Perderá el acceso a la comunidad. No se borra su cuenta.`
+      )
+    ) {
+      return;
+    }
+
+    setKickingId(member.id);
+    setMembersError("");
+    try {
+      const res = await fetch(`/api/c/${slug}/members/${member.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMembersError(data.error || "No se pudo expulsar al miembro.");
+        return;
+      }
+      setMembers((prev) => prev.filter((row) => row.id !== member.id));
+    } catch {
+      setMembersError("No se pudo expulsar al miembro.");
+    } finally {
+      setKickingId(null);
+    }
+  }
+
   return (
     <div className="p-4 lg:p-6">
       <div className="mb-5">
@@ -97,6 +181,85 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
       </div>
 
       <div className="mx-auto max-w-2xl space-y-6">
+        <Card className="hard-shadow-sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-accent" />
+              Miembros activos
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted">
+              Podés desactivar el acceso de un miembro. No se borra su cuenta de usuario.
+            </p>
+            {loadingMembers ? (
+              <p className="text-sm text-muted">Cargando miembros…</p>
+            ) : membersError ? (
+              <div className="space-y-2">
+                <p className="text-sm text-red-600">{membersError}</p>
+                <Button type="button" variant="outline" size="sm" onClick={() => loadMembers()}>
+                  Reintentar
+                </Button>
+              </div>
+            ) : members.length === 0 ? (
+              <p className="text-sm text-muted">Todavía no hay miembros activos.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[28rem] text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-xs text-muted">
+                      <th className="py-2 pr-3 font-medium">Nombre</th>
+                      <th className="py-2 pr-3 font-medium">Rol</th>
+                      <th className="py-2 pr-3 font-medium">Desde</th>
+                      <th className="py-2 font-medium">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {members.map((member) => {
+                      const profile = memberProfile(member);
+                      const isOwner =
+                        Boolean(member.is_owner) ||
+                        member.role === "community_owner";
+                      return (
+                        <tr key={member.id} className="border-b border-border/70">
+                          <td className="py-3 pr-3 align-top">
+                            <p className="font-medium">
+                              {profile?.full_name || "Sin nombre"}
+                            </p>
+                            <p className="text-xs text-muted">{profile?.email || "—"}</p>
+                          </td>
+                          <td className="py-3 pr-3 align-top">{roleLabel(member.role)}</td>
+                          <td className="py-3 pr-3 align-top text-muted">
+                            {member.joined_at
+                              ? formatRelativeTime(member.joined_at)
+                              : "—"}
+                          </td>
+                          <td className="py-3 align-top">
+                            {isOwner ? (
+                              <span className="text-xs text-muted">No expulsable</span>
+                            ) : (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={kickingId === member.id}
+                                onClick={() => kickMember(member)}
+                              >
+                                <UserMinus className="h-4 w-4" />
+                                {kickingId === member.id ? "Expulsando…" : "Expulsar"}
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <Card className="hard-shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

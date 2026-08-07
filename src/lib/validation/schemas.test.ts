@@ -6,6 +6,8 @@ import {
   inviteJoinSchema,
   inviteTokenParamsSchema,
   meetingActionSchema,
+  membershipParamsSchema,
+  membershipStatusPatchSchema,
   platformCommunityCreateSchema,
   readingProgressSchema,
   slugParamsSchema,
@@ -40,6 +42,37 @@ describe("bookParamsSchema", () => {
   it("rejects non-uuid bookId", () => {
     expect(
       bookParamsSchema.safeParse({ slug: "demo", bookId: "not-a-uuid" }).success
+    ).toBe(false);
+  });
+});
+
+describe("membershipParamsSchema", () => {
+  it("accepts slug + membershipId uuid", () => {
+    expect(
+      membershipParamsSchema.parse({ slug: "demo", membershipId: UUID })
+    ).toEqual({
+      slug: "demo",
+      membershipId: UUID,
+    });
+  });
+
+  it("rejects non-uuid membershipId", () => {
+    expect(
+      membershipParamsSchema.safeParse({
+        slug: "demo",
+        membershipId: "bad",
+      }).success
+    ).toBe(false);
+  });
+});
+
+describe("membershipStatusPatchSchema", () => {
+  it("only allows cancelled", () => {
+    expect(membershipStatusPatchSchema.parse({ status: "cancelled" })).toEqual({
+      status: "cancelled",
+    });
+    expect(
+      membershipStatusPatchSchema.safeParse({ status: "active" }).success
     ).toBe(false);
   });
 });
