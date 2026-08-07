@@ -10,6 +10,7 @@ import {
   readingProgressSchema,
   slugParamsSchema,
   subscriptionCreateSchema,
+  subscriptionPortalSchema,
 } from "./schemas";
 
 const UUID = "11111111-1111-4111-8111-111111111111";
@@ -190,5 +191,13 @@ describe("subscriptionCreateSchema", () => {
     expect(
       subscriptionCreateSchema.safeParse({ communityId: "x" }).success
     ).toBe(false);
+  });
+});
+
+describe("subscriptionPortalSchema", () => {
+  it("accepts communityId", () => {
+    expect(subscriptionPortalSchema.parse({ communityId: UUID })).toEqual({
+      communityId: UUID,
+    });
   });
 });
