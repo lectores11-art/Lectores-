@@ -14,10 +14,6 @@ export default async function SettingsPage({
   if (!community) redirect("/dashboard");
 
   return (
-    <SettingsPageClient
-      slug={slug}
-      communityId={community.id}
-      user={user}
-    />
+    <SettingsPageClient communityId={community.id} user={user} />
   );
 }
