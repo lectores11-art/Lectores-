@@ -13,6 +13,22 @@ export const bookParamsSchema = slugParamsSchema.extend({
   bookId: z.string().uuid(),
 });
 
+export const bookPatchSchema = z
+  .object({
+    title: z.string().trim().min(1).max(500).optional(),
+    author: z.string().trim().max(200).optional().nullable(),
+    description: z.string().trim().max(5000).optional().nullable(),
+    coverStoragePath: z.string().trim().min(3).max(500).optional(),
+  })
+  .refine(
+    (data) =>
+      data.title !== undefined ||
+      data.author !== undefined ||
+      data.description !== undefined ||
+      data.coverStoragePath !== undefined,
+    { message: "Al menos un campo para actualizar" }
+  );
+
 export const threadParamsSchema = slugParamsSchema.extend({
   threadId: z.string().uuid(),
 });

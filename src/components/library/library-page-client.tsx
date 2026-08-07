@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, startTransition } from "react";
 import Link from "next/link";
-import { BookOpen, Upload } from "lucide-react";
+import { BookOpen, Pencil, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -69,6 +69,13 @@ export function LibraryPageClient({
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("");
   const [uploadError, setUploadError] = useState("");
+  const [editingBook, setEditingBook] = useState<BookRow | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editAuthor, setEditAuthor] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [editStatus, setEditStatus] = useState("");
   const [filter, setFilter] = useState<"all" | "reading" | "new">("all");
   const {
     setDetail,
@@ -84,6 +91,115 @@ export function LibraryPageClient({
     const data = await res.json();
     setBooks(data.books || []);
     setLoading(false);
+  }
+
+  function openEdit(book: BookRow) {
+    setEditingBook(book);
+    setEditTitle(book.title);
+    setEditAuthor(book.author || "");
+    setEditDescription(book.description || "");
+    setEditError("");
+    setEditStatus("");
+    setShowUpload(false);
+  }
+
+  function closeEdit() {
+    setEditingBook(null);
+    setEditError("");
+    setEditStatus("");
+  }
+
+  async function handleEdit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!editingBook) return;
+
+    const title = editTitle.trim();
+    if (!title) {
+      setEditError("El título es obligatorio.");
+      return;
+    }
+
+    const form = e.currentTarget;
+    const coverInput = form.elements.namedItem("edit-cover") as HTMLInputElement | null;
+    const cover = coverInput?.files?.[0] || null;
+
+    setSavingEdit(true);
+    setEditError("");
+    setEditStatus("Guardando…");
+
+    let coverStoragePath: string | null = null;
+    const supabase = createClient();
+
+    try {
+      if (cover) {
+        if (!isCoverFile(cover)) {
+          setEditError("Elegí una portada JPG, PNG o WebP.");
+          return;
+        }
+        if (cover.size <= 0 || cover.size > MAX_COVER_BYTES) {
+          setEditError("La portada debe pesar como máximo 5 MB.");
+          return;
+        }
+        coverStoragePath = buildCommunityObjectPath(communityId, cover.name);
+        setEditStatus("Subiendo portada…");
+        const { error: coverError } = await supabase.storage
+          .from(COVER_BUCKET)
+          .upload(coverStoragePath, cover, {
+            contentType: coverObjectContentType(cover),
+            upsert: false,
+          });
+        if (coverError) {
+          console.error("edit cover upload error:", coverError);
+          setEditError(
+            "No se pudo subir la portada. ¿Aplicaste la migración de book-covers en Supabase?"
+          );
+          return;
+        }
+      }
+
+      setEditStatus("Actualizando ficha…");
+      const body: {
+        title: string;
+        author: string | null;
+        description: string | null;
+        coverStoragePath?: string;
+      } = {
+        title,
+        author: editAuthor.trim() || null,
+        description: editDescription.trim() || null,
+      };
+      if (coverStoragePath) body.coverStoragePath = coverStoragePath;
+
+      const res = await fetch(`/api/c/${slug}/books/${editingBook.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (coverStoragePath) {
+          await supabase.storage.from(COVER_BUCKET).remove([coverStoragePath]);
+        }
+        setEditError(data.error || "No se pudo actualizar el libro.");
+        return;
+      }
+
+      setBooks((prev) =>
+        prev.map((row) =>
+          row.id === editingBook.id ? { ...row, ...data.book } : row
+        )
+      );
+      closeEdit();
+    } catch (err) {
+      console.error("handleEdit exception:", err);
+      if (coverStoragePath) {
+        await supabase.storage.from(COVER_BUCKET).remove([coverStoragePath]);
+      }
+      setEditError("Error de red al guardar. Intentá de nuevo.");
+    } finally {
+      setSavingEdit(false);
+      setEditStatus("");
+    }
   }
 
   useEffect(() => {
@@ -375,6 +491,71 @@ export function LibraryPageClient({
         </FilterPill>
       </div>
 
+      {editingBook && isAdmin && (
+        <Card className="mb-6 hard-shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-lg">Editar libro</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="mb-4 text-sm text-muted">
+              Corregí título, autor o descripción. Podés cambiar la portada sin
+              volver a subir el PDF.
+            </p>
+            <form onSubmit={handleEdit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-title">Título</Label>
+                <Input
+                  id="edit-title"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-author">Autor</Label>
+                <Input
+                  id="edit-author"
+                  value={editAuthor}
+                  onChange={(e) => setEditAuthor(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-description">Descripción</Label>
+                <Input
+                  id="edit-description"
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-cover">Nueva portada (opcional)</Label>
+                <Input
+                  id="edit-cover"
+                  name="edit-cover"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                />
+              </div>
+              {editStatus && <p className="text-sm text-muted">{editStatus}</p>}
+              {editError && <p className="text-sm text-red-600">{editError}</p>}
+              <div className="flex flex-wrap gap-2">
+                <Button type="submit" disabled={savingEdit}>
+                  {savingEdit ? editStatus || "Guardando…" : "Guardar cambios"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={savingEdit}
+                  onClick={closeEdit}
+                >
+                  Cancelar
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
       {showUpload && isAdmin && (
         <Card className="mb-6 hard-shadow-sm">
           <CardHeader>
@@ -501,6 +682,22 @@ export function LibraryPageClient({
                       <h3 className="font-bold leading-snug">{book.title}</h3>
                       {book.author && (
                         <p className="mt-1 text-sm text-muted">{book.author}</p>
+                      )}
+                      {isAdmin && (
+                        <div className="mt-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openEdit(book);
+                            }}
+                          >
+                            <Pencil className="h-4 w-4" />
+                            Editar
+                          </Button>
+                        </div>
                       )}
                       <div className="mt-3">
                         {digital ? (
