@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   bookParamsSchema,
+  bookPatchSchema,
   forumThreadCreateSchema,
   forumThreadPatchSchema,
   inviteJoinSchema,
@@ -41,6 +42,32 @@ describe("bookParamsSchema", () => {
     expect(
       bookParamsSchema.safeParse({ slug: "demo", bookId: "not-a-uuid" }).success
     ).toBe(false);
+  });
+});
+
+describe("bookPatchSchema", () => {
+  it("accepts metadata fields", () => {
+    expect(
+      bookPatchSchema.parse({
+        title: "Nuevo título",
+        author: "Autora",
+        description: null,
+      })
+    ).toEqual({
+      title: "Nuevo título",
+      author: "Autora",
+      description: null,
+    });
+  });
+
+  it("accepts coverStoragePath alone", () => {
+    expect(
+      bookPatchSchema.parse({ coverStoragePath: `${UUID}/cover.jpg` })
+    ).toEqual({ coverStoragePath: `${UUID}/cover.jpg` });
+  });
+
+  it("rejects empty patch", () => {
+    expect(bookPatchSchema.safeParse({}).success).toBe(false);
   });
 });
 

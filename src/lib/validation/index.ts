@@ -10,6 +10,7 @@ export {
   bookFinalizeUploadSchema,
   bookParamsSchema,
   bookPaginateSchema,
+  bookPatchSchema,
   bookUploadFieldsSchema,
   bookUploadModeSchema,
   bookmarkSchema,
