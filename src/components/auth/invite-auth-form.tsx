@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { mapAuthErrorMessage } from "@/lib/auth/map-auth-error";
 import { Button } from "@/components/ui/button";
@@ -27,25 +27,7 @@ export function InviteAuthForm({
   const [confirmPending, setConfirmPending] = useState(false);
   const [resending, setResending] = useState(false);
   const [resendMessage, setResendMessage] = useState("");
-  const [resendCooldownUntil, setResendCooldownUntil] = useState(0);
-  const [resendCoolingDown, setResendCoolingDown] = useState(false);
-
-  useEffect(() => {
-    if (!resendCooldownUntil) {
-      setResendCoolingDown(false);
-      return;
-    }
-    const tick = () => {
-      const active = Date.now() < resendCooldownUntil;
-      setResendCoolingDown(active);
-      return active;
-    };
-    if (!tick()) return;
-    const id = window.setInterval(() => {
-      if (!tick()) window.clearInterval(id);
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [resendCooldownUntil]);
+  const [resendLocked, setResendLocked] = useState(false);
 
   function redirectUrl() {
     const base =
@@ -132,10 +114,8 @@ export function InviteAuthForm({
       setResendMessage("Ingresá tu email para reenviar la confirmación.");
       return;
     }
-    const now = Date.now();
-    if (now < resendCooldownUntil) {
-      const seconds = Math.ceil((resendCooldownUntil - now) / 1000);
-      setResendMessage(`Esperá ${seconds}s antes de pedir otro reenvío.`);
+    if (resendLocked || resending) {
+      setResendMessage("Esperá un momento antes de pedir otro reenvío.");
       return;
     }
     setResending(true);
@@ -152,7 +132,8 @@ export function InviteAuthForm({
         setResendMessage(mapAuthErrorMessage(resendError.message));
         return;
       }
-      setResendCooldownUntil(Date.now() + 45_000);
+      setResendLocked(true);
+      window.setTimeout(() => setResendLocked(false), 45_000);
       setResendMessage(
         "Si el email aplica y el proyecto tiene SMTP configurado, vas a recibir un correo en breve. Si no llega, pedile a la admin que revise Auth → SMTP en Supabase."
       );
@@ -185,12 +166,12 @@ export function InviteAuthForm({
         <Button
           type="button"
           className="w-full"
-          disabled={resending || resendCoolingDown}
+          disabled={resending || resendLocked}
           onClick={() => void resendConfirmation()}
         >
           {resending
             ? "Reenviando…"
-            : resendCoolingDown
+            : resendLocked
               ? "Esperá un momento…"
               : "Reenviar confirmación"}
         </Button>
