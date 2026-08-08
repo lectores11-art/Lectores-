@@ -1,0 +1,184 @@
+import { NextResponse } from "next/server";
+import Stripe from "stripe";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { isCommunityAdmin, requireApiCommunityAccess } from "@/lib/auth/helpers";
+import {
+  internalErrorResponse,
+  membershipParamsSchema,
+  membershipStatusPatchSchema,
+  parseData,
+  parseJsonBody,
+} from "@/lib/validation";
+
+const OWNER_KICK_MESSAGE = "No podés expulsar a la dueña de la comunidad.";
+const SELF_KICK_MESSAGE = "No podés expulsarte a vos misma desde aquí.";
+
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? new Stripe(process.env.STRIPE_SECRET_KEY)
+  : null;
+
+async function cancelStripeForMembership(membershipId: string) {
+  if (!stripe) return { warning: null as string | null };
+
+  const serviceClient = await createServiceClient();
+  const { data: subscription, error } = await serviceClient
+    .from("subscriptions")
+    .select("id, stripe_subscription_id, status")
+    .eq("membership_id", membershipId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Kick: lookup subscription failed:", error);
+    return {
+      warning:
+        "Miembro expulsado, pero no se pudo revisar la suscripción de Stripe.",
+    };
+  }
+
+  if (!subscription?.stripe_subscription_id) {
+    return { warning: null };
+  }
+
+  try {
+    await stripe.subscriptions.update(subscription.stripe_subscription_id, {
+      cancel_at_period_end: true,
+    });
+  } catch (err) {
+    console.error("Kick: Stripe cancel failed:", err);
+    return {
+      warning:
+        "Miembro expulsado, pero no se pudo cancelar el cobro en Stripe. Revisá el Dashboard.",
+    };
+  }
+
+  const { error: updateError } = await serviceClient
+    .from("subscriptions")
+    .update({ cancel_at_period_end: true, status: "cancelled" })
+    .eq("id", subscription.id);
+
+  if (updateError) {
+    console.error("Kick: local subscription update failed:", updateError);
+    return {
+      warning:
+        "Miembro expulsado y Stripe cancelado al fin de período, pero falló actualizar la DB local.",
+    };
+  }
+
+  return { warning: null };
+}
+
+async function deactivateMembership(
+  slug: string,
+  membershipId: string,
+  nextStatus: "cancelled"
+) {
+  const access = await requireApiCommunityAccess(slug);
+  if (access instanceof NextResponse) return access;
+  const { user, community } = access;
+
+  const admin = await isCommunityAdmin(
+    community.id,
+    user.id,
+    user.is_super_admin
+  );
+  if (!admin) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+  }
+
+  const supabase = await createClient();
+  const { data: target, error: fetchError } = await supabase
+    .from("memberships")
+    .select("id, user_id, role, status")
+    .eq("id", membershipId)
+    .eq("community_id", community.id)
+    .maybeSingle();
+
+  if (fetchError) {
+    return internalErrorResponse("Error al buscar membresía:", fetchError);
+  }
+  if (!target) {
+    return NextResponse.json(
+      { error: "Membresía no encontrada" },
+      { status: 404 }
+    );
+  }
+
+  if (target.user_id === user.id) {
+    return NextResponse.json({ error: SELF_KICK_MESSAGE }, { status: 403 });
+  }
+
+  const isOwner =
+    target.user_id === community.owner_id ||
+    target.role === "community_owner";
+  if (isOwner) {
+    return NextResponse.json({ error: OWNER_KICK_MESSAGE }, { status: 403 });
+  }
+
+  if (target.status !== "active") {
+    return NextResponse.json({
+      success: true,
+      membership: { id: target.id, status: target.status },
+    });
+  }
+
+  // Soft-deactivate only — never delete auth.users.
+  const { data: updated, error: updateError } = await supabase
+    .from("memberships")
+    .update({ status: nextStatus })
+    .eq("id", target.id)
+    .eq("community_id", community.id)
+    .select("id, user_id, role, status, joined_at, created_at")
+    .single();
+
+  if (updateError) {
+    return internalErrorResponse("Error al desactivar membresía:", updateError);
+  }
+
+  const { warning } = await cancelStripeForMembership(updated.id);
+
+  return NextResponse.json({
+    success: true,
+    membership: updated,
+    ...(warning ? { warning } : {}),
+  });
+}
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ slug: string; membershipId: string }> }
+) {
+  try {
+    const paramsResult = parseData(membershipParamsSchema, await params);
+    if ("error" in paramsResult) return paramsResult.error;
+    const { slug, membershipId } = paramsResult.data;
+
+    const bodyResult = await parseJsonBody(request, membershipStatusPatchSchema);
+    if ("error" in bodyResult) return bodyResult.error;
+    const { status } = bodyResult.data;
+
+    return deactivateMembership(slug, membershipId, status);
+  } catch (err) {
+    return internalErrorResponse(
+      "PATCH /api/c/[slug]/members/[membershipId] failed:",
+      err
+    );
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ slug: string; membershipId: string }> }
+) {
+  try {
+    const paramsResult = parseData(membershipParamsSchema, await params);
+    if ("error" in paramsResult) return paramsResult.error;
+    const { slug, membershipId } = paramsResult.data;
+
+    return deactivateMembership(slug, membershipId, "cancelled");
+  } catch (err) {
+    return internalErrorResponse(
+      "DELETE /api/c/[slug]/members/[membershipId] failed:",
+      err
+    );
+  }
+}

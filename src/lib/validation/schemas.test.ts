@@ -8,6 +8,8 @@ import {
   inviteJoinSchema,
   inviteTokenParamsSchema,
   meetingActionSchema,
+  membershipParamsSchema,
+  membershipStatusPatchSchema,
   platformCommunityCreateSchema,
   readingProgressSchema,
   slugParamsSchema,
@@ -105,6 +107,37 @@ describe("bookPatchSchema", () => {
     expect(parsed).not.toHaveProperty("content_json");
     expect(parsed).not.toHaveProperty("pdf_storage_path");
     expect(parsed).not.toHaveProperty("community_id");
+  });
+});
+
+describe("membershipParamsSchema", () => {
+  it("accepts slug + membershipId uuid", () => {
+    expect(
+      membershipParamsSchema.parse({ slug: "demo", membershipId: UUID })
+    ).toEqual({
+      slug: "demo",
+      membershipId: UUID,
+    });
+  });
+
+  it("rejects non-uuid membershipId", () => {
+    expect(
+      membershipParamsSchema.safeParse({
+        slug: "demo",
+        membershipId: "bad",
+      }).success
+    ).toBe(false);
+  });
+});
+
+describe("membershipStatusPatchSchema", () => {
+  it("only allows cancelled", () => {
+    expect(membershipStatusPatchSchema.parse({ status: "cancelled" })).toEqual({
+      status: "cancelled",
+    });
+    expect(
+      membershipStatusPatchSchema.safeParse({ status: "active" }).success
+    ).toBe(false);
   });
 });
 

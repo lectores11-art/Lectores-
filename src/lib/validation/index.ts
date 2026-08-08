@@ -21,6 +21,8 @@ export {
   inviteJoinSchema,
   inviteTokenParamsSchema,
   meetingActionSchema,
+  membershipParamsSchema,
+  membershipStatusPatchSchema,
   platformCommunityCreateSchema,
   readingProgressSchema,
   slugParamsSchema,

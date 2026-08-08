@@ -37,6 +37,15 @@ export const bookPublishPatchSchema = z.object({
   is_published: z.boolean(),
 });
 
+export const membershipParamsSchema = slugParamsSchema.extend({
+  membershipId: z.string().uuid(),
+});
+
+/** Soft-deactivate only — never delete auth.users. */
+export const membershipStatusPatchSchema = z.object({
+  status: z.enum(["cancelled"]),
+});
+
 export const threadParamsSchema = slugParamsSchema.extend({
   threadId: z.string().uuid(),
 });
