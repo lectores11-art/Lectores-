@@ -85,11 +85,8 @@ export function BookReader({
   legacyWarning = false,
 }: BookReaderProps) {
   const [livePages, setLivePages] = useState(pages);
-  const [pagesProp, setPagesProp] = useState(pages);
   const [preparing, setPreparing] = useState(
-    () =>
-      pages.length > 0 &&
-      (needsDomPack(pipelineVersion) || !packMetrics)
+    () => needsDomPack(pipelineVersion) || !packMetrics
   );
   const packingRef = useRef(false);
   const onDomPackedRef = useRef(onDomPacked);
@@ -105,22 +102,18 @@ export function BookReader({
   const [searchResults, setSearchResults] = useState<number[]>([]);
   const [justBookmarked, setJustBookmarked] = useState(false);
 
-  // Sync prop → local pages without an effect (avoids cascading render lint).
-  if (pages !== pagesProp) {
-    setPagesProp(pages);
-    setLivePages(pages);
-    if (pages.length === 0) {
-      setPreparing(false);
-    }
-  }
-
   useEffect(() => {
     onDomPackedRef.current = onDomPacked;
   }, [onDomPacked]);
 
+  useEffect(() => {
+    setLivePages(pages);
+  }, [pages]);
+
   // Pack when pipeline is outdated OR the saved viewport no longer matches this screen.
   useEffect(() => {
     if (pages.length === 0) {
+      setPreparing(false);
       return;
     }
 
