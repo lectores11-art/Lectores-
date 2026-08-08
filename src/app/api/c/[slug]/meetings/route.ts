@@ -1,4 +1,4 @@
-import { AccessToken } from "livekit-server-sdk";
+import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import { NextResponse } from "next/server";
 import { isCommunityAdmin, requireApiCommunityAccess } from "@/lib/auth/helpers";
 import { createClient } from "@/lib/supabase/server";
@@ -10,6 +10,21 @@ import {
   parseJsonBody,
   slugParamsSchema,
 } from "@/lib/validation";
+
+async function bestEffortDeleteLiveKitRoom(roomName: string) {
+  const apiKey = process.env.LIVEKIT_API_KEY;
+  const apiSecret = process.env.LIVEKIT_API_SECRET;
+  const host = process.env.NEXT_PUBLIC_LIVEKIT_URL;
+  if (!apiKey || !apiSecret || !host) return;
+
+  try {
+    const svc = new RoomServiceClient(host, apiKey, apiSecret);
+    await svc.deleteRoom(roomName);
+  } catch (err) {
+    // Room may already be empty / missing — never block ending the meeting.
+    console.error("LiveKit deleteRoom best-effort failed:", err);
+  }
+}
 
 export async function POST(
   request: Request,
@@ -65,7 +80,16 @@ export async function POST(
         .eq("community_id", community.id)
         .single();
 
-      if (!meeting) return NextResponse.json({ error: "Reunión no encontrada" }, { status: 404 });
+      if (!meeting) {
+        return NextResponse.json({ error: "Reunión no encontrada" }, { status: 404 });
+      }
+
+      if (meeting.status === "ended") {
+        return NextResponse.json(
+          { error: "Esta reunión ya finalizó." },
+          { status: 410 }
+        );
+      }
 
       const isHost = meeting.host_id === user.id || admin;
       const apiKey = process.env.LIVEKIT_API_KEY;
@@ -73,7 +97,10 @@ export async function POST(
 
       if (!apiKey || !apiSecret) {
         return NextResponse.json(
-          { error: "LiveKit no configurado. Definí LIVEKIT_API_KEY y LIVEKIT_API_SECRET." },
+          {
+            error:
+              "LiveKit no configurado. Definí LIVEKIT_API_KEY y LIVEKIT_API_SECRET.",
+          },
           { status: 503 }
         );
       }
@@ -99,23 +126,55 @@ export async function POST(
       });
     }
 
-    if (body.action === "start") {
-      if (!admin) return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+    if (body.action === "start" || body.action === "end") {
       const supabase = await createClient();
-      await supabase
+      const { data: meeting } = await supabase
         .from("meetings")
-        .update({ status: "live", started_at: new Date().toISOString() })
-        .eq("id", body.meetingId);
-      return NextResponse.json({ success: true });
-    }
+        .select("id, host_id, status, livekit_room")
+        .eq("id", body.meetingId)
+        .eq("community_id", community.id)
+        .maybeSingle();
 
-    if (body.action === "end") {
-      if (!admin) return NextResponse.json({ error: "No autorizado" }, { status: 403 });
-      const supabase = await createClient();
-      await supabase
+      if (!meeting) {
+        return NextResponse.json({ error: "Reunión no encontrada" }, { status: 404 });
+      }
+
+      const canControl = admin || meeting.host_id === user.id;
+      if (!canControl) {
+        return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+      }
+
+      if (body.action === "start") {
+        if (meeting.status === "ended") {
+          return NextResponse.json(
+            { error: "No se puede iniciar una reunión finalizada." },
+            { status: 409 }
+          );
+        }
+        const { error } = await supabase
+          .from("meetings")
+          .update({ status: "live", started_at: new Date().toISOString() })
+          .eq("id", meeting.id)
+          .eq("community_id", community.id);
+        if (error) return internalErrorResponse("Error al iniciar reunión:", error);
+        return NextResponse.json({ success: true });
+      }
+
+      if (meeting.status === "ended") {
+        return NextResponse.json({ success: true });
+      }
+
+      const { error } = await supabase
         .from("meetings")
         .update({ status: "ended", ended_at: new Date().toISOString() })
-        .eq("id", body.meetingId);
+        .eq("id", meeting.id)
+        .eq("community_id", community.id);
+      if (error) return internalErrorResponse("Error al finalizar reunión:", error);
+
+      if (meeting.livekit_room) {
+        await bestEffortDeleteLiveKitRoom(meeting.livekit_room);
+      }
+
       return NextResponse.json({ success: true });
     }
 
@@ -142,6 +201,7 @@ export async function GET(
     .from("meetings")
     .select("*, host:profiles(id, full_name), active_book:books(id, title)")
     .eq("community_id", community.id)
+    .neq("status", "ended")
     .order("created_at", { ascending: false });
 
   return NextResponse.json({ meetings: meetings || [] });
