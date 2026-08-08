@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   bookParamsSchema,
+  bookPatchSchema,
   bookPublishPatchSchema,
   forumThreadCreateSchema,
   forumThreadPatchSchema,
@@ -61,15 +62,47 @@ describe("bookPublishPatchSchema", () => {
       bookPublishPatchSchema.safeParse({ is_published: "true" }).success
     ).toBe(false);
   });
+});
 
-  it("strips mass-assignment extras like title/community_id", () => {
-    const parsed = bookPublishPatchSchema.parse({
+describe("bookPatchSchema", () => {
+  it("accepts publish-only and metadata patches", () => {
+    expect(bookPatchSchema.parse({ is_published: false })).toEqual({
       is_published: false,
-      title: "hack",
+    });
+    expect(
+      bookPatchSchema.parse({
+        title: "Nuevo título",
+        author: "Autora",
+        description: null,
+      })
+    ).toEqual({
+      title: "Nuevo título",
+      author: "Autora",
+      description: null,
+    });
+  });
+
+  it("accepts coverStoragePath alone", () => {
+    expect(
+      bookPatchSchema.parse({ coverStoragePath: `${UUID}/cover.jpg` })
+    ).toEqual({ coverStoragePath: `${UUID}/cover.jpg` });
+  });
+
+  it("rejects empty patch", () => {
+    expect(bookPatchSchema.safeParse({}).success).toBe(false);
+  });
+
+  it("strips mass-assignment extras (content_json / pdf / community_id)", () => {
+    const parsed = bookPatchSchema.parse({
+      title: "OK",
+      is_published: true,
+      content_json: [{ hack: true }],
+      pdf_storage_path: "x/y.pdf",
       community_id: UUID,
     });
-    expect(parsed).toEqual({ is_published: false });
-    expect(parsed).not.toHaveProperty("title");
+    expect(parsed).toEqual({ title: "OK", is_published: true });
+    expect(parsed).not.toHaveProperty("content_json");
+    expect(parsed).not.toHaveProperty("pdf_storage_path");
     expect(parsed).not.toHaveProperty("community_id");
   });
 });

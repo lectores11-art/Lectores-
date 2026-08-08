@@ -40,3 +40,15 @@ export function isCommunityScopedPath(
     !storagePath.includes("..")
   );
 }
+
+/** Extract object path from a public book-covers URL (or null if unrecognized). */
+export function coverPathFromPublicUrl(coverUrl: string | null): string | null {
+  if (!coverUrl) return null;
+  const marker = `/object/public/${COVER_BUCKET}/`;
+  const idx = coverUrl.indexOf(marker);
+  if (idx === -1) return null;
+  const path = decodeURIComponent(
+    coverUrl.slice(idx + marker.length).split("?")[0] || ""
+  );
+  return path || null;
+}
