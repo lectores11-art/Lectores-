@@ -27,6 +27,8 @@ export function CommunityShell({
   const isBookReader = /\/library\/[^/]+$/.test(pathname);
   // Library list only (not the reader): show book detail panel
   const isLibraryList = /\/library\/?$/.test(pathname);
+  // Meeting room fills the main pane (no page scroll)
+  const isMeetingRoom = /\/meeting\/?$/.test(pathname);
 
   if (isBookReader) {
     return <>{children}</>;
@@ -39,7 +41,15 @@ export function CommunityShell({
 
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <YellowSearchBand user={user} community={community} />
-          <main className="flex-1 overflow-y-auto pb-20 lg:pb-0">{children}</main>
+          <main
+            className={
+              isMeetingRoom
+                ? "flex min-h-0 flex-1 flex-col overflow-hidden pb-20 lg:pb-0"
+                : "flex-1 overflow-y-auto pb-20 lg:pb-0"
+            }
+          >
+            {children}
+          </main>
         </div>
 
         {isLibraryList ? (

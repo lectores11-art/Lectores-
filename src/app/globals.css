@@ -563,3 +563,93 @@ body {
   background: var(--muted);
   border-radius: 0;
 }
+
+/* ===== Meeting room — LiveKit light theme (match Foro/Biblio) ===== */
+
+.meeting-livekit {
+  --lk-bg: var(--background);
+  --lk-bg2: var(--surface);
+  --lk-bg3: #f5ebe0;
+  --lk-bg4: var(--border);
+  --lk-bg5: var(--border);
+  --lk-fg: var(--foreground);
+  --lk-fg2: var(--muted);
+  --lk-fg3: var(--muted);
+  --lk-fg4: #8a7a6c;
+  --lk-fg5: #a89888;
+  --lk-accent-fg: #ffffff;
+  --lk-accent-bg: var(--accent);
+  --lk-danger-fg: #ffffff;
+  --lk-danger: #dc2626;
+  --lk-border-color: var(--border);
+  --lk-control-bg: var(--background);
+  --lk-control-fg: var(--foreground);
+  --lk-control-hover-bg: var(--surface);
+  --lk-control-active-bg: var(--accent-light);
+  --lk-control-secondary-bg: var(--surface);
+  --lk-control-secondary-fg: var(--foreground);
+  height: 100%;
+  background: var(--surface);
+  color: var(--foreground);
+}
+
+.meeting-livekit .lk-grid-layout,
+.meeting-livekit .lk-focus-layout,
+.meeting-livekit .lk-participant-tile {
+  background: var(--surface);
+}
+
+.meeting-livekit .lk-participant-name,
+.meeting-livekit .lk-participant-metadata,
+.meeting-livekit .lk-participant-placeholder {
+  color: var(--foreground);
+}
+
+.meeting-livekit .lk-control-bar {
+  position: relative;
+  z-index: 20;
+  overflow: visible;
+  background: var(--background);
+  border-top: 1px solid var(--border);
+  gap: 0.35rem;
+  padding: 0.45rem 0.5rem;
+}
+
+.meeting-livekit .lk-button,
+.meeting-livekit .lk-button:not(:disabled) {
+  color: var(--foreground);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.meeting-livekit .lk-button:hover:not(:disabled) {
+  background: var(--accent-light);
+  color: var(--foreground);
+}
+
+.meeting-livekit .lk-button[aria-pressed="true"],
+.meeting-livekit .lk-button.lk-button-menu-active {
+  background: var(--accent-light);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.meeting-livekit .lk-button-menu,
+.meeting-livekit .lk-device-menu,
+.meeting-livekit .lk-media-device-select {
+  color: var(--foreground);
+  background: var(--background);
+  border-color: var(--border);
+}
+
+.meeting-livekit .lk-disconnect-button,
+.meeting-livekit .lk-button.lk-disconnect-button {
+  color: #ffffff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.meeting-livekit .lk-disconnect-button:hover:not(:disabled) {
+  background: #d14f22;
+  color: #ffffff;
+}

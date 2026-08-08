@@ -2,11 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  ControlBar,
+  GridLayout,
   LiveKitRoom,
-  VideoConference,
+  ParticipantTile,
   RoomAudioRenderer,
+  useTracks,
 } from "@livekit/components-react";
 import "@livekit/components-styles";
+import { Track } from "livekit-client";
 import { BookOpen, MessageSquare, Send, Video } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { BookReader } from "@/components/library/book-reader";
@@ -14,16 +18,42 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useDetailPanel } from "@/components/layout/detail-panel-context";
-import {
-  PIPELINE_VERSION,
-  type PackMetrics,
-  type PaginatedPage,
-} from "@/lib/pdf/paginator";
+import { PIPELINE_VERSION, type PackMetrics } from "@/lib/pdf/paginator";
 import type { Book, BookPage, BookTOCItem, Meeting, MeetingChatMessage } from "@/lib/types/database";
 
 interface MeetingRoomClientProps {
   slug: string;
   isAdmin: boolean;
+}
+
+function MeetingVideoStage() {
+  const tracks = useTracks(
+    [
+      { source: Track.Source.Camera, withPlaceholder: true },
+      { source: Track.Source.ScreenShare, withPlaceholder: false },
+    ],
+    { onlySubscribed: false }
+  );
+
+  return (
+    <div className="meeting-livekit flex h-full min-h-0 flex-col">
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <GridLayout tracks={tracks} className="h-full">
+          <ParticipantTile />
+        </GridLayout>
+      </div>
+      <ControlBar
+        variation="minimal"
+        controls={{
+          camera: true,
+          microphone: true,
+          screenShare: true,
+          chat: false,
+          leave: false,
+        }}
+      />
+    </div>
+  );
 }
 
 export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
@@ -43,6 +73,7 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
   const [chatMessages, setChatMessages] = useState<MeetingChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const unsubscribeChatRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     setSearchPlaceholder("Buscar reuniones…");
@@ -113,7 +144,6 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
       setLivekitUrl(data.url || "");
       setIsHost(Boolean(data.isHost));
       setActiveMeeting(meeting);
-      subscribeToChat(meeting.id);
     } catch {
       setJoinError(
         "No se pudo unir a la reunión. Revisá tu conexión e intentá de nuevo."
@@ -123,7 +153,13 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
     }
   }
 
-  function subscribeToChat(meetingId: string) {
+  useEffect(() => {
+    unsubscribeChatRef.current?.();
+    unsubscribeChatRef.current = null;
+
+    if (!activeMeeting) return;
+
+    const meetingId = activeMeeting.id;
     const supabase = createClient();
     supabase
       .from("meeting_chat_messages")
@@ -149,23 +185,34 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
             .eq("id", payload.new.user_id)
             .single();
 
-          setChatMessages((prev) => [
-            ...prev,
-            {
-              ...(payload.new as MeetingChatMessage),
-              profile: profile
-                ? { id: profile.id, full_name: profile.full_name }
-                : undefined,
-            },
-          ]);
+          setChatMessages((prev) => {
+            if (prev.some((m) => m.id === payload.new.id)) return prev;
+            return [
+              ...prev,
+              {
+                ...(payload.new as MeetingChatMessage),
+                profile: profile
+                  ? { id: profile.id, full_name: profile.full_name }
+                  : undefined,
+              },
+            ];
+          });
         }
       )
       .subscribe();
 
-    return () => {
+    const unsubscribe = () => {
       supabase.removeChannel(channel);
     };
-  }
+    unsubscribeChatRef.current = unsubscribe;
+
+    return () => {
+      unsubscribe();
+      if (unsubscribeChatRef.current === unsubscribe) {
+        unsubscribeChatRef.current = null;
+      }
+    };
+  }, [activeMeeting?.id]);
 
   async function sendChat(e: React.FormEvent) {
     e.preventDefault();
@@ -209,80 +256,135 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
     });
   }
 
+  function leaveMeeting() {
+    unsubscribeChatRef.current?.();
+    unsubscribeChatRef.current = null;
+    setActiveMeeting(null);
+    setToken(null);
+    setSelectedBook(null);
+    setShowBooks(false);
+    setChatMessages([]);
+    setChatInput("");
+  }
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
 
   if (activeMeeting && token) {
     return (
-      <div className="flex h-screen flex-col bg-slate-900">
-        <div className="flex flex-1 overflow-hidden">
-          {/* Video area */}
-          <div className="flex w-1/3 flex-col border-r border-slate-700">
-            <LiveKitRoom
-              token={token}
-              serverUrl={livekitUrl}
-              connect={true}
-              video={isHost}
-              audio={isHost}
-              className="flex-1"
-            >
-              <VideoConference />
-              <RoomAudioRenderer />
-            </LiveKitRoom>
+      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-background px-3 py-2 lg:px-4">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-foreground">
+              {activeMeeting.title}
+            </p>
+            <p className="text-xs text-muted">Sala en vivo · lectura compartida</p>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowBooks(!showBooks)}
+            >
+              <BookOpen className="h-4 w-4" />
+              Ver libros
+            </Button>
+            {isAdmin && (
+              <Button size="sm" onClick={startMeeting}>
+                Iniciar transmisión
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={leaveMeeting}>
+              Salir
+            </Button>
+          </div>
+        </div>
 
-          {/* Book reader area */}
-          <div className="flex flex-1 flex-col">
-            <div className="flex items-center justify-between border-b border-slate-700 px-4 py-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowBooks(!showBooks)}
-                className="border-slate-600 text-white"
-              >
-                <BookOpen className="mr-2 h-4 w-4" />
-                Ver libros
-              </Button>
-              {isAdmin && (
-                <Button size="sm" onClick={startMeeting}>
-                  Iniciar transmisión
+        {showBooks && (
+          <div className="flex shrink-0 gap-2 overflow-x-auto border-b border-border bg-surface px-3 py-2">
+            {books.length === 0 ? (
+              <p className="py-1 text-sm text-muted">No hay libros en la biblioteca.</p>
+            ) : (
+              books.map((book) => (
+                <Button
+                  key={book.id}
+                  variant={selectedBook?.id === book.id ? "default" : "outline"}
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => {
+                    setSelectedBook(book);
+                    setShowBooks(false);
+                  }}
+                >
+                  {book.title}
                 </Button>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setActiveMeeting(null);
-                  setToken(null);
-                  setSelectedBook(null);
-                }}
-                className="text-white"
+              ))
+            )}
+          </div>
+        )}
+
+        <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+          {/* Lateral: cámara + chat */}
+          <aside className="flex min-h-0 w-full shrink-0 flex-col border-b border-border lg:w-[min(22rem,32%)] lg:border-b-0 lg:border-r xl:w-[28%]">
+            <div className="relative z-10 flex aspect-video shrink-0 flex-col overflow-visible border-b border-border bg-surface lg:aspect-auto lg:h-[42%] lg:min-h-[12.5rem]">
+              <LiveKitRoom
+                token={token}
+                serverUrl={livekitUrl}
+                connect={true}
+                video={isHost}
+                audio={isHost}
+                className="flex h-full min-h-0 flex-col overflow-visible"
+                onDisconnected={leaveMeeting}
               >
-                Salir
-              </Button>
+                <MeetingVideoStage />
+                <RoomAudioRenderer />
+              </LiveKitRoom>
             </div>
 
-            {showBooks && (
-              <div className="flex gap-2 border-b border-slate-700 p-3">
-                {books.map((book) => (
-                  <Button
-                    key={book.id}
-                    variant={selectedBook?.id === book.id ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => {
-                      setSelectedBook(book);
-                      setShowBooks(false);
-                    }}
-                  >
-                    {book.title}
-                  </Button>
-                ))}
+            <div className="flex min-h-0 flex-1 flex-col bg-background">
+              <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2.5">
+                <MessageSquare className="h-4 w-4 text-accent" />
+                <h3 className="text-sm font-semibold text-foreground">Chat en vivo</h3>
               </div>
-            )}
+              <div className="flex-1 overflow-y-auto p-3 scrollbar-thin">
+                {chatMessages.length === 0 ? (
+                  <p className="text-sm text-muted">Todavía no hay mensajes.</p>
+                ) : (
+                  chatMessages.map((msg) => (
+                    <div key={msg.id} className="mb-3 rounded-md bg-surface px-2.5 py-2">
+                      <p className="text-xs font-semibold text-foreground">
+                        {msg.profile?.full_name || "Usuario"}
+                      </p>
+                      <p className="mt-0.5 text-sm text-foreground/90">{msg.content}</p>
+                    </div>
+                  ))
+                )}
+                <div ref={chatEndRef} />
+              </div>
+              <form
+                onSubmit={sendChat}
+                className="shrink-0 border-t border-border bg-background p-3"
+              >
+                <div className="flex gap-2">
+                  <Input
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    placeholder="Escribe un mensaje..."
+                    className="bg-surface"
+                  />
+                  <Button type="submit" size="icon" aria-label="Enviar mensaje">
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </aside>
 
+          {/* Libro */}
+          <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
             {selectedBook ? (
-              <div className="flex-1 overflow-hidden">
+              <div className="min-h-0 flex-1 overflow-hidden">
                 <BookReader
                   title={selectedBook.title}
                   author={selectedBook.author}
@@ -320,47 +422,27 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
                 />
               </div>
             ) : (
-              <div className="flex flex-1 items-center justify-center text-slate-400">
-                <div className="text-center">
-                  <BookOpen className="mx-auto mb-3 h-12 w-12" />
-                  <p>Selecciona un libro para leer durante la reunión</p>
+              <div className="flex flex-1 items-center justify-center bg-surface/40 px-6">
+                <div className="max-w-sm text-center">
+                  <BookOpen className="mx-auto mb-3 h-12 w-12 text-muted" />
+                  <p className="text-base font-semibold text-foreground">
+                    Elegí un libro para la reunión
+                  </p>
+                  <p className="mt-1 text-sm text-muted">
+                    Tocá Ver libros arriba para abrir la biblioteca compartida.
+                  </p>
+                  <Button
+                    className="mt-4"
+                    variant="outline"
+                    onClick={() => setShowBooks(true)}
+                  >
+                    <BookOpen className="h-4 w-4" />
+                    Ver libros
+                  </Button>
                 </div>
               </div>
             )}
-          </div>
-
-          {/* Chat */}
-          <div className="flex w-72 flex-col border-l border-slate-700">
-            <div className="border-b border-slate-700 px-4 py-3">
-              <h3 className="flex items-center gap-2 text-sm font-medium text-white">
-                <MessageSquare className="h-4 w-4" /> Chat en vivo
-              </h3>
-            </div>
-            <div className="flex-1 overflow-y-auto p-3 scrollbar-thin">
-              {chatMessages.map((msg) => (
-                <div key={msg.id} className="mb-3">
-                  <p className="text-xs font-medium text-sky-400">
-                    {msg.profile?.full_name || "Usuario"}
-                  </p>
-                  <p className="text-sm text-slate-300">{msg.content}</p>
-                </div>
-              ))}
-              <div ref={chatEndRef} />
-            </div>
-            <form onSubmit={sendChat} className="border-t border-slate-700 p-3">
-              <div className="flex gap-2">
-                <Input
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  placeholder="Escribe un mensaje..."
-                  className="bg-slate-800 text-white border-slate-600"
-                />
-                <Button type="submit" size="icon">
-                  <Send className="h-4 w-4" />
-                </Button>
-              </div>
-            </form>
-          </div>
+          </section>
         </div>
       </div>
     );
