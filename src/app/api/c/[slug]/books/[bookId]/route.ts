@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isCommunityAdmin, requireApiCommunityAccess } from "@/lib/auth/helpers";
 import {
   bookParamsSchema,
-  bookPatchSchema,
+  bookPublishPatchSchema,
   internalErrorResponse,
   parseData,
   parseJsonBody,
@@ -64,7 +64,7 @@ export async function PATCH(
     const admin = await isCommunityAdmin(community.id, user.id, user.is_super_admin);
     if (!admin) return NextResponse.json({ error: "No autorizado" }, { status: 403 });
 
-    const bodyResult = await parseJsonBody(request, bookPatchSchema);
+    const bodyResult = await parseJsonBody(request, bookPublishPatchSchema);
     if ("error" in bodyResult) return bodyResult.error;
     const { is_published } = bodyResult.data;
 

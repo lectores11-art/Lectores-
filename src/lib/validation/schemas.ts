@@ -13,7 +13,8 @@ export const bookParamsSchema = slugParamsSchema.extend({
   bookId: z.string().uuid(),
 });
 
-export const bookPatchSchema = z.object({
+/** Admin toggle publish/unpublish — keep separate from metadata patch (S4-05). */
+export const bookPublishPatchSchema = z.object({
   is_published: z.boolean(),
 });
 

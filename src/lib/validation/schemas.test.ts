@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   bookParamsSchema,
-  bookPatchSchema,
+  bookPublishPatchSchema,
   forumThreadCreateSchema,
   forumThreadPatchSchema,
   inviteJoinSchema,
@@ -42,6 +42,35 @@ describe("bookParamsSchema", () => {
     expect(
       bookParamsSchema.safeParse({ slug: "demo", bookId: "not-a-uuid" }).success
     ).toBe(false);
+  });
+});
+
+describe("bookPublishPatchSchema", () => {
+  it("accepts boolean is_published", () => {
+    expect(bookPublishPatchSchema.parse({ is_published: true })).toEqual({
+      is_published: true,
+    });
+    expect(bookPublishPatchSchema.parse({ is_published: false })).toEqual({
+      is_published: false,
+    });
+  });
+
+  it("rejects missing or non-boolean is_published", () => {
+    expect(bookPublishPatchSchema.safeParse({}).success).toBe(false);
+    expect(
+      bookPublishPatchSchema.safeParse({ is_published: "true" }).success
+    ).toBe(false);
+  });
+
+  it("strips mass-assignment extras like title/community_id", () => {
+    const parsed = bookPublishPatchSchema.parse({
+      is_published: false,
+      title: "hack",
+      community_id: UUID,
+    });
+    expect(parsed).toEqual({ is_published: false });
+    expect(parsed).not.toHaveProperty("title");
+    expect(parsed).not.toHaveProperty("community_id");
   });
 });
 

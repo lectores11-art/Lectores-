@@ -69,6 +69,7 @@ export function LibraryPageClient({
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("");
   const [uploadError, setUploadError] = useState("");
+  const [publishingId, setPublishingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "reading" | "new">("all");
   const {
     setDetail,
@@ -80,24 +81,33 @@ export function LibraryPageClient({
   }, [setSearchPlaceholder]);
 
   async function togglePublish(book: BookRow) {
+    if (publishingId) return;
     const next = !book.is_published;
-    const res = await fetch(`/api/c/${slug}/books/${book.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_published: next }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setUploadError(data.error || "No se pudo actualizar la publicación.");
-      return;
+    setPublishingId(book.id);
+    setUploadError("");
+    try {
+      const res = await fetch(`/api/c/${slug}/books/${book.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_published: next }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setUploadError(data.error || "No se pudo actualizar la publicación.");
+        return;
+      }
+      setBooks((prev) =>
+        prev.map((row) =>
+          row.id === book.id
+            ? { ...row, is_published: data.book?.is_published ?? next }
+            : row
+        )
+      );
+    } catch {
+      setUploadError("No se pudo actualizar la publicación.");
+    } finally {
+      setPublishingId(null);
     }
-    setBooks((prev) =>
-      prev.map((row) =>
-        row.id === book.id
-          ? { ...row, is_published: data.book?.is_published ?? next }
-          : row
-      )
-    );
   }
 
   async function refreshBooks() {
@@ -534,12 +544,17 @@ export function LibraryPageClient({
                             type="button"
                             variant="outline"
                             size="sm"
+                            disabled={publishingId === book.id}
                             onClick={(e) => {
                               e.stopPropagation();
                               void togglePublish(book);
                             }}
                           >
-                            {book.is_published ? "Despublicar" : "Publicar"}
+                            {publishingId === book.id
+                              ? "Guardando…"
+                              : book.is_published
+                                ? "Despublicar"
+                                : "Publicar"}
                           </Button>
                         </div>
                       )}
