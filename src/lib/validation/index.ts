@@ -26,6 +26,7 @@ export {
   slugParamsSchema,
   subscriptionCreateSchema,
   subscriptionDeleteSchema,
+  subscriptionPortalSchema,
   threadParamsSchema,
 } from "./schemas";
 export {

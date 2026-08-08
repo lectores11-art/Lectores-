@@ -10,6 +10,23 @@ import { useDetailPanel } from "@/components/layout/detail-panel-context";
 import { LogoutButton } from "@/components/auth/logout-button";
 import type { Membership, Profile } from "@/lib/types/database";
 
+type SubscriptionInfo = {
+  status: string;
+  current_period_end: string | null;
+  cancel_at_period_end: boolean | null;
+};
+
+function formatDate(iso: string | null | undefined) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString("es-AR", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
 export function SettingsPageClient({
   communityId,
   user,
@@ -19,7 +36,9 @@ export function SettingsPageClient({
 }) {
   const [fullName, setFullName] = useState(user.full_name || "");
   const [membership, setMembership] = useState<Membership | null>(null);
+  const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [message, setMessage] = useState("");
+  const [portalLoading, setPortalLoading] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -40,11 +59,25 @@ export function SettingsPageClient({
     const supabase = createClient();
     const { data } = await supabase
       .from("memberships")
-      .select("*")
+      .select(
+        "*, subscriptions(status, current_period_end, cancel_at_period_end)"
+      )
       .eq("community_id", communityId)
       .eq("user_id", user.id)
-      .single();
-    setMembership(data);
+      .maybeSingle();
+
+    if (!data) {
+      setMembership(null);
+      setSubscription(null);
+      return;
+    }
+
+    const { subscriptions: rawSubs, ...rest } = data as Membership & {
+      subscriptions?: SubscriptionInfo | SubscriptionInfo[] | null;
+    };
+    setMembership(rest);
+    const sub = Array.isArray(rawSubs) ? rawSubs[0] ?? null : rawSubs ?? null;
+    setSubscription(sub);
   }
 
   async function updateProfile(e: React.FormEvent) {
@@ -55,7 +88,7 @@ export function SettingsPageClient({
       .update({ full_name: fullName })
       .eq("id", user.id);
 
-    setMessage(error ? error.message : "Perfil actualizado");
+    setMessage(error ? "No pudimos actualizar el perfil. Intentá de nuevo." : "Perfil actualizado");
   }
 
   async function changePassword(e: React.FormEvent) {
@@ -79,8 +112,6 @@ export function SettingsPageClient({
     setPasswordLoading(true);
     try {
       const supabase = createClient();
-
-      // Soft reauth: verify current password before rotating (no dashboard flag required).
       const { error: reauthError } = await supabase.auth.signInWithPassword({
         email: user.email,
         password: currentPassword,
@@ -90,13 +121,9 @@ export function SettingsPageClient({
         return;
       }
 
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
-      if (updateError) {
-        setPasswordError(
-          "No pudimos actualizar la contraseña. Intentá de nuevo más tarde."
-        );
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) {
+        setPasswordError("No pudimos actualizar la contraseña. Intentá de nuevo.");
         return;
       }
 
@@ -139,6 +166,36 @@ export function SettingsPageClient({
     }
     setMessage(data.error || data.message || "Error al suscribirse");
   }
+
+  async function openBillingPortal() {
+    setPortalLoading(true);
+    setMessage("");
+    try {
+      const res = await fetch("/api/subscriptions/portal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ communityId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) {
+        setMessage(
+          data.error ||
+            "No se pudo abrir el portal de pagos. Stripe debe estar configurado."
+        );
+        return;
+      }
+      window.location.href = data.url;
+    } catch {
+      setMessage("Error de red al abrir el portal de Stripe.");
+    } finally {
+      setPortalLoading(false);
+    }
+  }
+
+  const periodEndLabel = formatDate(subscription?.current_period_end);
+  const cancelAtLabel = subscription?.cancel_at_period_end
+    ? periodEndLabel
+    : null;
 
   return (
     <div className="p-4 lg:p-6">
@@ -236,20 +293,67 @@ export function SettingsPageClient({
           <CardHeader>
             <CardTitle>Suscripción</CardTitle>
             <CardDescription>
-              Estado:{" "}
+              Membresía:{" "}
               <span className="font-bold text-foreground">
-                {membership?.status === "active" ? "Activa" : membership?.status || "—"}
+                {membership?.status === "active"
+                  ? "Activa"
+                  : membership?.status || "—"}
               </span>
+              {subscription?.status ? (
+                <>
+                  {" "}
+                  · Stripe:{" "}
+                  <span className="font-bold text-foreground">
+                    {subscription.status}
+                  </span>
+                </>
+              ) : null}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {membership?.status !== "active" ? (
-              <Button onClick={subscribe}>Suscribirse</Button>
-            ) : (
-              <Button variant="destructive" onClick={cancelSubscription}>
-                Cancelar suscripción
-              </Button>
+            {(periodEndLabel || cancelAtLabel) && (
+              <div className="space-y-1 text-sm text-muted">
+                {periodEndLabel && (
+                  <p>
+                    Fin del período actual:{" "}
+                    <span className="font-semibold text-foreground">
+                      {periodEndLabel}
+                    </span>
+                  </p>
+                )}
+                {cancelAtLabel && (
+                  <p>
+                    Cancelación programada para:{" "}
+                    <span className="font-semibold text-foreground">
+                      {cancelAtLabel}
+                    </span>
+                  </p>
+                )}
+              </div>
             )}
+
+            <div className="flex flex-wrap gap-2">
+              {membership?.status !== "active" ? (
+                <Button onClick={subscribe}>Suscribirse</Button>
+              ) : (
+                <Button variant="destructive" onClick={cancelSubscription}>
+                  Cancelar suscripción
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                disabled={portalLoading}
+                onClick={() => void openBillingPortal()}
+              >
+                {portalLoading ? "Abriendo…" : "Administrar pagos y facturas"}
+              </Button>
+            </div>
+            <p className="text-xs text-muted">
+              “Administrar pagos y facturas” abre el Customer Portal de Stripe (método de
+              pago, facturas y cancelación). Requiere Stripe configurado en el
+              servidor — no hay portal demo.
+            </p>
           </CardContent>
         </Card>
 

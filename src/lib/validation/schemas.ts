@@ -182,6 +182,10 @@ export const subscriptionDeleteSchema = z.object({
   membershipId: z.string().uuid(),
 });
 
+export const subscriptionPortalSchema = z.object({
+  communityId: z.string().uuid(),
+});
+
 export const platformCommunityCreateSchema = z.object({
   name: z.string().trim().min(1).max(200),
   ownerEmail: z.string().trim().email().max(320),
