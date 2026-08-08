@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, startTransition } from "react";
 import Link from "next/link";
-import { BookOpen, Pencil, Upload } from "lucide-react";
+import { BookOpen, Pencil, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -70,6 +70,7 @@ export function LibraryPageClient({
   const [uploadStatus, setUploadStatus] = useState("");
   const [uploadError, setUploadError] = useState("");
   const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingBook, setEditingBook] = useState<BookRow | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editAuthor, setEditAuthor] = useState("");
@@ -114,6 +115,40 @@ export function LibraryPageClient({
       setUploadError("No se pudo actualizar la publicación.");
     } finally {
       setPublishingId(null);
+    }
+  }
+
+  async function deleteBook(book: BookRow) {
+    if (
+      !confirm(
+        `¿Eliminar “${book.title}”? Se borrará la ficha y los archivos (PDF/portada). Esta acción no se puede deshacer.`
+      )
+    ) {
+      return;
+    }
+
+    setDeletingId(book.id);
+    setUploadError("");
+    try {
+      const res = await fetch(`/api/c/${slug}/books/${book.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setUploadError(data.error || "No se pudo eliminar el libro.");
+        return;
+      }
+      setBooks((prev) => prev.filter((row) => row.id !== book.id));
+      if (editingBook?.id === book.id) {
+        closeEdit();
+      }
+      if (typeof data.warning === "string" && data.warning) {
+        setUploadStatus(data.warning);
+      }
+    } catch {
+      setUploadError("No se pudo eliminar el libro.");
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -748,6 +783,19 @@ export function LibraryPageClient({
                           >
                             <Pencil className="h-4 w-4" />
                             Editar
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={deletingId === book.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void deleteBook(book);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            {deletingId === book.id ? "Eliminando…" : "Eliminar"}
                           </Button>
                         </div>
                       )}
