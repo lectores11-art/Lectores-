@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { isCommunityAdmin, requireApiCommunityAccess } from "@/lib/auth/helpers";
 import {
+  BOOKS_BUCKET,
   COVER_BUCKET,
   coverPathFromPublicUrl,
   isCommunityScopedPath,
@@ -217,6 +218,119 @@ export async function PATCH(
   } catch (err) {
     return internalErrorResponse(
       "PATCH /api/c/[slug]/books/[bookId] failed:",
+      err
+    );
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ slug: string; bookId: string }> }
+) {
+  try {
+    const paramsResult = parseData(bookParamsSchema, await params);
+    if ("error" in paramsResult) return paramsResult.error;
+    const { slug, bookId } = paramsResult.data;
+
+    const access = await requireApiCommunityAccess(slug);
+    if (access instanceof NextResponse) return access;
+    const { user, community } = access;
+
+    const admin = await isCommunityAdmin(
+      community.id,
+      user.id,
+      user.is_super_admin
+    );
+    if (!admin) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+    }
+
+    // service_role: delete book row + storage objects after admin auth check.
+    const serviceClient = await createServiceClient();
+    const { data: book, error: fetchError } = await serviceClient
+      .from("books")
+      .select("id, community_id, pdf_storage_path, cover_url")
+      .eq("id", bookId)
+      .eq("community_id", community.id)
+      .maybeSingle();
+
+    if (fetchError) {
+      return internalErrorResponse("Error al buscar libro:", fetchError);
+    }
+    if (!book) {
+      return NextResponse.json({ error: "Libro no encontrado" }, { status: 404 });
+    }
+
+    const { error: meetingsError } = await serviceClient
+      .from("meetings")
+      .update({ active_book_id: null })
+      .eq("community_id", community.id)
+      .eq("active_book_id", book.id);
+
+    if (meetingsError) {
+      return internalErrorResponse(
+        "Error al desvincular libro de reuniones:",
+        meetingsError
+      );
+    }
+
+    const coverPath = coverPathFromPublicUrl(book.cover_url);
+    const pdfPath =
+      typeof book.pdf_storage_path === "string" ? book.pdf_storage_path : null;
+
+    const { error: deleteError } = await serviceClient
+      .from("books")
+      .delete()
+      .eq("id", book.id)
+      .eq("community_id", community.id);
+
+    if (deleteError) {
+      return internalErrorResponse("Error al eliminar libro:", deleteError);
+    }
+
+    const storageWarnings: string[] = [];
+
+    if (coverPath && isCommunityScopedPath(community.id, coverPath)) {
+      try {
+        const { error: coverRemoveError } = await serviceClient.storage
+          .from(COVER_BUCKET)
+          .remove([coverPath]);
+        if (coverRemoveError) {
+          console.error("Book cover cleanup failed:", coverRemoveError);
+          storageWarnings.push("portada");
+        }
+      } catch (cleanupErr) {
+        console.error("Book cover cleanup failed:", cleanupErr);
+        storageWarnings.push("portada");
+      }
+    }
+
+    if (pdfPath && isCommunityScopedPath(community.id, pdfPath)) {
+      try {
+        const { error: pdfRemoveError } = await serviceClient.storage
+          .from(BOOKS_BUCKET)
+          .remove([pdfPath]);
+        if (pdfRemoveError) {
+          console.error("Book PDF cleanup failed:", pdfRemoveError);
+          storageWarnings.push("PDF");
+        }
+      } catch (cleanupErr) {
+        console.error("Book PDF cleanup failed:", cleanupErr);
+        storageWarnings.push("PDF");
+      }
+    }
+
+    if (storageWarnings.length > 0) {
+      return NextResponse.json({
+        success: true,
+        warning: `Libro eliminado, pero no se pudo borrar del storage: ${storageWarnings.join(", ")}.`,
+      });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    return internalErrorResponse(
+      "DELETE /api/c/[slug]/books/[bookId] failed:",
       err
     );
   }
