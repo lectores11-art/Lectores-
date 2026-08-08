@@ -64,6 +64,7 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [membersError, setMembersError] = useState("");
   const [kickingId, setKickingId] = useState<string | null>(null);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
   const { setSearchPlaceholder } = useDetailPanel();
 
   useEffect(() => {
@@ -140,6 +141,41 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
       setTimeout(() => setCopiedToken((current) => (current === token ? null : current)), 2000);
     } catch {
       setInviteError("No se pudo copiar al portapapeles.");
+    }
+  }
+
+  async function revokeInvite(invite: InviteRow) {
+    if (!invite.id || invite.is_active === false) return;
+    if (
+      !confirm(
+        "¿Revocar esta invitación? Quienes tengan el link ya no podrán unirse."
+      )
+    ) {
+      return;
+    }
+
+    setRevokingId(invite.id);
+    setInviteError("");
+    try {
+      const res = await fetch(`/api/c/${slug}/invites/${invite.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setInviteError(data.error || "No se pudo revocar la invitación.");
+        return;
+      }
+      setInvites((prev) =>
+        prev.map((row) =>
+          row.id === invite.id
+            ? { ...row, ...(data.invite || { is_active: false }) }
+            : row
+        )
+      );
+    } catch {
+      setInviteError("No se pudo revocar la invitación.");
+    } finally {
+      setRevokingId(null);
     }
   }
 
@@ -301,7 +337,7 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
             )}
 
             <div className="border-t border-border pt-4">
-              <p className="mb-3 text-sm font-semibold">Invitaciones activas</p>
+              <p className="mb-3 text-sm font-semibold">Invitaciones</p>
               {loadingInvites ? (
                 <p className="text-sm text-muted">Cargando invitaciones…</p>
               ) : listError ? (
@@ -313,12 +349,13 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
                 </div>
               ) : invites.length === 0 ? (
                 <p className="text-sm text-muted">
-                  Todavía no hay invitaciones activas. Generá un link para empezar.
+                  Todavía no hay invitaciones. Generá un link para empezar.
                 </p>
               ) : (
                 <ul className="space-y-2">
                   {invites.map((invite) => {
                     const url = inviteUrl(invite.token);
+                    const active = invite.is_active !== false;
                     const usesLabel =
                       invite.max_uses == null
                         ? `${invite.use_count} usos`
@@ -329,7 +366,18 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
                         className="flex flex-col gap-2 rounded-md border border-border bg-surface p-3 sm:flex-row sm:items-center sm:justify-between"
                       >
                         <div className="min-w-0 flex-1">
-                          <p className="truncate font-mono text-xs">{url}</p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={
+                                active
+                                  ? "rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-800"
+                                  : "rounded bg-stone-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-stone-700"
+                              }
+                            >
+                              {active ? "Activa" : "Revocada"}
+                            </span>
+                            <p className="truncate font-mono text-xs">{url}</p>
+                          </div>
                           <p className="mt-1 text-xs text-muted">
                             {usesLabel}
                             {invite.created_at
@@ -337,15 +385,30 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
                               : ""}
                           </p>
                         </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => copyInviteLink(invite.token)}
-                        >
-                          <Copy className="h-4 w-4" />
-                          {copiedToken === invite.token ? "Copiado" : "Copiar link"}
-                        </Button>
+                        <div className="flex shrink-0 gap-2">
+                          {active && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => copyInviteLink(invite.token)}
+                            >
+                              <Copy className="h-4 w-4" />
+                              {copiedToken === invite.token ? "Copiado" : "Copiar link"}
+                            </Button>
+                          )}
+                          {active && (
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              disabled={revokingId === invite.id}
+                              onClick={() => void revokeInvite(invite)}
+                            >
+                              {revokingId === invite.id ? "Revocando…" : "Revocar"}
+                            </Button>
+                          )}
+                        </div>
                       </li>
                     );
                   })}

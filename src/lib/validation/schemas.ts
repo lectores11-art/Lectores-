@@ -46,6 +46,15 @@ export const membershipStatusPatchSchema = z.object({
   status: z.enum(["cancelled"]),
 });
 
+export const inviteParamsSchema = slugParamsSchema.extend({
+  inviteId: z.string().uuid(),
+});
+
+/** Soft-revoke only — never reactivate via this schema. */
+export const invitePatchSchema = z.object({
+  is_active: z.literal(false),
+});
+
 export const threadParamsSchema = slugParamsSchema.extend({
   threadId: z.string().uuid(),
 });

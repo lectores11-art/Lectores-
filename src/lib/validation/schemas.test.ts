@@ -6,6 +6,8 @@ import {
   forumThreadCreateSchema,
   forumThreadPatchSchema,
   inviteJoinSchema,
+  inviteParamsSchema,
+  invitePatchSchema,
   inviteTokenParamsSchema,
   meetingActionSchema,
   membershipParamsSchema,
@@ -138,6 +140,22 @@ describe("membershipStatusPatchSchema", () => {
     expect(
       membershipStatusPatchSchema.safeParse({ status: "active" }).success
     ).toBe(false);
+  });
+});
+
+describe("inviteParamsSchema / invitePatchSchema", () => {
+  it("accepts slug + inviteId uuid", () => {
+    expect(inviteParamsSchema.parse({ slug: "demo", inviteId: UUID })).toEqual({
+      slug: "demo",
+      inviteId: UUID,
+    });
+  });
+
+  it("only allows is_active false", () => {
+    expect(invitePatchSchema.parse({ is_active: false })).toEqual({
+      is_active: false,
+    });
+    expect(invitePatchSchema.safeParse({ is_active: true }).success).toBe(false);
   });
 });
 
