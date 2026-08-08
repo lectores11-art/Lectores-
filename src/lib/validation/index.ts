@@ -19,6 +19,8 @@ export {
   forumThreadCreateSchema,
   forumThreadPatchSchema,
   inviteJoinSchema,
+  inviteParamsSchema,
+  invitePatchSchema,
   inviteTokenParamsSchema,
   meetingActionSchema,
   membershipParamsSchema,
