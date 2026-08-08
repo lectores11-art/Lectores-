@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { mapAuthErrorMessage } from "@/lib/auth/map-auth-error";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,24 @@ export function InviteAuthForm({
   const [resending, setResending] = useState(false);
   const [resendMessage, setResendMessage] = useState("");
   const [resendCooldownUntil, setResendCooldownUntil] = useState(0);
+  const [resendCoolingDown, setResendCoolingDown] = useState(false);
+
+  useEffect(() => {
+    if (!resendCooldownUntil) {
+      setResendCoolingDown(false);
+      return;
+    }
+    const tick = () => {
+      const active = Date.now() < resendCooldownUntil;
+      setResendCoolingDown(active);
+      return active;
+    };
+    if (!tick()) return;
+    const id = window.setInterval(() => {
+      if (!tick()) window.clearInterval(id);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [resendCooldownUntil]);
 
   function redirectUrl() {
     const base =
@@ -167,10 +185,14 @@ export function InviteAuthForm({
         <Button
           type="button"
           className="w-full"
-          disabled={resending || Date.now() < resendCooldownUntil}
+          disabled={resending || resendCoolingDown}
           onClick={() => void resendConfirmation()}
         >
-          {resending ? "Reenviando…" : "Reenviar confirmación"}
+          {resending
+            ? "Reenviando…"
+            : resendCoolingDown
+              ? "Esperá un momento…"
+              : "Reenviar confirmación"}
         </Button>
         <button
           type="button"
