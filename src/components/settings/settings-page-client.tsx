@@ -141,15 +141,24 @@ export function SettingsPageClient({
   async function cancelSubscription() {
     if (!membership || !confirm("¿Cancelar suscripción?")) return;
 
-    const res = await fetch("/api/subscriptions", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ membershipId: membership.id }),
-    });
+    try {
+      const res = await fetch("/api/subscriptions", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ membershipId: membership.id }),
+      });
+      const data = await res.json().catch(() => ({}));
 
-    if (res.ok) {
-      setMessage("Suscripción cancelada al final del período");
-      loadMembership();
+      if (res.ok) {
+        setMessage("Suscripción cancelada al final del período");
+        loadMembership();
+        return;
+      }
+      setMessage(
+        data.error || data.message || "No se pudo cancelar la suscripción."
+      );
+    } catch {
+      setMessage("Error de red al cancelar la suscripción. Intentá de nuevo.");
     }
   }
 

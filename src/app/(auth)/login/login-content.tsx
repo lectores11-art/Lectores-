@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { BookOpen } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { mapAuthErrorMessage } from "@/lib/auth/map-auth-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,13 +36,13 @@ export default function LoginPage() {
       });
 
       if (authError) {
-        setError(authError.message);
+        setError(mapAuthErrorMessage(authError.message));
         return;
       }
 
       window.location.assign(redirect);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al iniciar sesión");
+    } catch {
+      setError("No se pudo iniciar sesión. Intentá de nuevo.");
     } finally {
       setLoading(false);
     }
