@@ -28,16 +28,21 @@ function formatDate(iso: string | null | undefined) {
 }
 
 export function SettingsPageClient({
+  slug,
   communityId,
   user,
+  isOwner,
 }: {
+  slug: string;
   communityId: string;
   user: Profile;
+  isOwner: boolean;
 }) {
   const [fullName, setFullName] = useState(user.full_name || "");
   const [membership, setMembership] = useState<Membership | null>(null);
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [message, setMessage] = useState("");
+  const [leaving, setLeaving] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -198,6 +203,38 @@ export function SettingsPageClient({
       setMessage("Error de red al abrir el portal de Stripe.");
     } finally {
       setPortalLoading(false);
+    }
+  }
+
+  async function leaveCommunity() {
+    if (isOwner) {
+      setMessage(
+        "No podés salir siendo dueña de la comunidad. Transferí la propiedad primero."
+      );
+      return;
+    }
+    if (
+      !confirm(
+        "¿Salir de esta comunidad? Vas a perder el acceso. Si tenés suscripción, se cancelará al final del período."
+      )
+    ) {
+      return;
+    }
+
+    setLeaving(true);
+    setMessage("");
+    try {
+      const res = await fetch(`/api/c/${slug}/membership`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMessage(data.error || "No se pudo salir de la comunidad.");
+        return;
+      }
+      window.location.assign(data.redirect || "/dashboard");
+    } catch {
+      setMessage("No se pudo salir de la comunidad.");
+    } finally {
+      setLeaving(false);
     }
   }
 
@@ -363,6 +400,31 @@ export function SettingsPageClient({
               pago, facturas y cancelación). Requiere Stripe configurado en el
               servidor — no hay portal demo.
             </p>
+          </CardContent>
+        </Card>
+
+        <Card className="hard-shadow-sm">
+          <CardHeader>
+            <CardTitle>Comunidad</CardTitle>
+            <CardDescription>
+              Abandonar el acceso a esta comunidad (además de cancelar Stripe)
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {isOwner ? (
+              <p className="text-sm text-muted">
+                No podés salir siendo dueña de la comunidad. Transferí la
+                propiedad primero.
+              </p>
+            ) : (
+              <Button
+                variant="destructive"
+                onClick={() => void leaveCommunity()}
+                disabled={leaving}
+              >
+                {leaving ? "Saliendo…" : "Salir de la comunidad"}
+              </Button>
+            )}
           </CardContent>
         </Card>
 
