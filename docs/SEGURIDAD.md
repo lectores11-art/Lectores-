@@ -77,6 +77,27 @@ Pasos manuales en Authentication → Providers / Settings:
 
 SMTP/Resend y dominio: **configuración humana**, no del agente.
 
+### SMTP de Auth — pendiente de configuración humana (S4-02)
+
+El registro por invitación (`invite-auth-form`) **no desactiva** la confirmación
+por email. Si no hay SMTP, Supabase puede crear el usuario sin sesión y el
+correo nunca sale: la UI avisa con copy honesto + botón **Reenviar confirmación**
+(`supabase.auth.resend`).
+
+Falta en el proyecto Supabase (humano):
+
+1. Authentication → SMTP Settings: proveedor real (Resend / SendGrid / etc.) o
+   custom SMTP con From verificado.
+2. Confirmar que **Confirm email** sigue activado (no usar “Disable email
+   confirmations” como atajo).
+3. Revisar plantilla **Confirm signup**: link a
+   `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=signup&next=...`
+   (el `next` lo fija la app vía `emailRedirectTo` hacia `/join/[token]`).
+4. Rate limits de email en Auth Settings acordes al tráfico esperado.
+
+Hasta que SMTP esté listo, los registros seguirán pidiendo confirmación y el
+reenvío no entregará mail — eso es esperado, no un bug de la app.
+
 ### Cambio de contraseña en Settings
 
 La UI en `/c/[slug]/settings` pide contraseña actual + nueva + confirmación (mín. 8).

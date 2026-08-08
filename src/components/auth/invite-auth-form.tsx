@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { mapAuthErrorMessage } from "@/lib/auth/map-auth-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,14 +13,21 @@ interface InviteAuthFormProps {
   onAuthenticated: () => void;
 }
 
-export function InviteAuthForm({ token, communityName, onAuthenticated }: InviteAuthFormProps) {
+export function InviteAuthForm({
+  token,
+  communityName,
+  onAuthenticated,
+}: InviteAuthFormProps) {
   const [mode, setMode] = useState<"register" | "login">("register");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [confirmSent, setConfirmSent] = useState(false);
+  const [confirmPending, setConfirmPending] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendMessage, setResendMessage] = useState("");
+  const [resendCooldownUntil, setResendCooldownUntil] = useState(0);
 
   function redirectUrl() {
     const base =
@@ -31,6 +39,7 @@ export function InviteAuthForm({ token, communityName, onAuthenticated }: Invite
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setResendMessage("");
     setLoading(true);
 
     const supabase = createClient();
@@ -46,14 +55,34 @@ export function InviteAuthForm({ token, communityName, onAuthenticated }: Invite
       });
 
       if (authError) {
-        setError(authError.message);
+        setError(mapAuthErrorMessage(authError.message));
         setLoading(false);
         return;
       }
 
-      // If email confirmation is required there is no session yet.
+      // Supabase may return a user without identities when the email already
+      // exists (anti-enumeration). Keep copy neutral — do not confirm existence.
+      const identities = data.user?.identities;
+      if (data.user && Array.isArray(identities) && identities.length === 0) {
+        setError(
+          "Si este email aplica, vas a poder confirmar la cuenta o iniciar sesión. Revisá tu correo o pedí reenvío."
+        );
+        setConfirmPending(true);
+        setLoading(false);
+        return;
+      }
+
+      // Confirmation required: no session yet. Do not claim the email was
+      // delivered — SMTP may be missing in this project.
       if (!data.session) {
-        setConfirmSent(true);
+        if (!data.user?.email && !email.trim()) {
+          setError(
+            "El registro no devolvió sesión ni email. Revisá Supabase Auth (confirmación + SMTP)."
+          );
+          setLoading(false);
+          return;
+        }
+        setConfirmPending(true);
         setLoading(false);
         return;
       }
@@ -68,7 +97,11 @@ export function InviteAuthForm({ token, communityName, onAuthenticated }: Invite
     });
 
     if (authError) {
-      setError(authError.message);
+      const mapped = mapAuthErrorMessage(authError.message);
+      setError(mapped);
+      if (/confirm/i.test(mapped) || /email not confirmed/i.test(authError.message)) {
+        setConfirmPending(true);
+      }
       setLoading(false);
       return;
     }
@@ -76,14 +109,81 @@ export function InviteAuthForm({ token, communityName, onAuthenticated }: Invite
     onAuthenticated();
   }
 
-  if (confirmSent) {
+  async function resendConfirmation() {
+    if (!email.trim()) {
+      setResendMessage("Ingresá tu email para reenviar la confirmación.");
+      return;
+    }
+    const now = Date.now();
+    if (now < resendCooldownUntil) {
+      const seconds = Math.ceil((resendCooldownUntil - now) / 1000);
+      setResendMessage(`Esperá ${seconds}s antes de pedir otro reenvío.`);
+      return;
+    }
+    setResending(true);
+    setResendMessage("");
+    setError("");
+    try {
+      const supabase = createClient();
+      const { error: resendError } = await supabase.auth.resend({
+        type: "signup",
+        email: email.trim(),
+        options: { emailRedirectTo: redirectUrl() },
+      });
+      if (resendError) {
+        setResendMessage(mapAuthErrorMessage(resendError.message));
+        return;
+      }
+      setResendCooldownUntil(Date.now() + 45_000);
+      setResendMessage(
+        "Si el email aplica y el proyecto tiene SMTP configurado, vas a recibir un correo en breve. Si no llega, pedile a la admin que revise Auth → SMTP en Supabase."
+      );
+    } catch {
+      setResendMessage("No se pudo pedir el reenvío. Intentá de nuevo.");
+    } finally {
+      setResending(false);
+    }
+  }
+
+  if (confirmPending) {
     return (
-      <div className="space-y-3 text-center">
+      <div className="space-y-4 text-center">
         <p className="text-sm text-muted">
-          Te enviamos un correo a <span className="font-semibold text-foreground">{email}</span>. Confirmá tu
-          cuenta desde ese email y vas a entrar automáticamente a{" "}
-          <span className="font-semibold text-foreground">{communityName}</span>.
+          Para entrar a{" "}
+          <span className="font-semibold text-foreground">{communityName}</span>{" "}
+          necesitás confirmar el email{" "}
+          <span className="font-semibold text-foreground">{email}</span>.
         </p>
+        <p className="text-sm text-muted">
+          Si configuramos el envío de correos en Supabase Auth, vas a recibir un
+          link de confirmación. Si no llega ningún mail, es probable que el SMTP
+          del proyecto aún no esté configurado (no desactivamos la confirmación
+          por email).
+        </p>
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        {resendMessage && (
+          <p className="text-sm text-muted">{resendMessage}</p>
+        )}
+        <Button
+          type="button"
+          className="w-full"
+          disabled={resending || Date.now() < resendCooldownUntil}
+          onClick={() => void resendConfirmation()}
+        >
+          {resending ? "Reenviando…" : "Reenviar confirmación"}
+        </Button>
+        <button
+          type="button"
+          className="text-sm font-semibold text-accent hover:underline"
+          onClick={() => {
+            setConfirmPending(false);
+            setMode("login");
+            setError("");
+            setResendMessage("");
+          }}
+        >
+          Volver al inicio de sesión
+        </button>
       </div>
     );
   }
@@ -129,8 +229,8 @@ export function InviteAuthForm({ token, communityName, onAuthenticated }: Invite
         {loading
           ? "Procesando..."
           : mode === "register"
-          ? "Registrarme y entrar"
-          : "Iniciar sesión y entrar"}
+            ? "Registrarme y entrar"
+            : "Iniciar sesión y entrar"}
       </Button>
 
       <p className="text-center text-sm text-muted">
