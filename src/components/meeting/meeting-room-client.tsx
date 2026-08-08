@@ -256,6 +256,29 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
     });
   }
 
+  async function endMeeting() {
+    if (!activeMeeting) return;
+    if (
+      !confirm(
+        "¿Finalizar esta reunión? Quienes estén en la sala ya no podrán seguir participando."
+      )
+    ) {
+      return;
+    }
+    const res = await fetch(`/api/c/${slug}/meetings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "end", meetingId: activeMeeting.id }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setJoinError(data.error || "No se pudo finalizar la reunión.");
+      return;
+    }
+    leaveMeeting();
+    await loadMeetings();
+  }
+
   function leaveMeeting() {
     unsubscribeChatRef.current?.();
     unsubscribeChatRef.current = null;
@@ -265,6 +288,7 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
     setShowBooks(false);
     setChatMessages([]);
     setChatInput("");
+    setIsHost(false);
   }
 
   useEffect(() => {
@@ -281,24 +305,33 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
             </p>
             <p className="text-xs text-muted">Sala en vivo · lectura compartida</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowBooks(!showBooks)}
-            >
-              <BookOpen className="h-4 w-4" />
-              Ver libros
-            </Button>
-            {isAdmin && (
-              <Button size="sm" onClick={startMeeting}>
-                Iniciar transmisión
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowBooks(!showBooks)}
+              >
+                <BookOpen className="h-4 w-4" />
+                Ver libros
               </Button>
-            )}
-            <Button variant="ghost" size="sm" onClick={leaveMeeting}>
-              Salir
-            </Button>
-          </div>
+              {(isAdmin || isHost) && activeMeeting.status !== "ended" && (
+                <>
+                  <Button size="sm" onClick={startMeeting}>
+                    Iniciar transmisión
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => void endMeeting()}
+                  >
+                    Finalizar reunión
+                  </Button>
+                </>
+              )}
+              <Button variant="ghost" size="sm" onClick={leaveMeeting}>
+                Salir
+              </Button>
+            </div>
         </div>
 
         {showBooks && (
