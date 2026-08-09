@@ -114,20 +114,36 @@ async function deactivateMembership(
     return NextResponse.json({ error: OWNER_KICK_MESSAGE }, { status: 403 });
   }
 
+  // Soft-deactivate only — never delete auth.users.
+  // Kick always sets rejoin_blocked so invite cannot reactivate membership.
   if (target.status !== "active") {
+    const { data: ensured, error: ensureError } = await supabase
+      .from("memberships")
+      .update({ rejoin_blocked: true })
+      .eq("id", target.id)
+      .eq("community_id", community.id)
+      .select("id, user_id, role, status, rejoin_blocked, joined_at, created_at")
+      .single();
+
+    if (ensureError) {
+      return internalErrorResponse(
+        "Error al bloquear reingreso de membresía:",
+        ensureError
+      );
+    }
+
     return NextResponse.json({
       success: true,
-      membership: { id: target.id, status: target.status },
+      membership: ensured ?? { id: target.id, status: target.status },
     });
   }
 
-  // Soft-deactivate only — never delete auth.users.
   const { data: updated, error: updateError } = await supabase
     .from("memberships")
-    .update({ status: nextStatus })
+    .update({ status: nextStatus, rejoin_blocked: true })
     .eq("id", target.id)
     .eq("community_id", community.id)
-    .select("id, user_id, role, status, joined_at, created_at")
+    .select("id, user_id, role, status, rejoin_blocked, joined_at, created_at")
     .single();
 
   if (updateError) {

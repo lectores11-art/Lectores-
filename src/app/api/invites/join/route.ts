@@ -46,6 +46,20 @@ export async function POST(request: Request) {
       if (message.includes("community not found")) {
         return NextResponse.json({ error: "Comunidad no encontrada" }, { status: 404 });
       }
+      // Migrations 010/011: accept_invite raises when memberships.rejoin_blocked.
+      if (
+        message.includes("membership revoked") ||
+        message.includes("rejoin_blocked") ||
+        message.includes("rejoin blocked")
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Tu membresía fue revocada. No podés volver a unirte con esta invitación. Contactá a la administradora.",
+          },
+          { status: 403 }
+        );
+      }
       return internalErrorResponse("Error al aceptar invitación:", error);
     }
 
