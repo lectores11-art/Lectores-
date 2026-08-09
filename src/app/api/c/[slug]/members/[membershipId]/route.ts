@@ -122,9 +122,10 @@ async function deactivateMembership(
   }
 
   // Soft-deactivate only — never delete auth.users.
+  // rejoin_blocked: accept_invite must not reactivate kicked members.
   const { data: updated, error: updateError } = await supabase
     .from("memberships")
-    .update({ status: nextStatus })
+    .update({ status: nextStatus, rejoin_blocked: true })
     .eq("id", target.id)
     .eq("community_id", community.id)
     .select("id, user_id, role, status, joined_at, created_at")

@@ -35,6 +35,8 @@ export interface Membership {
   community_id: string;
   role: UserRole;
   status: MembershipStatus;
+  /** When true, accept_invite refuses reactivation (admin kick). */
+  rejoin_blocked?: boolean;
   joined_at: string | null;
   created_at: string;
   updated_at: string;

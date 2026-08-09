@@ -46,6 +46,15 @@ export async function POST(request: Request) {
       if (message.includes("community not found")) {
         return NextResponse.json({ error: "Comunidad no encontrada" }, { status: 404 });
       }
+      if (message.includes("membership revoked")) {
+        return NextResponse.json(
+          {
+            error:
+              "Tu acceso a esta comunidad fue revocado. Pedile a una admin una nueva invitación.",
+          },
+          { status: 403 }
+        );
+      }
       return internalErrorResponse("Error al aceptar invitación:", error);
     }
 

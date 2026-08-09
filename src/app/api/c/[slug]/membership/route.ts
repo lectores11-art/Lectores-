@@ -108,7 +108,7 @@ export async function DELETE(
 
     const { error: leaveError } = await service
       .from("memberships")
-      .update({ status: "cancelled" })
+      .update({ status: "cancelled", rejoin_blocked: false })
       .eq("id", membershipRow.id)
       .eq("user_id", user.id)
       .eq("community_id", community.id);
