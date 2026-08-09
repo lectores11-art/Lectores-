@@ -12,14 +12,20 @@ import {
 
 const OWNER_KICK_MESSAGE = "No podés expulsar a la dueña de la comunidad.";
 const SELF_KICK_MESSAGE = "No podés expulsarte a vos misma desde aquí.";
+const STRIPE_KICK_FAIL_MESSAGE =
+  "No se pudo cancelar el cobro en Stripe. No expulsamos al miembro; intentá de nuevo o revisá el Dashboard.";
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY)
   : null;
 
-async function cancelStripeForMembership(membershipId: string) {
-  if (!stripe) return { warning: null as string | null };
-
+/**
+ * Fail-closed billing cancel before soft-kick.
+ * If there is a stripe_subscription_id and cancel cannot be confirmed, returns an error response.
+ */
+async function cancelStripeBeforeKick(
+  membershipId: string
+): Promise<{ error: NextResponse } | { ok: true }> {
   const serviceClient = await createServiceClient();
   const { data: subscription, error } = await serviceClient
     .from("subscriptions")
@@ -30,41 +36,57 @@ async function cancelStripeForMembership(membershipId: string) {
   if (error) {
     console.error("Kick: lookup subscription failed:", error);
     return {
-      warning:
-        "Miembro expulsado, pero no se pudo revisar la suscripción de Stripe.",
+      error: NextResponse.json(
+        { error: STRIPE_KICK_FAIL_MESSAGE },
+        { status: 503 }
+      ),
     };
   }
 
-  if (!subscription?.stripe_subscription_id) {
-    return { warning: null };
+  const stripeSubId = subscription?.stripe_subscription_id;
+  if (!stripeSubId) {
+    return { ok: true };
+  }
+
+  if (!stripe) {
+    return {
+      error: NextResponse.json(
+        { error: STRIPE_KICK_FAIL_MESSAGE },
+        { status: 503 }
+      ),
+    };
   }
 
   try {
-    await stripe.subscriptions.update(subscription.stripe_subscription_id, {
+    await stripe.subscriptions.update(stripeSubId, {
       cancel_at_period_end: true,
     });
   } catch (err) {
     console.error("Kick: Stripe cancel failed:", err);
     return {
-      warning:
-        "Miembro expulsado, pero no se pudo cancelar el cobro en Stripe. Revisá el Dashboard.",
+      error: NextResponse.json(
+        { error: STRIPE_KICK_FAIL_MESSAGE },
+        { status: 503 }
+      ),
     };
   }
 
   const { error: updateError } = await serviceClient
     .from("subscriptions")
     .update({ cancel_at_period_end: true, status: "cancelled" })
-    .eq("id", subscription.id);
+    .eq("id", subscription!.id);
 
   if (updateError) {
     console.error("Kick: local subscription update failed:", updateError);
     return {
-      warning:
-        "Miembro expulsado y Stripe cancelado al fin de período, pero falló actualizar la DB local.",
+      error: NextResponse.json(
+        { error: STRIPE_KICK_FAIL_MESSAGE },
+        { status: 503 }
+      ),
     };
   }
 
-  return { warning: null };
+  return { ok: true };
 }
 
 async function deactivateMembership(
@@ -138,6 +160,12 @@ async function deactivateMembership(
     });
   }
 
+  // Fail-closed: never soft-kick if Stripe cancel cannot be confirmed.
+  const billing = await cancelStripeBeforeKick(target.id);
+  if ("error" in billing) return billing.error;
+
+  // Soft-deactivate only — never delete auth.users.
+  // Kick always sets rejoin_blocked so invite cannot reactivate membership.
   const { data: updated, error: updateError } = await supabase
     .from("memberships")
     .update({ status: nextStatus, rejoin_blocked: true })
@@ -150,12 +178,9 @@ async function deactivateMembership(
     return internalErrorResponse("Error al desactivar membresía:", updateError);
   }
 
-  const { warning } = await cancelStripeForMembership(updated.id);
-
   return NextResponse.json({
     success: true,
     membership: updated,
-    ...(warning ? { warning } : {}),
   });
 }
 
