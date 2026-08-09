@@ -91,6 +91,16 @@ export async function POST(
         );
       }
 
+      if (meeting.status !== "live") {
+        return NextResponse.json(
+          {
+            error:
+              "La reunión todavía no está en vivo. Esperá a que la anfitriona la inicie.",
+          },
+          { status: 409 }
+        );
+      }
+
       const isHost = meeting.host_id === user.id || admin;
       const apiKey = process.env.LIVEKIT_API_KEY;
       const apiSecret = process.env.LIVEKIT_API_SECRET;
