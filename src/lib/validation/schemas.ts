@@ -193,7 +193,6 @@ export const inviteJoinSchema = z.object({
 
 export const subscriptionCreateSchema = z.object({
   communityId: z.string().uuid(),
-  priceId: z.string().min(1).max(200).optional(),
 });
 
 export const subscriptionDeleteSchema = z.object({

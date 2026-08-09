@@ -301,6 +301,15 @@ describe("subscriptionCreateSchema", () => {
     });
   });
 
+  it("strips client priceId (price comes from DB only)", () => {
+    expect(
+      subscriptionCreateSchema.parse({
+        communityId: UUID,
+        priceId: "price_attacker",
+      })
+    ).toEqual({ communityId: UUID });
+  });
+
   it("rejects non-uuid communityId", () => {
     expect(
       subscriptionCreateSchema.safeParse({ communityId: "x" }).success

@@ -4,6 +4,10 @@ import { isCommunityAdmin, requireApiCommunityAccess } from "@/lib/auth/helpers"
 import { nanoid } from "nanoid";
 import { internalErrorResponse, parseData, slugParamsSchema } from "@/lib/validation";
 
+/** Default invite lifetime and use cap (abuse / shared-link hardening). */
+const DEFAULT_INVITE_MAX_USES = 25;
+const DEFAULT_INVITE_TTL_DAYS = 30;
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ slug: string }> }
@@ -50,6 +54,9 @@ export async function POST(
     const admin = await isCommunityAdmin(community.id, user.id, user.is_super_admin);
     if (!admin) return NextResponse.json({ error: "No autorizado" }, { status: 403 });
 
+    const expiresAt = new Date();
+    expiresAt.setUTCDate(expiresAt.getUTCDate() + DEFAULT_INVITE_TTL_DAYS);
+
     const supabase = await createClient();
     const { data: invite, error } = await supabase
       .from("invites")
@@ -57,6 +64,8 @@ export async function POST(
         community_id: community.id,
         created_by: user.id,
         token: nanoid(24),
+        max_uses: DEFAULT_INVITE_MAX_USES,
+        expires_at: expiresAt.toISOString(),
       })
       .select()
       .single();

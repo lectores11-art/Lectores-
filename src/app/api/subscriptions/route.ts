@@ -20,7 +20,7 @@ export async function POST(request: Request) {
 
     const bodyResult = await parseJsonBody(request, subscriptionCreateSchema);
     if ("error" in bodyResult) return bodyResult.error;
-    const { communityId, priceId } = bodyResult.data;
+    const { communityId } = bodyResult.data;
 
     if (!stripe) {
       return NextResponse.json(
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     const supabase = await createClient();
     const { data: community } = await supabase
       .from("communities")
-      .select("*")
+      .select("id, slug, stripe_price_id")
       .eq("id", communityId)
       .single();
 
@@ -40,12 +40,38 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Comunidad no encontrada" }, { status: 404 });
     }
 
+    // Must already be a member (invite/join first). Access is membership-gated; this is billing only.
+    const { data: membership } = await supabase
+      .from("memberships")
+      .select("id, status")
+      .eq("user_id", user.id)
+      .eq("community_id", communityId)
+      .maybeSingle();
+
+    if (!membership) {
+      return NextResponse.json(
+        { error: "Necesitás ser miembro de la comunidad antes de suscribirte." },
+        { status: 403 }
+      );
+    }
+
+    const priceId = community.stripe_price_id;
+    if (!priceId) {
+      return NextResponse.json(
+        {
+          error:
+            "Esta comunidad no tiene precio de Stripe configurado. Contactá a la administradora.",
+        },
+        { status: 400 }
+      );
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer_email: user.email,
       line_items: [
         {
-          price: priceId || community.stripe_price_id || undefined,
+          price: priceId,
           quantity: 1,
         },
       ],
@@ -54,6 +80,7 @@ export async function POST(request: Request) {
       metadata: {
         user_id: user.id,
         community_id: communityId,
+        membership_id: membership.id,
       },
     });
 

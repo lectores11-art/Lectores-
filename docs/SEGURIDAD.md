@@ -1,5 +1,26 @@
 # Seguridad — checklist pre-producción (S2-10)
 
+## Modelo de amenaza (Lectores!!)
+
+- **Puerta de acceso = membresía `active`**, no “pagó este mes”.
+- Entrada por **invite token**; Stripe es facturación cuando hay `stripe_price_id`.
+- Launch: invite-gated; **no** gate de pago obligatorio (eso sería un ticket de producto aparte).
+
+| Control | Estado |
+|---------|--------|
+| Kick → `rejoin_blocked`; leave limpia flag; join mapea 403 | ✅ código (S5-01) + migraciones 010/011 |
+| Stripe webhooks lifecycle + kick fail-closed | ✅ código (S5-02) |
+| LiveKit token solo si `meeting.status === "live"` | ✅ código (S5-03) |
+| Invites: `max_uses=25`, `expires_at=+30d` por default | ✅ código |
+| Rate limit invite lookup (30/min/IP) y join (10/min/IP) | ✅ código (in-memory / por isolate) |
+| Checkout: precio solo desde `communities.stripe_price_id`; exige membership | ✅ código |
+| Migraciones 006–011 + buckets | ✅ aplicadas en proyecto Supabase (MCP) |
+| Auth Redirect URLs + Confirm email | ✅ Dashboard |
+| Leaked passwords (HaveIBeenPwned) | ⏸ requiere plan Pro — diferido |
+| SMTP real (Resend/etc.) | ⏳ humano |
+| Secretos Vercel (sin `NEXT_PUBLIC_` en server keys) | ⏳ humano |
+| E2E 2 comunidades (`docs/QA-SPRINT2.md` §12) | ⏳ humano |
+
 ## Headers HTTP
 
 Configurados en `next.config.ts` para `/:path*`:
@@ -97,6 +118,23 @@ Falta en el proyecto Supabase (humano):
 
 Hasta que SMTP esté listo, los registros seguirán pidiendo confirmación y el
 reenvío no entregará mail — eso es esperado, no un bug de la app.
+
+### Invites — abuse defaults
+
+`POST /api/c/[slug]/invites` crea invites con:
+
+- `max_uses`: **25**
+- `expires_at`: **+30 días** (UTC)
+
+`GET /api/invites/[token]`: rate limit **30 req/min** por IP.  
+`POST /api/invites/join`: rate limit **10 req/min** por IP.  
+(Limiter in-memory; en serverless es por isolate — complementar con caps del invite.)
+
+### Checkout Stripe
+
+`POST /api/subscriptions` acepta solo `communityId`. El `price` de Checkout sale
+de `communities.stripe_price_id` (nunca del body del cliente). Requiere membership
+existente; sin precio configurado → 400.
 
 ### Cambio de contraseña en Settings
 

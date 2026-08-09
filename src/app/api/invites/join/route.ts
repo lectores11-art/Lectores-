@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import {
+  clientIpFromRequest,
+  rateLimit,
+  rateLimitResponse,
+} from "@/lib/security/rate-limit";
 import { internalErrorResponse, inviteJoinSchema, parseJsonBody } from "@/lib/validation";
 
 type AcceptInviteResult = {
@@ -9,6 +14,10 @@ type AcceptInviteResult = {
 
 export async function POST(request: Request) {
   try {
+    const ip = clientIpFromRequest(request);
+    const limited = rateLimit(`invite-join:${ip}`, 10, 60_000);
+    if (!limited.ok) return rateLimitResponse(limited.retryAfterSec);
+
     const bodyResult = await parseJsonBody(request, inviteJoinSchema);
     if ("error" in bodyResult) return bodyResult.error;
     const { token } = bodyResult.data;

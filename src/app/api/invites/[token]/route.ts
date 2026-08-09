@@ -1,12 +1,21 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import {
+  clientIpFromRequest,
+  rateLimit,
+  rateLimitResponse,
+} from "@/lib/security/rate-limit";
 import { internalErrorResponse, inviteTokenParamsSchema, parseData } from "@/lib/validation";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ token: string }> }
 ) {
   try {
+    const ip = clientIpFromRequest(request);
+    const limited = rateLimit(`invite-lookup:${ip}`, 30, 60_000);
+    if (!limited.ok) return rateLimitResponse(limited.retryAfterSec);
+
     const paramsResult = parseData(inviteTokenParamsSchema, await params);
     if ("error" in paramsResult) return paramsResult.error;
     const { token } = paramsResult.data;
