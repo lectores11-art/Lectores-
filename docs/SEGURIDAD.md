@@ -13,8 +13,9 @@
 | LiveKit token solo si `meeting.status === "live"` | ✅ código (S5-03) |
 | Invites: `max_uses=25`, `expires_at=+30d` por default | ✅ código |
 | Rate limit invite lookup (30/min/IP) y join (10/min/IP) | ✅ código (in-memory / por isolate) |
-| Checkout: precio solo desde `communities.stripe_price_id`; exige membership | ✅ código |
-| Migraciones 006–011 + buckets | ✅ aplicadas en proyecto Supabase (MCP) |
+| Checkout: precio solo desde `communities.stripe_price_id`; exige membership `active` | ✅ código |
+| Webhook checkout: no reactiva si `rejoin_blocked` | ✅ código |
+| Migraciones 006–011 + buckets | ✅ en DB (MCP); SQL 010/011 en repo |
 | Auth Redirect URLs + Confirm email | ✅ Dashboard |
 | Leaked passwords (HaveIBeenPwned) | ⏸ requiere plan Pro — diferido |
 | SMTP real (Resend/etc.) | ⏳ humano |
@@ -134,7 +135,8 @@ reenvío no entregará mail — eso es esperado, no un bug de la app.
 
 `POST /api/subscriptions` acepta solo `communityId`. El `price` de Checkout sale
 de `communities.stripe_price_id` (nunca del body del cliente). Requiere membership
-existente; sin precio configurado → 400.
+**`active`** y no `rejoin_blocked`; sin precio configurado → 400. El webhook de
+`checkout.session.completed` también se niega a reactivar si `rejoin_blocked`.
 
 ### Cambio de contraseña en Settings
 

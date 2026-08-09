@@ -28,7 +28,7 @@ Los **hallazgos críticos de RLS / storage / super-admin** quedaron **cerrados e
 2. Checklist E2E con **2 comunidades** (§12 abajo) — **sigue pendiente** (humano).
 3. Auth Dashboard: Redirect URLs + Confirm email **OK**; SMTP/Resend **pendiente**; leaked passwords diferido (Pro).
 4. Post-S5: invite defaults (`max_uses`/`expires_at`) + rate limits; checkout sin `priceId` del cliente — ver `docs/SEGURIDAD.md`.
-4. ~~`NEXT_PUBLIC_DISABLE_AUTH`~~ — **cerrado** en #16 (ya no existe en `createClient()`).
+5. ~~`NEXT_PUBLIC_DISABLE_AUTH`~~ — **cerrado** en #16 (ya no existe en `createClient()`).
 
 ---
 

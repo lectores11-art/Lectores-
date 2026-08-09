@@ -40,17 +40,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Comunidad no encontrada" }, { status: 404 });
     }
 
-    // Must already be a member (invite/join first). Access is membership-gated; this is billing only.
+    // Must already be an active member (invite/join first). Billing must not undo kick/cancel.
     const { data: membership } = await supabase
       .from("memberships")
-      .select("id, status")
+      .select("id, status, rejoin_blocked")
       .eq("user_id", user.id)
       .eq("community_id", communityId)
       .maybeSingle();
 
-    if (!membership) {
+    if (!membership || membership.status !== "active" || membership.rejoin_blocked) {
       return NextResponse.json(
-        { error: "Necesitás ser miembro de la comunidad antes de suscribirte." },
+        { error: "Necesitás ser miembro activo de la comunidad antes de suscribirte." },
         { status: 403 }
       );
     }

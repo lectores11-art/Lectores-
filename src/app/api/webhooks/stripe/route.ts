@@ -128,16 +128,35 @@ export async function POST(request: Request) {
         const communityId = session.metadata?.community_id;
 
         if (userId && communityId) {
-          const { data: membership, error: membershipError } = await serviceClient
+          const metadataMembershipId = session.metadata?.membership_id;
+          let membershipQuery = serviceClient
             .from("memberships")
-            .select("id")
+            .select("id, status, rejoin_blocked")
             .eq("user_id", userId)
-            .eq("community_id", communityId)
-            .maybeSingle();
+            .eq("community_id", communityId);
+
+          if (metadataMembershipId) {
+            membershipQuery = membershipQuery.eq("id", metadataMembershipId);
+          }
+
+          const { data: membership, error: membershipError } =
+            await membershipQuery.maybeSingle();
 
           if (membershipError) {
             console.error("Stripe webhook: membership lookup failed:", membershipError);
             return NextResponse.json({ error: "Sync falló" }, { status: 500 });
+          }
+
+          if (membership?.rejoin_blocked) {
+            console.error(
+              "Stripe webhook: refusing to activate rejoin_blocked membership",
+              membership.id
+            );
+            // Ack (2xx) so Stripe stops retrying; do not restore access after kick.
+            return NextResponse.json({
+              received: true,
+              skipped: "rejoin_blocked",
+            });
           }
 
           if (membership) {
