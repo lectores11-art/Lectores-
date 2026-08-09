@@ -60,7 +60,7 @@ async function syncSubscriptionFromStripe(
   serviceClient: ServiceClient,
   subscription: Stripe.Subscription,
   extras?: { stripe_customer_id?: string | null }
-) {
+): Promise<{ ok: true } | { ok: false; error: unknown }> {
   const period = subscriptionPeriod(subscription);
   const status = mapStripeSubscriptionStatus(subscription.status);
   const customerId =
@@ -89,7 +89,9 @@ async function syncSubscriptionFromStripe(
 
   if (error) {
     console.error("Stripe webhook: subscription sync failed:", error);
+    return { ok: false, error };
   }
+  return { ok: true };
 }
 
 export async function POST(request: Request) {
@@ -118,104 +120,127 @@ export async function POST(request: Request) {
   // Billing sync only — community access remains gated by membership, not paid status.
   const serviceClient = await createServiceClient();
 
-  switch (event.type) {
-    case "checkout.session.completed": {
-      const session = event.data.object as Stripe.Checkout.Session;
-      const userId = session.metadata?.user_id;
-      const communityId = session.metadata?.community_id;
+  try {
+    switch (event.type) {
+      case "checkout.session.completed": {
+        const session = event.data.object as Stripe.Checkout.Session;
+        const userId = session.metadata?.user_id;
+        const communityId = session.metadata?.community_id;
 
-      if (userId && communityId) {
-        const { data: membership } = await serviceClient
-          .from("memberships")
-          .select("id")
-          .eq("user_id", userId)
-          .eq("community_id", communityId)
-          .single();
-
-        if (membership) {
-          await serviceClient
+        if (userId && communityId) {
+          const { data: membership, error: membershipError } = await serviceClient
             .from("memberships")
-            .update({ status: "active" })
-            .eq("id", membership.id);
+            .select("id")
+            .eq("user_id", userId)
+            .eq("community_id", communityId)
+            .maybeSingle();
 
-          const stripeSubscriptionId =
-            typeof session.subscription === "string"
-              ? session.subscription
-              : session.subscription?.id;
+          if (membershipError) {
+            console.error("Stripe webhook: membership lookup failed:", membershipError);
+            return NextResponse.json({ error: "Sync falló" }, { status: 500 });
+          }
 
-          await serviceClient.from("subscriptions").upsert({
-            membership_id: membership.id,
-            stripe_customer_id: session.customer as string,
-            stripe_subscription_id: stripeSubscriptionId,
-            status: "active",
-          });
+          if (membership) {
+            const { error: activateError } = await serviceClient
+              .from("memberships")
+              .update({ status: "active" })
+              .eq("id", membership.id);
 
-          if (stripeSubscriptionId) {
-            try {
+            if (activateError) {
+              console.error("Stripe webhook: activate membership failed:", activateError);
+              return NextResponse.json({ error: "Sync falló" }, { status: 500 });
+            }
+
+            const stripeSubscriptionId =
+              typeof session.subscription === "string"
+                ? session.subscription
+                : session.subscription?.id;
+
+            const { error: upsertError } = await serviceClient
+              .from("subscriptions")
+              .upsert({
+                membership_id: membership.id,
+                stripe_customer_id: session.customer as string,
+                stripe_subscription_id: stripeSubscriptionId,
+                status: "active",
+              });
+
+            if (upsertError) {
+              console.error("Stripe webhook: subscription upsert failed:", upsertError);
+              return NextResponse.json({ error: "Sync falló" }, { status: 500 });
+            }
+
+            if (stripeSubscriptionId) {
               const sub = await stripe.subscriptions.retrieve(stripeSubscriptionId);
-              await syncSubscriptionFromStripe(serviceClient, sub, {
+              const synced = await syncSubscriptionFromStripe(serviceClient, sub, {
                 stripe_customer_id: session.customer as string,
               });
-            } catch (err) {
-              console.error(
-                "Stripe webhook: retrieve subscription after checkout failed:",
-                err
-              );
+              if (!synced.ok) {
+                return NextResponse.json({ error: "Sync falló" }, { status: 500 });
+              }
             }
           }
         }
+        break;
       }
-      break;
-    }
 
-    case "customer.subscription.updated": {
-      const subscription = event.data.object as Stripe.Subscription;
-      await syncSubscriptionFromStripe(serviceClient, subscription);
-      break;
-    }
-
-    case "customer.subscription.deleted": {
-      const subscription = event.data.object as Stripe.Subscription;
-      const period = subscriptionPeriod(subscription);
-      const { error } = await serviceClient
-        .from("subscriptions")
-        .update({
-          status: "cancelled",
-          cancel_at_period_end: false,
-          current_period_start: period.start,
-          current_period_end: period.end,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("stripe_subscription_id", subscription.id);
-
-      if (error) {
-        console.error("Stripe webhook: subscription deleted sync failed:", error);
+      case "customer.subscription.updated": {
+        const subscription = event.data.object as Stripe.Subscription;
+        const synced = await syncSubscriptionFromStripe(serviceClient, subscription);
+        if (!synced.ok) {
+          return NextResponse.json({ error: "Sync falló" }, { status: 500 });
+        }
+        break;
       }
-      break;
-    }
 
-    case "invoice.payment_failed": {
-      const invoice = event.data.object as Stripe.Invoice;
-      const stripeSubscriptionId = invoiceSubscriptionId(invoice);
-
-      if (stripeSubscriptionId) {
+      case "customer.subscription.deleted": {
+        const subscription = event.data.object as Stripe.Subscription;
+        const period = subscriptionPeriod(subscription);
         const { error } = await serviceClient
           .from("subscriptions")
           .update({
-            status: "past_due",
+            status: "cancelled",
+            cancel_at_period_end: false,
+            current_period_start: period.start,
+            current_period_end: period.end,
             updated_at: new Date().toISOString(),
           })
-          .eq("stripe_subscription_id", stripeSubscriptionId);
+          .eq("stripe_subscription_id", subscription.id);
 
         if (error) {
-          console.error("Stripe webhook: payment_failed sync failed:", error);
+          console.error("Stripe webhook: subscription deleted sync failed:", error);
+          return NextResponse.json({ error: "Sync falló" }, { status: 500 });
         }
+        break;
       }
-      break;
-    }
 
-    default:
-      break;
+      case "invoice.payment_failed": {
+        const invoice = event.data.object as Stripe.Invoice;
+        const stripeSubscriptionId = invoiceSubscriptionId(invoice);
+
+        if (stripeSubscriptionId) {
+          const { error } = await serviceClient
+            .from("subscriptions")
+            .update({
+              status: "past_due",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("stripe_subscription_id", stripeSubscriptionId);
+
+          if (error) {
+            console.error("Stripe webhook: payment_failed sync failed:", error);
+            return NextResponse.json({ error: "Sync falló" }, { status: 500 });
+          }
+        }
+        break;
+      }
+
+      default:
+        break;
+    }
+  } catch (err) {
+    console.error("Stripe webhook handler failed:", err);
+    return NextResponse.json({ error: "Sync falló" }, { status: 500 });
   }
 
   return NextResponse.json({ received: true });
