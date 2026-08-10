@@ -33,9 +33,31 @@ Configurados en `next.config.ts` para `/:path*`:
 | X-Frame-Options | `DENY` |
 | Referrer-Policy | `strict-origin-when-cross-origin` |
 | Permissions-Policy | camera/mic self; geolocation off |
-| Content-Security-Policy | básica (`frame-ancestors 'none'`, etc.) |
+| Content-Security-Policy | endurecida (S5-06) — ver tabla abajo |
 
-Revisar CSP en prod cuando se fijen hosts exactos de Mux/Vimeo/LiveKit/Stripe.
+### Content-Security-Policy (S5-06)
+
+Hosts allowlisteados según tráfico real del browser (no `https:` / `wss:` abiertos):
+
+| Directiva | Hosts |
+|-----------|--------|
+| `connect-src` | `'self'`, `https://*.supabase.co`, `wss://*.supabase.co`, `https://*.livekit.cloud`, `wss://*.livekit.cloud` |
+| `img-src` | `'self'`, `data:`, `blob:`, `https://*.supabase.co` (covers + assets) |
+| `media-src` | `'self'`, `blob:`, `https://*.supabase.co`, `https://stream.mux.com`, `https://*.mux.com` |
+| `frame-src` | `'self'`, YouTube, YouTube-nocookie, `player.vimeo.com`, Mux |
+| `script-src` | `'self' 'unsafe-inline' 'unsafe-eval'` (Next sin pipeline de nonces aún) |
+| `worker-src` | `'self'`, `blob:` |
+| `form-action` | `'self'` |
+| `frame-ancestors` | `'none'` |
+
+**Defer / no habilitado hoy:**
+
+| Host | Motivo |
+|------|--------|
+| `https://js.stripe.com`, `https://api.stripe.com`, `https://hooks.stripe.com` | Stripe Checkout + Customer Portal son redirects server-side; `@stripe/stripe-js` no se importa en componentes cliente. Agregar estos hosts **antes** de montar Elements / Stripe.js en el browser. |
+| Dominio custom de Supabase / LiveKit self-host / TURN externo | Si `NEXT_PUBLIC_SUPABASE_URL` o `NEXT_PUBLIC_LIVEKIT_URL` dejan `*.supabase.co` / `*.livekit.cloud`, actualizar CSP en el mismo PR. |
+
+Tras deploy: smoke en Network (auth, cover img, PDF signed URL, sala LiveKit, embed classroom) y revisar consola por violaciones CSP.
 
 ## Secretos y variables de entorno
 
@@ -158,18 +180,19 @@ Las contraseñas nunca se loguean.
 - [ ] LiveKit / Stripe: sin tokens/URLs demo; responden error si faltan secrets.
 - [x] `NEXT_PUBLIC_DISABLE_AUTH` eliminado del código (S2-02).
 
-## npm audit (corrida 2026-07-30)
+## npm audit (corrida 2026-08-10 · S5-06)
 
-Se actualizó `next` / `eslint-config-next` a **16.2.12** (último patch estable al momento).
+- `npm audit fix` (sin `--force`): cerró `brace-expansion`, `js-yaml`, `nanoid` transitivos (6 → 3 high).
+- Bump explícito `next` + `eslint-config-next` **16.2.12 → 16.3.0** (sin `--force`): cerró `postcss` / `sharp` embebidos.
+- Resultado final de la corrida: **`npm audit` → 0 vulnerabilities** (0 critical / 0 high).
 
-Hallazgos restantes reportados por `npm audit` (high):
+| Paquete | Severidad | Notas | Acción |
+|---------|-----------|-------|--------|
+| `next` / `postcss` / `sharp` | high (pre-bump) | Advisories en deps embebidas de 16.2.x | Fixed vía `16.3.0` |
+| tooling (`brace-expansion`, `js-yaml`, `nanoid`) | high (pre-fix) | Dev/transitive | Fixed vía `npm audit fix` |
+| critical | — | ninguno | — |
 
-| Paquete | Notas | Acción |
-|---------|-------|--------|
-| `next` (+ `postcss`/`sharp` transitivos) | El advisory de npm lista un rango hasta `16.3.0-preview.7` y sugiere “fix” `9.3.3` (incorrecto / breaking). Estamos en `16.2.12`. | Monitorear releases; no usar `npm audit fix --force`. |
-| `brace-expansion` (vía eslint) | DoS en tooling de lint, no runtime prod. | Aceptado; se resuelve al actualizar toolchain. |
-
-Re-correr `npm audit` antes de cada release.
+Re-correr `npm audit` antes de cada release. **No** usar `npm audit fix --force`.
 
 ## Checklist final pre-prod
 

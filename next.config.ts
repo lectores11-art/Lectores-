@@ -1,5 +1,46 @@
 import type { NextConfig } from "next";
 
+/**
+ * CSP hosts derived from real browser traffic in this app:
+ * - Supabase Auth / REST / Realtime / Storage (covers + signed PDF URLs)
+ * - LiveKit Cloud WebRTC signaling (NEXT_PUBLIC_LIVEKIT_URL)
+ * - Classroom embeds: YouTube / Vimeo / Mux (admin-entered video_url)
+ *
+ * Deferred (not loaded in the browser today — document before enabling):
+ * - Stripe.js (`js.stripe.com` / `api.stripe.com`): Checkout + Customer Portal
+ *   are server redirects; `@stripe/stripe-js` is unused in client components.
+ */
+const contentSecurityPolicy = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  "object-src 'none'",
+  "img-src 'self' data: blob: https://*.supabase.co",
+  "font-src 'self' data:",
+  "style-src 'self' 'unsafe-inline'",
+  // Next.js App Router still relies on inline/eval in this setup (no nonce pipeline yet).
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  [
+    "connect-src 'self'",
+    "https://*.supabase.co",
+    "wss://*.supabase.co",
+    "https://*.livekit.cloud",
+    "wss://*.livekit.cloud",
+  ].join(" "),
+  [
+    "frame-src 'self'",
+    "https://www.youtube.com",
+    "https://www.youtube-nocookie.com",
+    "https://player.vimeo.com",
+    "https://stream.mux.com",
+    "https://*.mux.com",
+  ].join(" "),
+  "media-src 'self' blob: https://*.supabase.co https://stream.mux.com https://*.mux.com",
+  "worker-src 'self' blob:",
+  "upgrade-insecure-requests",
+].join("; ");
+
 const securityHeaders = [
   {
     key: "Strict-Transport-Security",
@@ -22,22 +63,8 @@ const securityHeaders = [
     value: "camera=(self), microphone=(self), geolocation=()",
   },
   {
-    // Basic CSP — tighten further once all third-party hosts are known in prod.
     key: "Content-Security-Policy",
-    value: [
-      "default-src 'self'",
-      "base-uri 'self'",
-      "frame-ancestors 'none'",
-      "object-src 'none'",
-      "img-src 'self' data: blob: https:",
-      "font-src 'self' data:",
-      "style-src 'self' 'unsafe-inline'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-      "connect-src 'self' https: wss:",
-      "frame-src 'self' https:",
-      "media-src 'self' blob: https:",
-      "worker-src 'self' blob:",
-    ].join("; "),
+    value: contentSecurityPolicy,
   },
 ];
 
