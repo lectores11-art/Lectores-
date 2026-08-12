@@ -41,7 +41,8 @@ Hosts allowlisteados según tráfico real del browser (no `https:` / `wss:` abie
 
 | Directiva | Hosts |
 |-----------|--------|
-| `connect-src` | `'self'`, `https://*.supabase.co`, `wss://*.supabase.co`, `https://*.livekit.cloud`, `wss://*.livekit.cloud` |
+| `connect-src` | `'self'`, `https://*.supabase.co`, `wss://*.supabase.co`, `https://*.livekit.cloud`, `wss://*.livekit.cloud`, `https://*.turn.livekit.cloud`, `wss://*.turn.livekit.cloud` |
+| `upgrade-insecure-requests` | solo en builds `NODE_ENV=production` (no en `next dev` / localhost HTTP) |
 | `img-src` | `'self'`, `data:`, `blob:`, `https://*.supabase.co` (covers + assets) |
 | `media-src` | `'self'`, `blob:`, `https://*.supabase.co`, `https://stream.mux.com`, `https://*.mux.com` |
 | `frame-src` | `'self'`, YouTube, YouTube-nocookie, `player.vimeo.com`, Mux |
@@ -54,8 +55,8 @@ Hosts allowlisteados según tráfico real del browser (no `https:` / `wss:` abie
 
 | Host | Motivo |
 |------|--------|
-| `https://js.stripe.com`, `https://api.stripe.com`, `https://hooks.stripe.com` | Stripe Checkout + Customer Portal son redirects server-side; `@stripe/stripe-js` no se importa en componentes cliente. Agregar estos hosts **antes** de montar Elements / Stripe.js en el browser. |
-| Dominio custom de Supabase / LiveKit self-host / TURN externo | Si `NEXT_PUBLIC_SUPABASE_URL` o `NEXT_PUBLIC_LIVEKIT_URL` dejan `*.supabase.co` / `*.livekit.cloud`, actualizar CSP en el mismo PR. |
+| `https://js.stripe.com`, `https://api.stripe.com` | Stripe Checkout + Customer Portal son redirects server-side; `@stripe/stripe-js` no se importa en componentes cliente. Agregar estos hosts **antes** de montar Elements / Stripe.js en el browser. |
+| Dominio custom de Supabase / LiveKit self-host | Si `NEXT_PUBLIC_SUPABASE_URL` o `NEXT_PUBLIC_LIVEKIT_URL` dejan `*.supabase.co` / `*.livekit.cloud`, actualizar CSP en el mismo PR. |
 
 Tras deploy: smoke en Network (auth, cover img, PDF signed URL, sala LiveKit, embed classroom) y revisar consola por violaciones CSP.
 
@@ -201,5 +202,6 @@ Re-correr `npm audit` antes de cada release. **No** usar `npm audit fix --force`
 - [ ] Secretos solo server-side
 - [ ] Headers activos en deploy
 - [x] Sin demos / disable-auth (S2-02)
-- [ ] `npm run lint` + `npm run build` + `npm test`
+- [x] `npm run lint` + `npm run build` + `npm audit` (S5-06, 2026-08-10; re-correr antes de release)
+- [ ] `npm test` (suite unitaria; re-correr en CI/local antes de release)
 - [ ] QA manual `docs/QA-SPRINT2.md` (si disponible) o checklist S2-11
