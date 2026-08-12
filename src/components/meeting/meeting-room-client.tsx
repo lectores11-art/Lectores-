@@ -143,7 +143,7 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
       setToken(data.token);
       setLivekitUrl(data.url || "");
       setIsHost(Boolean(data.isHost));
-      setActiveMeeting(meeting);
+      setActiveMeeting({ ...meeting, status: "live" });
     } catch {
       setJoinError(
         "No se pudo unir a la reunión. Revisá tu conexión e intentá de nuevo."
@@ -316,9 +316,11 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
               </Button>
               {(isAdmin || isHost) && activeMeeting.status !== "ended" && (
                 <>
-                  <Button size="sm" onClick={startMeeting}>
-                    Iniciar transmisión
-                  </Button>
+                  {activeMeeting.status !== "live" && (
+                    <Button size="sm" onClick={startMeeting}>
+                      Iniciar transmisión
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="destructive"
