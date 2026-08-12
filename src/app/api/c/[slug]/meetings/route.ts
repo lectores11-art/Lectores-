@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { isCommunityAdmin, requireApiCommunityAccess } from "@/lib/auth/helpers";
 import { createClient } from "@/lib/supabase/server";
 import { nanoid } from "nanoid";
+import { decideMeetingTokenAccess } from "@/lib/meetings/token-access";
 import {
   internalErrorResponse,
   meetingActionSchema,
@@ -84,24 +85,21 @@ export async function POST(
         return NextResponse.json({ error: "Reunión no encontrada" }, { status: 404 });
       }
 
-      if (meeting.status === "ended") {
+      const accessDecision = decideMeetingTokenAccess({
+        status: meeting.status,
+        hostId: meeting.host_id,
+        userId: user.id,
+        isAdmin: admin,
+      });
+
+      if (!accessDecision.ok) {
         return NextResponse.json(
-          { error: "Esta reunión ya finalizó." },
-          { status: 410 }
+          { error: accessDecision.error },
+          { status: accessDecision.httpStatus }
         );
       }
 
-      if (meeting.status !== "live") {
-        return NextResponse.json(
-          {
-            error:
-              "La reunión todavía no está en vivo. Esperá a que la anfitriona la inicie.",
-          },
-          { status: 409 }
-        );
-      }
-
-      const isHost = meeting.host_id === user.id || admin;
+      const isHost = accessDecision.isHost;
       const apiKey = process.env.LIVEKIT_API_KEY;
       const apiSecret = process.env.LIVEKIT_API_SECRET;
 
@@ -113,6 +111,17 @@ export async function POST(
           },
           { status: 503 }
         );
+      }
+
+      if (accessDecision.shouldStart) {
+        const { error: startError } = await supabase
+          .from("meetings")
+          .update({ status: "live", started_at: new Date().toISOString() })
+          .eq("id", meeting.id)
+          .eq("community_id", community.id);
+        if (startError) {
+          return internalErrorResponse("Error al iniciar reunión:", startError);
+        }
       }
 
       const at = new AccessToken(apiKey, apiSecret, {
