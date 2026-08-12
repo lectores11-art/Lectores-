@@ -3,14 +3,17 @@ import type { NextConfig } from "next";
 /**
  * CSP hosts derived from real browser traffic in this app:
  * - Supabase Auth / REST / Realtime / Storage (covers + signed PDF URLs)
- * - LiveKit Cloud WebRTC signaling (NEXT_PUBLIC_LIVEKIT_URL)
+ * - LiveKit Cloud WebRTC signaling + TURN (NEXT_PUBLIC_LIVEKIT_URL)
  * - Classroom embeds: YouTube / Vimeo / Mux (admin-entered video_url)
  *
  * Deferred (not loaded in the browser today — document before enabling):
  * - Stripe.js (`js.stripe.com` / `api.stripe.com`): Checkout + Customer Portal
  *   are server redirects; `@stripe/stripe-js` is unused in client components.
+ *
+ * Note: CSP `*.livekit.cloud` does not match multi-label hosts like
+ * `*.turn.livekit.cloud` — those must be listed explicitly.
  */
-const contentSecurityPolicy = [
+const contentSecurityPolicyDirectives = [
   "default-src 'self'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -27,6 +30,8 @@ const contentSecurityPolicy = [
     "wss://*.supabase.co",
     "https://*.livekit.cloud",
     "wss://*.livekit.cloud",
+    "https://*.turn.livekit.cloud",
+    "wss://*.turn.livekit.cloud",
   ].join(" "),
   [
     "frame-src 'self'",
@@ -38,8 +43,14 @@ const contentSecurityPolicy = [
   ].join(" "),
   "media-src 'self' blob: https://*.supabase.co https://stream.mux.com https://*.mux.com",
   "worker-src 'self' blob:",
-  "upgrade-insecure-requests",
-].join("; ");
+];
+
+// Only on production builds — would break local http://localhost subresources.
+if (process.env.NODE_ENV === "production") {
+  contentSecurityPolicyDirectives.push("upgrade-insecure-requests");
+}
+
+const contentSecurityPolicy = contentSecurityPolicyDirectives.join("; ");
 
 const securityHeaders = [
   {
