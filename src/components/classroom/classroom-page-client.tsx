@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { useDetailPanel } from "@/components/layout/detail-panel-context";
 import { cn } from "@/lib/utils";
+import { toEmbedPlayback } from "@/lib/video/embed-url";
 import type { Course, Lesson } from "@/lib/types/database";
 
 export function ClassroomPageClient({
@@ -110,7 +111,11 @@ export function ClassroomPageClient({
               </div>
               <div className="space-y-2">
                 <Label>URL del video (Vimeo/Mux/YouTube embed)</Label>
-                <Input name="videoUrl" placeholder="https://..." required />
+                <Input
+                  name="videoUrl"
+                  placeholder="https://youtu.be/… o URL de Vimeo / Mux"
+                  required
+                />
               </div>
               <Button type="submit">Crear</Button>
             </form>
@@ -162,26 +167,13 @@ export function ClassroomPageClient({
 
         <div className="lg:col-span-2">
           {selectedLesson ? (
-            <Card className="hard-shadow-sm">
+            <Card className="overflow-visible rounded-none hard-shadow-sm">
               <CardHeader>
                 <CardTitle>{selectedLesson.title}</CardTitle>
               </CardHeader>
               <CardContent>
                 {selectedLesson.video_url ? (
-                  <div className="aspect-video overflow-hidden border border-border bg-black">
-                    {selectedLesson.video_url.includes("youtube") ||
-                    selectedLesson.video_url.includes("vimeo") ||
-                    selectedLesson.video_url.includes("mux") ? (
-                      <iframe
-                        src={selectedLesson.video_url}
-                        className="h-full w-full"
-                        allowFullScreen
-                        allow="autoplay; encrypted-media"
-                      />
-                    ) : (
-                      <video src={selectedLesson.video_url} controls className="h-full w-full" />
-                    )}
-                  </div>
+                  <ClassroomVideoPlayer url={selectedLesson.video_url} />
                 ) : (
                   <p className="text-muted">Video no disponible</p>
                 )}
@@ -201,5 +193,44 @@ export function ClassroomPageClient({
         </div>
       </div>
     </div>
+  );
+}
+
+function ClassroomVideoPlayer({ url }: { url: string }) {
+  const playback = toEmbedPlayback(url);
+
+  if (!playback) {
+    return <p className="text-muted">No se pudo cargar este enlace</p>;
+  }
+
+  // Hardware-accelerated YouTube/video layers paint in horizontal stripes when a
+  // parent clips them (overflow:hidden, border-radius). Keep this unclipped and
+  // on its own compositor layer. Confirmed against screenshot: ~11px bars on the
+  // top half only; the YouTube thumbnail of the same video has no bars.
+  const layerStyle = {
+    aspectRatio: "16 / 9",
+    height: "auto",
+    transform: "translate3d(0, 0, 0)",
+    backfaceVisibility: "hidden" as const,
+  };
+
+  if (playback.kind === "iframe") {
+    return (
+      <iframe
+        src={playback.src}
+        title="Grabación del encuentro"
+        width={560}
+        height={315}
+        className="block w-full border-0"
+        style={layerStyle}
+        allowFullScreen
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        referrerPolicy="strict-origin-when-cross-origin"
+      />
+    );
+  }
+
+  return (
+    <video src={playback.src} controls className="block w-full" style={layerStyle} />
   );
 }
