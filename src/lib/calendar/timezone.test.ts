@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { dayKeyInZone, wallTimeToUtc } from "./timezone";
-import { formatEventTime, formatEventWhen } from "./format";
+import { dayKeyInZone, HUB_ZONES, wallTimeToUtc } from "./timezone";
+import { formatEventTime, formatHubTimes } from "./format";
 
 describe("wallTimeToUtc", () => {
   it("treats 3pm Buenos Aires as 18:00 UTC", () => {
@@ -34,17 +34,31 @@ describe("dayKeyInZone", () => {
   });
 });
 
-describe("display in viewer timezone", () => {
-  const instant = new Date("2026-08-23T18:00:00.000Z");
+describe("hub display", () => {
+  it("lists España, Argentina and México for the same instant", () => {
+    expect(HUB_ZONES.map((hub) => hub.label)).toEqual([
+      "España",
+      "Argentina",
+      "México",
+    ]);
 
-  it("shows 3pm in Buenos Aires and 12pm in Mexico City", () => {
-    expect(formatEventTime(instant, "America/Argentina/Buenos_Aires")).toBe("3pm");
-    expect(formatEventTime(instant, "America/Mexico_City")).toBe("12pm");
+    const hubs = formatHubTimes(new Date("2026-08-23T18:00:00.000Z"));
+    expect(hubs).toEqual([
+      { id: "Europe/Madrid", label: "España", short: "ES", time: "8pm" },
+      {
+        id: "America/Argentina/Buenos_Aires",
+        label: "Argentina",
+        short: "AR",
+        time: "3pm",
+      },
+      { id: "America/Mexico_City", label: "México", short: "MX", time: "12pm" },
+    ]);
   });
 
-  it("keeps the weekday in the viewer zone", () => {
-    expect(
-      formatEventWhen(instant, new Date("2026-08-23T19:00:00.000Z"), "America/Argentina/Buenos_Aires")
-    ).toBe("domingo, agosto 23° @ 3pm - 4pm");
+  it("keeps formatEventTime aligned with each hub", () => {
+    const instant = new Date("2026-08-23T18:00:00.000Z");
+    expect(formatEventTime(instant, "Europe/Madrid")).toBe("8pm");
+    expect(formatEventTime(instant, "America/Argentina/Buenos_Aires")).toBe("3pm");
+    expect(formatEventTime(instant, "America/Mexico_City")).toBe("12pm");
   });
 });
