@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   addMonths,
   format,
@@ -21,10 +21,18 @@ import {
   formatEventChip,
   formatEventTime,
   monthGridDays,
+  resolveEventRange,
   visibleRange,
 } from "@/lib/calendar/format";
 import { cn } from "@/lib/utils";
-import type { CalendarEvent } from "@/lib/types/database";
+import type { CalendarEvent, EventType } from "@/lib/types/database";
+
+const EVENT_TYPES: EventType[] = ["meeting", "deadline", "announcement", "other"];
+
+function parseEventType(raw: FormDataEntryValue | null): EventType {
+  const value = String(raw || "other");
+  return EVENT_TYPES.includes(value as EventType) ? (value as EventType) : "other";
+}
 
 const WEEKDAYS = ["lun.", "mar.", "mié.", "jue.", "vie.", "sáb.", "dom."];
 
@@ -64,6 +72,10 @@ export function CalendarPageClient({
   const [showForm, setShowForm] = useState(false);
   const [view, setView] = useState<"month" | "list">("month");
   const [reloadToken, setReloadToken] = useState(0);
+  const [loadError, setLoadError] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const { searchQuery, setSearchPlaceholder } = useDetailPanel();
 
   useEffect(() => {
@@ -75,16 +87,31 @@ export function CalendarPageClient({
     const supabase = createClient();
     const { start, end } = visibleRange(currentMonth);
 
-    void supabase
-      .from("calendar_events")
-      .select("*")
-      .eq("community_id", communityId)
-      .gte("starts_at", start.toISOString())
-      .lte("starts_at", end.toISOString())
-      .order("starts_at")
-      .then(({ data }) => {
-        if (!cancelled) setEvents(data || []);
-      });
+    void (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("calendar_events")
+          .select("*")
+          .eq("community_id", communityId)
+          .gte("starts_at", start.toISOString())
+          .lte("starts_at", end.toISOString())
+          .order("starts_at");
+
+        if (cancelled) return;
+        if (error) {
+          setLoadError("No se pudieron cargar los eventos. Intentá de nuevo.");
+          return;
+        }
+        setLoadError("");
+        setEvents(data || []);
+      } catch {
+        if (!cancelled) {
+          setLoadError(
+            "No se pudieron cargar los eventos. Revisá tu conexión e intentá de nuevo."
+          );
+        }
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -93,29 +120,62 @@ export function CalendarPageClient({
 
   async function createEvent(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = new FormData(e.currentTarget);
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setSubmitError("");
+    setSubmitting(true);
 
-    const startsAt = new Date(form.get("startsAt") as string);
-    const endsRaw = form.get("endsAt") as string;
-    const endsAt = endsRaw ? new Date(endsRaw) : new Date(startsAt.getTime() + 60 * 60 * 1000);
+    try {
+      const form = new FormData(e.currentTarget);
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        setSubmitError("Tenés que iniciar sesión para crear un evento.");
+        return;
+      }
 
-    await supabase.from("calendar_events").insert({
-      community_id: communityId,
-      title: form.get("title") as string,
-      description: form.get("description") as string,
-      event_type: (form.get("eventType") as string) || "other",
-      starts_at: startsAt.toISOString(),
-      ends_at: endsAt.toISOString(),
-      created_by: user.id,
-    });
+      const title = String(form.get("title") || "").trim();
+      if (!title) {
+        setSubmitError("El título es obligatorio.");
+        return;
+      }
 
-    setShowForm(false);
-    setReloadToken((token) => token + 1);
+      const endsRaw = String(form.get("endsAt") || "").trim();
+      const range = resolveEventRange(
+        new Date(String(form.get("startsAt") || "")),
+        endsRaw ? new Date(endsRaw) : null
+      );
+      if (!range.ok) {
+        setSubmitError(range.error);
+        return;
+      }
+
+      const description = String(form.get("description") || "").trim();
+      const { error } = await supabase.from("calendar_events").insert({
+        community_id: communityId,
+        title,
+        description: description || null,
+        event_type: parseEventType(form.get("eventType")),
+        starts_at: range.startsAt.toISOString(),
+        ends_at: range.endsAt.toISOString(),
+        created_by: user.id,
+      });
+
+      if (error) {
+        setSubmitError("No se pudo guardar el evento. Intentá de nuevo.");
+        return;
+      }
+
+      setShowForm(false);
+      setReloadToken((token) => token + 1);
+    } catch {
+      setSubmitError("No se pudo guardar el evento. Revisá tu conexión e intentá de nuevo.");
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
   }
 
   const days = useMemo(() => monthGridDays(currentMonth), [currentMonth]);
@@ -165,7 +225,10 @@ export function CalendarPageClient({
             {isAdmin ? (
               <button
                 type="button"
-                onClick={() => setShowForm((open) => !open)}
+                onClick={() => {
+                  setShowForm((open) => !open);
+                  setSubmitError("");
+                }}
                 className="inline-flex h-9 items-center gap-1 rounded-full px-3 text-sm font-medium text-[#2B6BF2] hover:bg-[#f3f7ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2B6BF2]"
               >
                 <Plus className="h-4 w-4" />
@@ -264,10 +327,33 @@ export function CalendarPageClient({
               <Label>Descripción (podés pegar un enlace)</Label>
               <Input name="description" />
             </div>
+            {submitError ? (
+              <p className="sm:col-span-2 text-sm text-red-600" role="alert">
+                {submitError}
+              </p>
+            ) : null}
             <div className="sm:col-span-2">
-              <Button type="submit">Crear evento</Button>
+              <Button type="submit" disabled={submitting}>
+                {submitting ? "Guardando…" : "Crear evento"}
+              </Button>
             </div>
           </form>
+        ) : null}
+
+        {loadError ? (
+          <div
+            className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+            role="alert"
+          >
+            <p>{loadError}</p>
+            <button
+              type="button"
+              onClick={() => setReloadToken((token) => token + 1)}
+              className="font-semibold underline underline-offset-2"
+            >
+              Reintentar
+            </button>
+          </div>
         ) : null}
 
         {view === "month" ? (
@@ -328,9 +414,11 @@ export function CalendarPageClient({
           <div className="flex-1 border-t border-[#ececec] pt-4">
             {listGroups.length === 0 ? (
               <p className="py-16 text-center text-sm text-[#8a8a8a]">
-                {q
-                  ? `Ningún evento coincide con «${searchQuery.trim()}».`
-                  : "No hay eventos este mes."}
+                {loadError
+                  ? loadError
+                  : q
+                    ? `Ningún evento coincide con «${searchQuery.trim()}».`
+                    : "No hay eventos este mes."}
               </p>
             ) : (
               <ul className="divide-y divide-[#ececec]">

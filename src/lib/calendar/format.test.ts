@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  firstUrl,
   formatClockLabel,
   formatEventChip,
   formatEventTime,
@@ -9,6 +10,8 @@ import {
   icsContent,
   monthGridDays,
   outlookCalendarUrl,
+  resolveEventRange,
+  visibleRange,
 } from "./format";
 
 describe("monthGridDays", () => {
@@ -19,6 +22,57 @@ describe("monthGridDays", () => {
     expect(days[5]).toEqual(new Date(2026, 7, 1));
     expect(days[35]).toEqual(new Date(2026, 7, 31));
     expect(days[41]).toEqual(new Date(2026, 8, 6));
+  });
+
+  it("pads a 4-week February to 42 days", () => {
+    const days = monthGridDays(new Date(2021, 1, 1));
+    expect(days).toHaveLength(42);
+    expect(days[0]).toEqual(new Date(2021, 1, 1));
+    expect(days[27]).toEqual(new Date(2021, 1, 28));
+    expect(days[41]).toEqual(new Date(2021, 2, 14));
+  });
+});
+
+describe("visibleRange", () => {
+  it("ends at local 23:59:59.999 of the last painted cell", () => {
+    const { start, end } = visibleRange(new Date(2021, 1, 1));
+    expect(start).toEqual(new Date(2021, 1, 1));
+    expect(end).toEqual(new Date(2021, 2, 14, 23, 59, 59, 999));
+  });
+});
+
+describe("firstUrl", () => {
+  it("extracts the first http(s) url and strips trailing punctuation", () => {
+    expect(firstUrl("Join here: https://lectores.example/call.")).toBe(
+      "https://lectores.example/call"
+    );
+  });
+
+  it("returns null when there is no http(s) url", () => {
+    expect(firstUrl("ftp://files.example/x")).toBeNull();
+    expect(firstUrl("sin enlace")).toBeNull();
+  });
+});
+
+describe("resolveEventRange", () => {
+  it("defaults a missing end to one hour after start", () => {
+    const start = new Date(2026, 7, 23, 15, 0);
+    const result = resolveEventRange(start, null);
+    expect(result).toEqual({
+      ok: true,
+      startsAt: start,
+      endsAt: new Date(2026, 7, 23, 16, 0),
+    });
+  });
+
+  it("rejects an end that is not after start", () => {
+    const start = new Date(2026, 7, 23, 15, 0);
+    expect(resolveEventRange(start, start).ok).toBe(false);
+    expect(resolveEventRange(start, new Date(2026, 7, 23, 14, 0)).ok).toBe(false);
+  });
+
+  it("rejects an invalid start", () => {
+    expect(resolveEventRange(new Date("nope"), null).ok).toBe(false);
   });
 });
 
@@ -71,6 +125,7 @@ describe("formatTimezoneCaption", () => {
 
 describe("calendar export urls", () => {
   const event = {
+    uid: "evt-23",
     title: "360 VA Skool Call",
     description: "Weekly call",
     startsAt: new Date("2026-08-23T15:00:00-03:00"),
@@ -99,8 +154,10 @@ describe("calendar export urls", () => {
     const ics = icsContent(event);
     expect(ics).toContain("BEGIN:VCALENDAR");
     expect(ics).toContain("SUMMARY:360 VA Skool Call");
+    expect(ics).toContain("UID:evt-23@lectores");
     expect(ics).toContain("DTSTART:20260823T180000Z");
     expect(ics).toContain("DTEND:20260823T190000Z");
+    expect(ics).toContain("URL:https://360volleyballskool.com");
     expect(ics).toContain("END:VCALENDAR");
   });
 });
