@@ -5,14 +5,15 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { CalendarDays, CalendarPlus, ChevronDown, Link2 } from "lucide-react";
 import {
   firstUrl,
-  formatEventWhen,
-  formatTimezoneCaption,
+  formatEventTime,
+  formatHubTimes,
   googleCalendarUrl,
   icsContent,
   icsFilename,
   outlookCalendarUrl,
   type CalendarExportEvent,
 } from "@/lib/calendar/format";
+import { CALENDAR_DAY_ZONE } from "@/lib/calendar/timezone";
 import type { CalendarEvent } from "@/lib/types/database";
 
 function eventEnd(event: CalendarEvent): Date {
@@ -58,13 +59,11 @@ export function EventDetailModal({
   event,
   slug,
   logoUrl,
-  timeZone,
   onClose,
 }: {
   event: CalendarEvent | null;
   slug: string;
   logoUrl: string | null;
-  timeZone: string;
   onClose: () => void;
 }) {
   const startsAt = event ? new Date(event.starts_at) : null;
@@ -83,13 +82,22 @@ export function EventDetailModal({
       : null;
 
   const day = startsAt
-    ? startsAt.toLocaleDateString("es-AR", { day: "numeric", timeZone })
+    ? startsAt.toLocaleDateString("es-AR", {
+        day: "numeric",
+        timeZone: CALENDAR_DAY_ZONE,
+      })
     : "";
   const weekday = startsAt
-    ? startsAt.toLocaleDateString("es-AR", { weekday: "long", timeZone })
+    ? startsAt.toLocaleDateString("es-AR", {
+        weekday: "long",
+        timeZone: CALENDAR_DAY_ZONE,
+      })
     : "";
   const month = startsAt
-    ? startsAt.toLocaleDateString("es-AR", { month: "long", timeZone })
+    ? startsAt.toLocaleDateString("es-AR", {
+        month: "long",
+        timeZone: CALENDAR_DAY_ZONE,
+      })
     : "";
 
   return (
@@ -126,20 +134,29 @@ export function EventDetailModal({
                   {event.title}
                 </Dialog.Title>
                 <Dialog.Description className="sr-only">
-                  {formatEventWhen(startsAt, endsAt, timeZone)}
+                  {startsAt
+                    ? formatHubTimes(startsAt)
+                        .map((hub) => `${hub.time} ${hub.label}`)
+                        .join(", ")
+                    : ""}
                   {event.description ? `. ${event.description}` : ""}
                 </Dialog.Description>
 
                 <div className="mt-4 flex gap-3">
                   <CalendarDays className="mt-0.5 h-5 w-5 shrink-0 text-[#5f5f5f]" />
-                  <div>
-                    <p className="text-sm font-medium text-[#1a1a1a]">
-                      {formatEventWhen(startsAt, endsAt, timeZone)}
-                    </p>
-                    <p className="mt-0.5 text-[13px] text-[#8a8a8a]">
-                      {formatTimezoneCaption(timeZone)} (tu zona)
-                    </p>
-                  </div>
+                  <ul className="space-y-1 text-sm">
+                    {formatHubTimes(startsAt).map((hub) => (
+                      <li key={hub.id} className="flex gap-3">
+                        <span className="w-[5.5rem] shrink-0 text-[#8a8a8a]">
+                          {hub.label}
+                        </span>
+                        <span className="font-medium text-[#1a1a1a]">
+                          {hub.time}
+                          {endsAt ? ` – ${formatEventTime(endsAt, hub.id)}` : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
 
                 {href ? (

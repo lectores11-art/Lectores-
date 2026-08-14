@@ -5,6 +5,7 @@ import {
   startOfMonth,
   startOfWeek,
 } from "date-fns";
+import { HUB_ZONES } from "@/lib/calendar/timezone";
 
 export const WEEK_STARTS_ON = 1 as const;
 export const MONTH_GRID_DAYS = 42;
@@ -74,6 +75,32 @@ export function formatEventTime(date: Date, timeZone?: string): string {
 
   if (minute === "00") return `${hour}${period}`;
   return `${hour}:${minute}${period}`;
+}
+
+export function formatHubTimes(date: Date): Array<{
+  id: string;
+  label: string;
+  short: string;
+  time: string;
+}> {
+  return HUB_ZONES.map((hub) => ({
+    id: hub.id,
+    label: hub.label,
+    short: hub.short,
+    time: formatEventTime(date, hub.id),
+  }));
+}
+
+export function formatHubChipLine(date: Date): string {
+  return formatHubTimes(date)
+    .map((hub) => `${hub.time} ${hub.short}`)
+    .join(" · ");
+}
+
+export function formatHubClockLine(now: Date): string {
+  return formatHubTimes(now)
+    .map((hub) => `${hub.time} ${hub.label}`)
+    .join(" · ");
 }
 
 export function formatEventChip(startsAt: Date, title: string, timeZone?: string): string {

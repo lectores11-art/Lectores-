@@ -1,18 +1,12 @@
-export const EVENT_TIMEZONES: { id: string; label: string }[] = [
-  { id: "America/Argentina/Buenos_Aires", label: "Buenos Aires (Argentina)" },
-  { id: "America/Montevideo", label: "Montevideo (Uruguay)" },
-  { id: "America/Santiago", label: "Santiago (Chile)" },
-  { id: "America/Sao_Paulo", label: "São Paulo (Brasil)" },
-  { id: "America/Bogota", label: "Bogotá (Colombia)" },
-  { id: "America/Lima", label: "Lima (Perú)" },
-  { id: "America/Mexico_City", label: "Ciudad de México" },
-  { id: "America/New_York", label: "Nueva York (EE.UU.)" },
-  { id: "America/Chicago", label: "Chicago (EE.UU.)" },
-  { id: "America/Los_Angeles", label: "Los Ángeles (EE.UU.)" },
-  { id: "Europe/Madrid", label: "Madrid (España)" },
-  { id: "Europe/London", label: "Londres (Reino Unido)" },
-  { id: "UTC", label: "UTC" },
-];
+export const HUB_ZONES = [
+  { id: "Europe/Madrid", label: "España", short: "ES" },
+  { id: "America/Argentina/Buenos_Aires", label: "Argentina", short: "AR" },
+  { id: "America/Mexico_City", label: "México", short: "MX" },
+] as const;
+
+export type HubZoneId = (typeof HUB_ZONES)[number]["id"];
+
+export const CALENDAR_DAY_ZONE: HubZoneId = "America/Argentina/Buenos_Aires";
 
 export function isValidTimeZone(timeZone: string): boolean {
   try {
@@ -23,15 +17,8 @@ export function isValidTimeZone(timeZone: string): boolean {
   }
 }
 
-export function viewerTimeZone(): string {
-  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  return isValidTimeZone(zone) ? zone : "UTC";
-}
-
-export function timezonesForSelect(viewer: string): { id: string; label: string }[] {
-  const known = EVENT_TIMEZONES.filter((zone) => zone.id === viewer);
-  if (known.length) return EVENT_TIMEZONES;
-  return [{ id: viewer, label: viewer.replace(/_/g, " ") }, ...EVENT_TIMEZONES];
+export function isHubZone(timeZone: string): timeZone is HubZoneId {
+  return HUB_ZONES.some((hub) => hub.id === timeZone);
 }
 
 function offsetMs(date: Date, timeZone: string): number {
@@ -73,8 +60,7 @@ export function wallTimeToUtc(wall: string, timeZone: string): Date | null {
 
   const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
   const first = new Date(utcGuess.getTime() - offsetMs(utcGuess, timeZone));
-  const secondPass = new Date(utcGuess.getTime() - offsetMs(first, timeZone));
-  return secondPass;
+  return new Date(utcGuess.getTime() - offsetMs(first, timeZone));
 }
 
 export function dayKeyInZone(date: Date, timeZone: string): string {
