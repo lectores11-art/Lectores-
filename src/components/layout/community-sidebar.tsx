@@ -18,8 +18,8 @@ import type { Community, Profile } from "@/lib/types/database";
 
 const navItems = [
   { href: "forum", label: "Foro", icon: MessageSquare },
-  { href: "classroom", label: "Classroom", icon: GraduationCap },
-  { href: "library", label: "Biblioteca", icon: BookOpen },
+  { href: "classroom", label: "Encuentros", icon: GraduationCap },
+  { href: "library", label: "Libros", icon: BookOpen },
   { href: "meeting", label: "Sala", icon: Video },
   { href: "calendar", label: "Calendario", icon: Calendar },
   { href: "settings", label: "Cuenta", icon: Settings },

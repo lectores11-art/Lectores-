@@ -50,7 +50,7 @@ export function LandingPage() {
               <p className="text-sm text-muted">Buscar título, autor o tema…</p>
             </div>
             <div className="grid grid-cols-3 gap-3">
-              {["Foro", "Biblioteca", "Sala", "Classroom", "Agenda", "Invite"].map(
+              {["Foro", "Libros", "Sala", "Encuentros", "Agenda", "Invite"].map(
                 (label, i) => (
                   <div
                     key={label}

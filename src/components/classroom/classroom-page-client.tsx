@@ -27,7 +27,7 @@ export function ClassroomPageClient({
   const { setSearchPlaceholder } = useDetailPanel();
 
   useEffect(() => {
-    setSearchPlaceholder("Buscar cursos o lecciones…");
+    setSearchPlaceholder("Buscar encuentros o grabaciones…");
   }, [setSearchPlaceholder]);
 
   useEffect(() => {
@@ -84,11 +84,11 @@ export function ClassroomPageClient({
     <div className="p-4 lg:p-6">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Classroom</h1>
-          <p className="text-sm text-muted">Grabaciones y lecciones</p>
+          <h1 className="text-2xl font-bold tracking-tight">Encuentros</h1>
+          <p className="text-sm text-muted">Grabaciones de encuentros</p>
         </div>
         {isAdmin && (
-          <Button onClick={() => setShowForm(!showForm)}>Nuevo curso</Button>
+          <Button onClick={() => setShowForm(!showForm)}>Nuevo encuentro</Button>
         )}
       </div>
 
@@ -97,7 +97,7 @@ export function ClassroomPageClient({
           <CardContent className="pt-6">
             <form onSubmit={createCourse} className="space-y-4">
               <div className="space-y-2">
-                <Label>Título del curso</Label>
+                <Label>Título del encuentro</Label>
                 <Input name="title" required />
               </div>
               <div className="space-y-2">
@@ -123,7 +123,7 @@ export function ClassroomPageClient({
           {courses.length === 0 ? (
             <Card>
               <CardContent className="py-8 text-center text-muted">
-                No hay cursos aún
+                No hay encuentros aún
               </CardContent>
             </Card>
           ) : (

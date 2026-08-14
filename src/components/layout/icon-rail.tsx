@@ -21,8 +21,8 @@ import type { Community } from "@/lib/types/database";
 
 const mainNav = [
   { href: "forum", label: "Foro", icon: MessageSquare },
-  { href: "classroom", label: "Aula", icon: GraduationCap },
-  { href: "library", label: "Biblio", icon: BookOpen },
+  { href: "classroom", label: "Encuentros", icon: GraduationCap },
+  { href: "library", label: "Libros", icon: BookOpen },
   { href: "meeting", label: "Sala", icon: Video },
   { href: "calendar", label: "Agenda", icon: Calendar },
 ];
@@ -158,7 +158,7 @@ export function MobileBottomNav({
   const base = `/c/${community.slug}`;
   const [moreOpen, setMoreOpen] = useState(false);
 
-  const primary = mainNav.slice(0, 4); // Foro, Aula, Biblio, Sala
+  const primary = mainNav.slice(0, 4); // Foro, Encuentros, Libros, Sala
   const moreItems = [
     { href: `${base}/calendar`, label: "Agenda", icon: Calendar },
     ...(isAdmin

@@ -526,7 +526,7 @@ export function LibraryPageClient({
     <div className="p-4 lg:p-6">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Biblioteca</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Libros</h1>
           <p className="text-sm text-muted">Libros de la comunidad</p>
         </div>
         {isAdmin && (
