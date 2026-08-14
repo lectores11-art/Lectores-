@@ -337,7 +337,7 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
         </div>
 
         {showBooks && (
-          <div className="flex shrink-0 gap-2 overflow-x-auto border-b border-border bg-surface px-3 py-2">
+          <div className="flex shrink-0 gap-2 overflow-x-auto border-b border-border bg-background px-3 py-2">
             {books.length === 0 ? (
               <p className="py-1 text-sm text-muted">No hay libros en la biblioteca.</p>
             ) : (
@@ -362,7 +362,7 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
         <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
           {/* Lateral: cámara + chat */}
           <aside className="flex min-h-0 w-full shrink-0 flex-col border-b border-border lg:w-[min(22rem,32%)] lg:border-b-0 lg:border-r xl:w-[28%]">
-            <div className="relative z-10 flex aspect-video shrink-0 flex-col overflow-visible border-b border-border bg-surface lg:aspect-auto lg:h-[42%] lg:min-h-[12.5rem]">
+            <div className="relative z-10 flex aspect-video shrink-0 flex-col overflow-visible border-b border-border bg-background lg:aspect-auto lg:h-[42%] lg:min-h-[12.5rem]">
               <LiveKitRoom
                 token={token}
                 serverUrl={livekitUrl}
@@ -387,7 +387,7 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
                   <p className="text-sm text-muted">Todavía no hay mensajes.</p>
                 ) : (
                   chatMessages.map((msg) => (
-                    <div key={msg.id} className="mb-3 rounded-md bg-surface px-2.5 py-2">
+                    <div key={msg.id} className="mb-3 rounded-md border border-border bg-background px-2.5 py-2">
                       <p className="text-xs font-semibold text-foreground">
                         {msg.profile?.full_name || "Usuario"}
                       </p>
@@ -406,7 +406,6 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     placeholder="Escribe un mensaje..."
-                    className="bg-surface"
                   />
                   <Button type="submit" size="icon" aria-label="Enviar mensaje">
                     <Send className="h-4 w-4" />
@@ -457,7 +456,7 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
                 />
               </div>
             ) : (
-              <div className="flex flex-1 items-center justify-center bg-surface/40 px-6">
+              <div className="flex flex-1 items-center justify-center bg-background px-6">
                 <div className="max-w-sm text-center">
                   <BookOpen className="mx-auto mb-3 h-12 w-12 text-muted" />
                   <p className="text-base font-semibold text-foreground">

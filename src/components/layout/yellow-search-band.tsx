@@ -23,7 +23,7 @@ export function YellowSearchBand({
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder={searchPlaceholder}
-          className="h-11 w-full rounded-md border border-border bg-surface pl-10 pr-3 text-sm font-medium placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className="h-11 w-full rounded-md border border-border bg-background pl-10 pr-3 text-sm font-medium placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         />
       </label>
       <div className="hidden shrink-0 sm:block">

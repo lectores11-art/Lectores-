@@ -363,7 +363,7 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
                     return (
                       <li
                         key={invite.id || invite.token}
-                        className="flex flex-col gap-2 rounded-md border border-border bg-surface p-3 sm:flex-row sm:items-center sm:justify-between"
+                        className="flex flex-col gap-2 rounded-md border border-border bg-background p-3 sm:flex-row sm:items-center sm:justify-between"
                       >
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">

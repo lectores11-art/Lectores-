@@ -31,7 +31,7 @@ export function UserChromeCompact({
       </div>
       <button
         type="button"
-        className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-surface text-muted hover:bg-accent-light hover:text-foreground"
+        className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background text-muted hover:bg-accent-light hover:text-foreground"
         aria-label="Notificaciones"
         title="Próximamente"
       >
@@ -101,7 +101,7 @@ export function DetailPanelBody() {
           ) : null}
           {detail.secondaryAction ? (
             detail.secondaryAction.href ? (
-              <Button asChild variant="outline" className="w-full">
+              <Button asChild variant="outline" className="w-full bg-surface">
                 <Link href={detail.secondaryAction.href}>
                   {detail.secondaryAction.label}
                 </Link>
@@ -110,7 +110,7 @@ export function DetailPanelBody() {
               <Button
                 type="button"
                 variant="outline"
-                className="w-full"
+                className="w-full bg-surface"
                 onClick={detail.secondaryAction.onClick}
               >
                 {detail.secondaryAction.label}
@@ -155,7 +155,7 @@ export function LibraryDetailPanel({ className }: { className?: string }) {
         className
       )}
     >
-      <div className="border-b border-border px-5 py-4">
+      <div className="border-b border-border bg-surface px-5 py-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted">
           Ficha del libro
         </p>
@@ -187,7 +187,7 @@ export function MobileDetailSheet() {
               setMobileOpen(false);
               clearDetail();
             }}
-            className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-surface"
+            className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background"
             aria-label="Cerrar detalle"
           >
             <X className="h-4 w-4" />

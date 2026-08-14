@@ -44,7 +44,7 @@ export function LandingPage() {
             </p>
           </div>
 
-          <div className="rounded-md border border-border bg-surface p-4 hard-shadow-sm lg:p-6">
+          <div className="rounded-md border border-border bg-background p-4 hard-shadow-sm lg:p-6">
             <div className="mb-4 flex items-center gap-2 rounded-md border border-border bg-background px-4 py-3">
               <span className="h-2 w-2 rounded-full bg-band" aria-hidden />
               <p className="text-sm text-muted">Buscar título, autor o tema…</p>

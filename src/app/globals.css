@@ -568,7 +568,7 @@ body {
 
 .meeting-livekit {
   --lk-bg: var(--background);
-  --lk-bg2: var(--surface);
+  --lk-bg2: var(--background);
   --lk-bg3: #f5ebe0;
   --lk-bg4: var(--border);
   --lk-bg5: var(--border);
@@ -584,19 +584,19 @@ body {
   --lk-border-color: var(--border);
   --lk-control-bg: var(--background);
   --lk-control-fg: var(--foreground);
-  --lk-control-hover-bg: var(--surface);
+  --lk-control-hover-bg: var(--accent-light);
   --lk-control-active-bg: var(--accent-light);
-  --lk-control-secondary-bg: var(--surface);
+  --lk-control-secondary-bg: var(--background);
   --lk-control-secondary-fg: var(--foreground);
   height: 100%;
-  background: var(--surface);
+  background: var(--background);
   color: var(--foreground);
 }
 
 .meeting-livekit .lk-grid-layout,
 .meeting-livekit .lk-focus-layout,
 .meeting-livekit .lk-participant-tile {
-  background: var(--surface);
+  background: var(--background);
 }
 
 .meeting-livekit .lk-participant-name,
@@ -618,7 +618,7 @@ body {
 .meeting-livekit .lk-button,
 .meeting-livekit .lk-button:not(:disabled) {
   color: var(--foreground);
-  background: var(--surface);
+  background: var(--background);
   border: 1px solid var(--border);
 }
 

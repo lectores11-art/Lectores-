@@ -139,7 +139,7 @@ export function CalendarPageClient({
                 <Label>Tipo</Label>
                 <select
                   name="eventType"
-                  className="flex h-10 w-full rounded-md border border-border bg-surface px-3 text-sm"
+                  className="flex h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
                 >
                   <option value="meeting">Reunión</option>
                   <option value="deadline">Fecha límite</option>
@@ -266,7 +266,7 @@ export function CalendarPageClient({
                   <button
                     key={event.id}
                     type="button"
-                    className="w-full rounded-md border border-border bg-surface p-3 text-left hard-shadow-sm"
+                    className="w-full rounded-md border border-border bg-background p-3 text-left hard-shadow-sm"
                   >
                     <p className="font-bold">{event.title}</p>
                     <p className="text-xs text-muted">

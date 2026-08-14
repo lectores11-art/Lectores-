@@ -731,7 +731,7 @@ export function LibraryPageClient({
                   onClick={() => selectBook(book)}
                   className="group text-left"
                 >
-                  <Card className="h-full transition-transform hard-shadow-sm">
+                  <Card className="h-full bg-surface transition-transform hard-shadow-sm">
                     <CardContent className="p-4">
                       <div className="relative mb-3 flex h-36 items-center justify-center overflow-hidden rounded-md border border-border bg-accent-light">
                         {book.cover_url ? (

@@ -149,7 +149,7 @@ export function PlatformAdminClient() {
                   <Input name="ownerEmail" type="email" required placeholder="duena@ejemplo.com" />
                   <p className="text-xs text-muted">
                     Se creará automáticamente en Supabase. Si falla, ejecutá{" "}
-                    <code className="border border-border bg-surface px-1">002_fix_auth_trigger.sql</code> en Supabase.
+                    <code className="border border-border bg-background px-1">002_fix_auth_trigger.sql</code> en Supabase.
                   </p>
                 </div>
                 <div className="space-y-2">
