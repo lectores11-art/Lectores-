@@ -34,6 +34,7 @@ function downloadIcs(event: CalendarEvent, url: string | null) {
   const blob = new Blob(
     [
       icsContent({
+        uid: event.id,
         title: event.title,
         description: event.description,
         startsAt: new Date(event.starts_at),
@@ -70,6 +71,7 @@ export function EventDetailModal({
   const exportEvent =
     event && startsAt && endsAt
       ? {
+          uid: event.id,
           title: event.title,
           description: event.description,
           startsAt,
@@ -150,7 +152,8 @@ export function EventDetailModal({
                   </div>
                 ) : null}
 
-                {event.description ? (
+                {event.description &&
+                event.description.trim() !== href ? (
                   <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-[#3d3d3d]">
                     {event.description}
                   </p>
@@ -217,6 +220,7 @@ function AddToCalendarMenu({
             href={googleCalendarUrl(exportEvent)}
             target="_blank"
             rel="noreferrer"
+            onClick={() => setMenuOpen(false)}
             className="block px-4 py-2.5 text-sm text-[#1a1a1a] hover:bg-[#f5f5f5]"
           >
             Google Calendar
@@ -226,6 +230,7 @@ function AddToCalendarMenu({
             href={outlookCalendarUrl(exportEvent)}
             target="_blank"
             rel="noreferrer"
+            onClick={() => setMenuOpen(false)}
             className="block px-4 py-2.5 text-sm text-[#1a1a1a] hover:bg-[#f5f5f5]"
           >
             Outlook

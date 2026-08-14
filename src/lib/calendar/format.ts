@@ -1,15 +1,16 @@
 import {
+  addDays,
   eachDayOfInterval,
-  endOfMonth,
-  endOfWeek,
   startOfDay,
   startOfMonth,
   startOfWeek,
 } from "date-fns";
 
 export const WEEK_STARTS_ON = 1 as const;
+export const MONTH_GRID_DAYS = 42;
 
 export type CalendarExportEvent = {
+  uid?: string | null;
   title: string;
   description?: string | null;
   startsAt: Date;
@@ -17,10 +18,34 @@ export type CalendarExportEvent = {
   url?: string | null;
 };
 
+export type EventRangeResult =
+  | { ok: true; startsAt: Date; endsAt: Date }
+  | { ok: false; error: string };
+
 export function monthGridDays(month: Date): Date[] {
   const start = startOfWeek(startOfMonth(month), { weekStartsOn: WEEK_STARTS_ON });
-  const end = endOfWeek(endOfMonth(month), { weekStartsOn: WEEK_STARTS_ON });
+  const end = addDays(start, MONTH_GRID_DAYS - 1);
   return eachDayOfInterval({ start, end }).map((day) => startOfDay(day));
+}
+
+export function resolveEventRange(
+  startsAt: Date,
+  endsAt?: Date | null
+): EventRangeResult {
+  if (Number.isNaN(startsAt.getTime())) {
+    return { ok: false, error: "La fecha de inicio no es válida." };
+  }
+  const end =
+    endsAt && !Number.isNaN(endsAt.getTime())
+      ? endsAt
+      : new Date(startsAt.getTime() + 60 * 60 * 1000);
+  if (end.getTime() <= startsAt.getTime()) {
+    return {
+      ok: false,
+      error: "La hora de fin tiene que ser posterior al inicio.",
+    };
+  }
+  return { ok: true, startsAt, endsAt: end };
 }
 
 export function visibleRange(month: Date): { start: Date; end: Date } {
@@ -124,12 +149,23 @@ export function outlookCalendarUrl(event: CalendarExportEvent): string {
   const params = new URLSearchParams({
     rru: "addevent",
     subject: event.title,
-    startdt: event.startsAt.toISOString(),
-    enddt: event.endsAt.toISOString(),
+    startdt: isoNoMs(event.startsAt),
+    enddt: isoNoMs(event.endsAt),
     body: event.description || "",
   });
   if (event.url) params.set("location", event.url);
   return `https://outlook.live.com/calendar/0/action/compose?${params.toString()}`;
+}
+
+function icsUid(event: CalendarExportEvent): string {
+  const raw = (event.uid || "").trim();
+  if (raw.includes("@")) return raw;
+  if (raw) return `${raw}@lectores`;
+  return `${utcStamp(event.startsAt)}@lectores`;
+}
+
+function isoNoMs(date: Date): string {
+  return date.toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
 export function icsContent(event: CalendarExportEvent): string {
@@ -139,13 +175,14 @@ export function icsContent(event: CalendarExportEvent): string {
     "PRODID:-//Lectores//Calendar//ES",
     "CALSCALE:GREGORIAN",
     "BEGIN:VEVENT",
+    `UID:${escapeIcs(icsUid(event))}`,
     `DTSTAMP:${utcStamp(new Date())}`,
     `DTSTART:${utcStamp(event.startsAt)}`,
     `DTEND:${utcStamp(event.endsAt)}`,
     `SUMMARY:${escapeIcs(event.title)}`,
   ];
   if (event.description) lines.push(`DESCRIPTION:${escapeIcs(event.description)}`);
-  if (event.url) lines.push(`URL:${event.url}`);
+  if (event.url) lines.push(`URL:${escapeIcs(event.url)}`);
   lines.push("END:VEVENT", "END:VCALENDAR");
   return lines.join("\r\n");
 }
