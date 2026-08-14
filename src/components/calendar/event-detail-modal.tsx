@@ -58,11 +58,13 @@ export function EventDetailModal({
   event,
   slug,
   logoUrl,
+  timeZone,
   onClose,
 }: {
   event: CalendarEvent | null;
   slug: string;
   logoUrl: string | null;
+  timeZone: string;
   onClose: () => void;
 }) {
   const startsAt = event ? new Date(event.starts_at) : null;
@@ -80,12 +82,14 @@ export function EventDetailModal({
         }
       : null;
 
-  const day = startsAt?.getDate() ?? "";
+  const day = startsAt
+    ? startsAt.toLocaleDateString("es-AR", { day: "numeric", timeZone })
+    : "";
   const weekday = startsAt
-    ? startsAt.toLocaleDateString("es-AR", { weekday: "long" })
+    ? startsAt.toLocaleDateString("es-AR", { weekday: "long", timeZone })
     : "";
   const month = startsAt
-    ? startsAt.toLocaleDateString("es-AR", { month: "long" })
+    ? startsAt.toLocaleDateString("es-AR", { month: "long", timeZone })
     : "";
 
   return (
@@ -122,7 +126,7 @@ export function EventDetailModal({
                   {event.title}
                 </Dialog.Title>
                 <Dialog.Description className="sr-only">
-                  {formatEventWhen(startsAt, endsAt)}
+                  {formatEventWhen(startsAt, endsAt, timeZone)}
                   {event.description ? `. ${event.description}` : ""}
                 </Dialog.Description>
 
@@ -130,10 +134,10 @@ export function EventDetailModal({
                   <CalendarDays className="mt-0.5 h-5 w-5 shrink-0 text-[#5f5f5f]" />
                   <div>
                     <p className="text-sm font-medium text-[#1a1a1a]">
-                      {formatEventWhen(startsAt, endsAt)}
+                      {formatEventWhen(startsAt, endsAt, timeZone)}
                     </p>
                     <p className="mt-0.5 text-[13px] text-[#8a8a8a]">
-                      {formatTimezoneCaption()}
+                      {formatTimezoneCaption(timeZone)} (tu zona)
                     </p>
                   </div>
                 </div>
