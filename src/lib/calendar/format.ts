@@ -57,25 +57,51 @@ export function visibleRange(month: Date): { start: Date; end: Date } {
   };
 }
 
-export function formatEventTime(date: Date): string {
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
-  const hour12 = hours % 12 || 12;
-  const suffix = hours < 12 ? "am" : "pm";
-  if (minutes === 0) return `${hour12}${suffix}`;
-  return `${hour12}:${String(minutes).padStart(2, "0")}${suffix}`;
+export function formatEventTime(date: Date, timeZone?: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    ...(timeZone ? { timeZone } : {}),
+  }).formatToParts(date);
+
+  const hour = parts.find((part) => part.type === "hour")?.value ?? "";
+  const minute = parts.find((part) => part.type === "minute")?.value ?? "00";
+  const period = (parts.find((part) => part.type === "dayPeriod")?.value ?? "pm")
+    .replace(/\./g, "")
+    .replace(/\s/g, "")
+    .toLowerCase();
+
+  if (minute === "00") return `${hour}${period}`;
+  return `${hour}:${minute}${period}`;
 }
 
-export function formatEventChip(startsAt: Date, title: string): string {
-  return `${formatEventTime(startsAt)} - ${title.trim()}`;
+export function formatEventChip(startsAt: Date, title: string, timeZone?: string): string {
+  return `${formatEventTime(startsAt, timeZone)} - ${title.trim()}`;
 }
 
-export function formatEventWhen(startsAt: Date, endsAt?: Date | null): string {
-  const weekday = startsAt.toLocaleDateString("es-AR", { weekday: "long" });
-  const month = startsAt.toLocaleDateString("es-AR", { month: "long" });
-  const day = startsAt.getDate();
-  const start = formatEventTime(startsAt);
-  const range = endsAt ? `${start} - ${formatEventTime(endsAt)}` : start;
+export function formatEventWhen(
+  startsAt: Date,
+  endsAt?: Date | null,
+  timeZone?: string
+): string {
+  const localeOptions: Intl.DateTimeFormatOptions = timeZone ? { timeZone } : {};
+  const weekday = startsAt.toLocaleDateString("es-AR", {
+    weekday: "long",
+    ...localeOptions,
+  });
+  const month = startsAt.toLocaleDateString("es-AR", {
+    month: "long",
+    ...localeOptions,
+  });
+  const day = Number(
+    startsAt.toLocaleDateString("es-AR", {
+      day: "numeric",
+      ...localeOptions,
+    })
+  );
+  const start = formatEventTime(startsAt, timeZone);
+  const range = endsAt ? `${start} - ${formatEventTime(endsAt, timeZone)}` : start;
   return `${weekday}, ${month} ${day}° @ ${range}`;
 }
 

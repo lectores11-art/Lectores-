@@ -20,10 +20,17 @@ import {
   formatClockLabel,
   formatEventChip,
   formatEventTime,
+  formatTimezoneCaption,
   monthGridDays,
   resolveEventRange,
   visibleRange,
 } from "@/lib/calendar/format";
+import {
+  dayKeyInZone,
+  timezonesForSelect,
+  viewerTimeZone,
+  wallTimeToUtc,
+} from "@/lib/calendar/timezone";
 import { cn } from "@/lib/utils";
 import type { CalendarEvent, EventType } from "@/lib/types/database";
 
@@ -39,6 +46,10 @@ const WEEKDAYS = ["lun.", "mar.", "mié.", "jue.", "vie.", "sáb.", "dom."];
 function subscribeClock(onStoreChange: () => void) {
   const id = window.setInterval(onStoreChange, 30_000);
   return () => window.clearInterval(id);
+}
+
+function subscribeTimezone() {
+  return () => {};
 }
 
 function clockMinuteTick() {
@@ -67,6 +78,11 @@ export function CalendarPageClient({
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
   const minuteTick = useSyncExternalStore(subscribeClock, clockMinuteTick, () => 0);
   const now = minuteTick === 0 ? null : new Date(minuteTick * 60_000);
+  const timeZone = useSyncExternalStore(
+    subscribeTimezone,
+    viewerTimeZone,
+    () => "UTC"
+  );
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -142,11 +158,17 @@ export function CalendarPageClient({
         return;
       }
 
+      const timeZoneInput = String(form.get("timeZone") || timeZone);
+      const startsRaw = String(form.get("startsAt") || "").trim();
       const endsRaw = String(form.get("endsAt") || "").trim();
-      const range = resolveEventRange(
-        new Date(String(form.get("startsAt") || "")),
-        endsRaw ? new Date(endsRaw) : null
-      );
+      const startsAt = wallTimeToUtc(startsRaw, timeZoneInput);
+      const endsAt = endsRaw ? wallTimeToUtc(endsRaw, timeZoneInput) : null;
+      if (!startsAt || (endsRaw && !endsAt)) {
+        setSubmitError("La fecha u hora no es válida para esa zona horaria.");
+        return;
+      }
+
+      const range = resolveEventRange(startsAt, endsAt);
       if (!range.ok) {
         setSubmitError(range.error);
         return;
@@ -188,27 +210,30 @@ export function CalendarPageClient({
   const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
     for (const event of visibleEvents) {
-      const key = format(new Date(event.starts_at), "yyyy-MM-dd");
+      const key = dayKeyInZone(new Date(event.starts_at), timeZone);
       const list = map.get(key) || [];
       list.push(event);
       map.set(key, list);
     }
     return map;
-  }, [visibleEvents]);
+  }, [visibleEvents, timeZone]);
 
   const listGroups = useMemo(() => {
     const groups: { key: string; label: string; events: CalendarEvent[] }[] = [];
     for (const [key, dayEvents] of eventsByDay) {
       groups.push({
         key,
-        label: format(new Date(dayEvents[0].starts_at), "EEEE, d 'de' MMMM", {
-          locale: es,
+        label: new Date(dayEvents[0].starts_at).toLocaleDateString("es-AR", {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+          timeZone,
         }),
         events: dayEvents,
       });
     }
     return groups.sort((a, b) => a.key.localeCompare(b.key));
-  }, [eventsByDay]);
+  }, [eventsByDay, timeZone]);
 
   return (
     <div className="flex min-h-full flex-col bg-white px-3 pb-6 pt-3 sm:px-6 lg:px-10">
@@ -260,7 +285,7 @@ export function CalendarPageClient({
               </button>
             </div>
             <p className="h-[18px] text-[13px] text-[#8a8a8a]">
-              {now ? formatClockLabel(now) : ""}
+              {now ? formatClockLabel(now, timeZone) : ""}
             </p>
           </div>
 
@@ -310,6 +335,26 @@ export function CalendarPageClient({
             <div className="space-y-2">
               <Label>Fin</Label>
               <Input name="endsAt" type="datetime-local" />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Zona horaria de este horario</Label>
+              <select
+                key={timeZone}
+                name="timeZone"
+                defaultValue={timeZone}
+                className="flex h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
+              >
+                {timezonesForSelect(timeZone).map((zone) => (
+                  <option key={zone.id} value={zone.id}>
+                    {zone.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[13px] text-[#8a8a8a]">
+                Escribí la hora en la zona que elijas. Cada miembro la va a ver
+                convertida a la suya. Ahora mismo tu zona es{" "}
+                {formatTimezoneCaption(timeZone).replace(/^Hora de /, "")}.
+              </p>
             </div>
             <div className="space-y-2">
               <Label>Tipo</Label>
@@ -401,7 +446,11 @@ export function CalendarPageClient({
                           onClick={() => setSelectedEvent(event)}
                           className="block w-full truncate text-left text-[12px] font-medium leading-5 text-[#2B6BF2] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2B6BF2]"
                         >
-                          {formatEventChip(new Date(event.starts_at), event.title)}
+                          {formatEventChip(
+                            new Date(event.starts_at),
+                            event.title,
+                            timeZone
+                          )}
                         </button>
                       ))}
                     </div>
@@ -436,9 +485,9 @@ export function CalendarPageClient({
                           className="flex w-full items-baseline gap-3 rounded-md px-1 py-1.5 text-left hover:bg-[#f7f7f7]"
                         >
                           <span className="w-28 shrink-0 text-sm text-[#5f5f5f]">
-                            {formatEventTime(new Date(event.starts_at))}
+                            {formatEventTime(new Date(event.starts_at), timeZone)}
                             {event.ends_at
-                              ? ` - ${formatEventTime(new Date(event.ends_at))}`
+                              ? ` - ${formatEventTime(new Date(event.ends_at), timeZone)}`
                               : ""}
                           </span>
                           <span className="truncate text-sm font-medium text-[#2B6BF2]">
@@ -459,6 +508,7 @@ export function CalendarPageClient({
         event={selectedEvent}
         slug={slug}
         logoUrl={logoUrl}
+        timeZone={timeZone}
         onClose={() => setSelectedEvent(null)}
       />
     </div>
