@@ -15,5 +15,12 @@ export default async function CalendarPage({
 
   if (!community) return null;
 
-  return <CalendarPageClient communityId={community.id} isAdmin={admin} />;
+  return (
+    <CalendarPageClient
+      communityId={community.id}
+      slug={slug}
+      logoUrl={community.logo_url}
+      isAdmin={admin}
+    />
+  );
 }
