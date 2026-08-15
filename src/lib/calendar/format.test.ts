@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   firstUrl,
-  formatClockLabel,
-  formatEventChip,
   formatEventTime,
-  formatEventWhen,
-  formatTimezoneCaption,
   googleCalendarUrl,
   icsContent,
   monthGridDays,
@@ -13,31 +9,36 @@ import {
   resolveEventRange,
   visibleRange,
 } from "./format";
+import { CALENDAR_DAY_ZONE, dayKeyInZone, utcCivilKey } from "./timezone";
 
 describe("monthGridDays", () => {
-  it("returns 42 days starting Monday before August 2026", () => {
-    const days = monthGridDays(new Date(2026, 7, 1));
+  it("returns 42 hub days starting Monday before August 2026", () => {
+    const days = monthGridDays(new Date(Date.UTC(2026, 7, 1, 12, 0, 0)));
     expect(days).toHaveLength(42);
-    expect(days[0]).toEqual(new Date(2026, 6, 27));
-    expect(days[5]).toEqual(new Date(2026, 7, 1));
-    expect(days[35]).toEqual(new Date(2026, 7, 31));
-    expect(days[41]).toEqual(new Date(2026, 8, 6));
+    expect(days[0]?.toISOString()).toBe("2026-07-27T12:00:00.000Z");
+    expect(days[5]?.toISOString()).toBe("2026-08-01T12:00:00.000Z");
+    expect(days[35]?.toISOString()).toBe("2026-08-31T12:00:00.000Z");
+    expect(days[41]?.toISOString()).toBe("2026-09-06T12:00:00.000Z");
+    expect(utcCivilKey(days[5]!)).toBe("2026-08-01");
+    for (const day of days) {
+      expect(utcCivilKey(day)).toBe(dayKeyInZone(day, CALENDAR_DAY_ZONE));
+    }
   });
 
   it("pads a 4-week February to 42 days", () => {
-    const days = monthGridDays(new Date(2021, 1, 1));
+    const days = monthGridDays(new Date(Date.UTC(2021, 1, 1, 12, 0, 0)));
     expect(days).toHaveLength(42);
-    expect(days[0]).toEqual(new Date(2021, 1, 1));
-    expect(days[27]).toEqual(new Date(2021, 1, 28));
-    expect(days[41]).toEqual(new Date(2021, 2, 14));
+    expect(days[0]?.toISOString()).toBe("2021-02-01T12:00:00.000Z");
+    expect(days[27]?.toISOString()).toBe("2021-02-28T12:00:00.000Z");
+    expect(days[41]?.toISOString()).toBe("2021-03-14T12:00:00.000Z");
   });
 });
 
 describe("visibleRange", () => {
-  it("ends at local 23:59:59.999 of the last painted cell", () => {
-    const { start, end } = visibleRange(new Date(2021, 1, 1));
-    expect(start).toEqual(new Date(2021, 1, 1));
-    expect(end).toEqual(new Date(2021, 2, 14, 23, 59, 59, 999));
+  it("uses Argentina midnight of the first cell and exclusive next midnight after the last", () => {
+    const { start, end } = visibleRange(new Date(Date.UTC(2021, 1, 1, 12, 0, 0)));
+    expect(start.toISOString()).toBe("2021-02-01T03:00:00.000Z");
+    expect(end.toISOString()).toBe("2021-03-15T03:00:00.000Z");
   });
 });
 
@@ -77,48 +78,16 @@ describe("resolveEventRange", () => {
 });
 
 describe("formatEventTime", () => {
+  const zone = "America/Argentina/Buenos_Aires";
+
   it("omits minutes on the hour and lowercases am/pm", () => {
-    expect(formatEventTime(new Date(2026, 7, 23, 15, 0))).toBe("3pm");
-    expect(formatEventTime(new Date(2026, 7, 23, 9, 0))).toBe("9am");
+    expect(formatEventTime(new Date("2026-08-23T18:00:00.000Z"), zone)).toBe("3pm");
+    expect(formatEventTime(new Date("2026-08-23T12:00:00.000Z"), zone)).toBe("9am");
   });
 
   it("keeps minutes when not on the hour", () => {
-    expect(formatEventTime(new Date(2026, 7, 23, 15, 30))).toBe("3:30pm");
-  });
-});
-
-describe("formatEventChip", () => {
-  it("prefixes the 12-hour time to the title", () => {
-    expect(
-      formatEventChip(new Date(2026, 7, 23, 15, 0), "360 VA Skool Call")
-    ).toBe("3pm - 360 VA Skool Call");
-  });
-});
-
-describe("formatEventWhen", () => {
-  it("formats weekday, month, ordinal day and time range", () => {
-    expect(
-      formatEventWhen(
-        new Date(2026, 7, 23, 15, 0),
-        new Date(2026, 7, 23, 16, 0)
-      )
-    ).toBe("domingo, agosto 23° @ 3pm - 4pm");
-  });
-});
-
-describe("formatClockLabel", () => {
-  it("shows local clock and city for Buenos Aires", () => {
-    const now = new Date("2026-08-14T19:59:00-03:00");
-    expect(
-      formatClockLabel(now, "America/Argentina/Buenos_Aires")
-    ).toBe("7:59pm hora de Buenos Aires");
-  });
-});
-
-describe("formatTimezoneCaption", () => {
-  it("capitalizes Hora de {city}", () => {
-    expect(formatTimezoneCaption("America/Argentina/Buenos_Aires")).toBe(
-      "Hora de Buenos Aires"
+    expect(formatEventTime(new Date("2026-08-23T18:30:00.000Z"), zone)).toBe(
+      "3:30pm"
     );
   });
 });

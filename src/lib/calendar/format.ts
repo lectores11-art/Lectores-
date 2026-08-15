@@ -1,14 +1,49 @@
 import {
-  addDays,
-  eachDayOfInterval,
-  startOfDay,
-  startOfMonth,
-  startOfWeek,
-} from "date-fns";
-import { HUB_ZONES } from "@/lib/calendar/timezone";
+  CALENDAR_DAY_ZONE,
+  HUB_ZONES,
+  civilUtcNoon,
+  utcCivilKey,
+  wallTimeToUtc,
+  ymdInZone,
+} from "@/lib/calendar/timezone";
 
-export const WEEK_STARTS_ON = 1 as const;
 export const MONTH_GRID_DAYS = 42;
+
+const WEEKDAY_MON0: Record<string, number> = {
+  Monday: 0,
+  Tuesday: 1,
+  Wednesday: 2,
+  Thursday: 3,
+  Friday: 4,
+  Saturday: 5,
+  Sunday: 6,
+};
+
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+function weekdayMon0InZone(date: Date, timeZone: string): number {
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    weekday: "long",
+  }).format(date);
+  return WEEKDAY_MON0[weekday] ?? 0;
+}
+
+function addCivilDays(
+  year: number,
+  month: number,
+  day: number,
+  delta: number
+): { year: number; month: number; day: number } {
+  const next = new Date(Date.UTC(year, month - 1, day + delta, 12, 0, 0));
+  return {
+    year: next.getUTCFullYear(),
+    month: next.getUTCMonth() + 1,
+    day: next.getUTCDate(),
+  };
+}
 
 export type CalendarExportEvent = {
   uid?: string | null;
@@ -24,9 +59,18 @@ export type EventRangeResult =
   | { ok: false; error: string };
 
 export function monthGridDays(month: Date): Date[] {
-  const start = startOfWeek(startOfMonth(month), { weekStartsOn: WEEK_STARTS_ON });
-  const end = addDays(start, MONTH_GRID_DAYS - 1);
-  return eachDayOfInterval({ start, end }).map((day) => startOfDay(day));
+  const { year, month: monthNum } = ymdInZone(month, CALENDAR_DAY_ZONE);
+  const first = wallTimeToUtc(
+    `${year}-${pad2(monthNum)}-01T12:00`,
+    CALENDAR_DAY_ZONE
+  );
+  if (!first) return [];
+
+  const start = addCivilDays(year, monthNum, 1, -weekdayMon0InZone(first, CALENDAR_DAY_ZONE));
+  return Array.from({ length: MONTH_GRID_DAYS }, (_, index) => {
+    const civil = addCivilDays(start.year, start.month, start.day, index);
+    return civilUtcNoon(civil.year, civil.month, civil.day);
+  });
 }
 
 export function resolveEventRange(
@@ -51,19 +95,35 @@ export function resolveEventRange(
 
 export function visibleRange(month: Date): { start: Date; end: Date } {
   const days = monthGridDays(month);
+  const first = days[0];
   const last = days[days.length - 1];
-  return {
-    start: days[0],
-    end: new Date(last.getFullYear(), last.getMonth(), last.getDate(), 23, 59, 59, 999),
-  };
+  if (!first || !last) {
+    return { start: month, end: month };
+  }
+
+  const start = wallTimeToUtc(`${utcCivilKey(first)}T00:00:00`, CALENDAR_DAY_ZONE);
+  const lastCivil = addCivilDays(
+    last.getUTCFullYear(),
+    last.getUTCMonth() + 1,
+    last.getUTCDate(),
+    1
+  );
+  const end = wallTimeToUtc(
+    `${lastCivil.year}-${pad2(lastCivil.month)}-${pad2(lastCivil.day)}T00:00:00`,
+    CALENDAR_DAY_ZONE
+  );
+  if (!start || !end) {
+    return { start: first, end: last };
+  }
+  return { start, end };
 }
 
-export function formatEventTime(date: Date, timeZone?: string): string {
+export function formatEventTime(date: Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
-    ...(timeZone ? { timeZone } : {}),
+    timeZone,
   }).formatToParts(date);
 
   const hour = parts.find((part) => part.type === "hour")?.value ?? "";
@@ -101,69 +161,6 @@ export function formatHubClockLine(now: Date): string {
   return formatHubTimes(now)
     .map((hub) => `${hub.time} ${hub.label}`)
     .join(" · ");
-}
-
-export function formatEventChip(startsAt: Date, title: string, timeZone?: string): string {
-  return `${formatEventTime(startsAt, timeZone)} - ${title.trim()}`;
-}
-
-export function formatEventWhen(
-  startsAt: Date,
-  endsAt?: Date | null,
-  timeZone?: string
-): string {
-  const localeOptions: Intl.DateTimeFormatOptions = timeZone ? { timeZone } : {};
-  const weekday = startsAt.toLocaleDateString("es-AR", {
-    weekday: "long",
-    ...localeOptions,
-  });
-  const month = startsAt.toLocaleDateString("es-AR", {
-    month: "long",
-    ...localeOptions,
-  });
-  const day = Number(
-    startsAt.toLocaleDateString("es-AR", {
-      day: "numeric",
-      ...localeOptions,
-    })
-  );
-  const start = formatEventTime(startsAt, timeZone);
-  const range = endsAt ? `${start} - ${formatEventTime(endsAt, timeZone)}` : start;
-  return `${weekday}, ${month} ${day}° @ ${range}`;
-}
-
-export function timezoneCity(
-  timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-): string {
-  const segment = timeZone.split("/").pop() || timeZone;
-  return segment.replace(/_/g, " ");
-}
-
-export function formatTimezoneCaption(
-  timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-): string {
-  return `Hora de ${timezoneCity(timeZone)}`;
-}
-
-export function formatClockLabel(
-  now: Date,
-  timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-): string {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-    timeZone,
-  }).formatToParts(now);
-
-  const hour = parts.find((part) => part.type === "hour")?.value ?? "";
-  const minute = parts.find((part) => part.type === "minute")?.value ?? "00";
-  const period = (parts.find((part) => part.type === "dayPeriod")?.value ?? "pm")
-    .replace(/\./g, "")
-    .replace(/\s/g, "")
-    .toLowerCase();
-
-  return `${hour}:${minute}${period} hora de ${timezoneCity(timeZone)}`;
 }
 
 export function firstUrl(text: string | null | undefined): string | null {

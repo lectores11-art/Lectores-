@@ -105,7 +105,7 @@ export function EventDetailModal({
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/45" />
         <Dialog.Content
-          className="fixed left-1/2 top-1/2 z-50 w-[min(100%-2rem,440px)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-xl bg-white shadow-[0_24px_80px_rgba(0,0,0,0.28)] focus:outline-none"
+          className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[min(100%-2rem,440px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl bg-white shadow-[0_24px_80px_rgba(0,0,0,0.28)] focus:outline-none"
         >
           {event && startsAt && exportEvent ? (
             <>
