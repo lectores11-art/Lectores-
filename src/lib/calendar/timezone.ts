@@ -71,3 +71,52 @@ export function dayKeyInZone(date: Date, timeZone: string): string {
     day: "2-digit",
   }).format(date);
 }
+
+export function ymdInZone(
+  date: Date,
+  timeZone: string
+): { year: number; month: number; day: number } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value ?? "0");
+  return { year: value("year"), month: value("month"), day: value("day") };
+}
+
+export function civilUtcNoon(year: number, month: number, day: number): Date {
+  return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+}
+
+export function utcCivilKey(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function shiftHubMonth(anchor: Date, delta: number): Date {
+  const { year, month } = ymdInZone(anchor, CALENDAR_DAY_ZONE);
+  return civilUtcNoon(year, month + delta, 1);
+}
+
+export function isHubToday(day: Date, now = new Date()): boolean {
+  return utcCivilKey(day) === dayKeyInZone(now, CALENDAR_DAY_ZONE);
+}
+
+export function isSameHubMonth(day: Date, monthAnchor: Date): boolean {
+  const { year, month } = ymdInZone(monthAnchor, CALENDAR_DAY_ZONE);
+  return day.getUTCFullYear() === year && day.getUTCMonth() + 1 === month;
+}
+
+export function hubMonthTitle(anchor: Date): string {
+  const { year, month } = ymdInZone(anchor, CALENDAR_DAY_ZONE);
+  const name = new Intl.DateTimeFormat("es-AR", {
+    month: "long",
+    timeZone: "UTC",
+  }).format(civilUtcNoon(year, month, 1));
+  return `${name} ${year}`;
+}

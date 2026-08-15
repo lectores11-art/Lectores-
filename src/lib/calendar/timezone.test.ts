@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { dayKeyInZone, HUB_ZONES, wallTimeToUtc } from "./timezone";
+import {
+  CALENDAR_DAY_ZONE,
+  dayKeyInZone,
+  hubMonthTitle,
+  HUB_ZONES,
+  isHubToday,
+  isSameHubMonth,
+  shiftHubMonth,
+  utcCivilKey,
+  wallTimeToUtc,
+  ymdInZone,
+} from "./timezone";
 import { formatEventTime, formatHubTimes } from "./format";
 
 describe("wallTimeToUtc", () => {
@@ -60,5 +71,37 @@ describe("hub display", () => {
     expect(formatEventTime(instant, "Europe/Madrid")).toBe("8pm");
     expect(formatEventTime(instant, "America/Argentina/Buenos_Aires")).toBe("3pm");
     expect(formatEventTime(instant, "America/Mexico_City")).toBe("12pm");
+  });
+});
+
+describe("hub calendar days", () => {
+  it("reads year and month in Argentina, not the machine timezone", () => {
+    const lateUtc = new Date("2026-09-01T02:00:00.000Z");
+    expect(ymdInZone(lateUtc, CALENDAR_DAY_ZONE)).toEqual({
+      year: 2026,
+      month: 8,
+      day: 31,
+    });
+    expect(hubMonthTitle(lateUtc)).toBe("agosto 2026");
+  });
+
+  it("shifts months using the Argentina calendar", () => {
+    const august = new Date("2026-08-31T02:00:00.000Z");
+    expect(shiftHubMonth(august, 1).toISOString()).toBe(
+      "2026-09-01T12:00:00.000Z"
+    );
+    expect(shiftHubMonth(august, -1).toISOString()).toBe(
+      "2026-07-01T12:00:00.000Z"
+    );
+  });
+
+  it("matches painted cells to Argentina day keys", () => {
+    const cell = new Date("2026-08-23T12:00:00.000Z");
+    const now = new Date("2026-08-23T18:00:00.000Z");
+    expect(utcCivilKey(cell)).toBe("2026-08-23");
+    expect(isHubToday(cell, now)).toBe(true);
+    expect(isSameHubMonth(cell, now)).toBe(true);
+    expect(isHubToday(cell, new Date("2026-08-24T02:00:00.000Z"))).toBe(true);
+    expect(isHubToday(cell, new Date("2026-08-24T04:00:00.000Z"))).toBe(false);
   });
 });

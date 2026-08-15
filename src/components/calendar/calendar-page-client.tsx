@@ -1,14 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import {
-  addMonths,
-  format,
-  isSameMonth,
-  isToday,
-  subMonths,
-} from "date-fns";
-import { es } from "date-fns/locale";
 import { CalendarDays, ChevronLeft, ChevronRight, List, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -28,7 +20,11 @@ import {
   CALENDAR_DAY_ZONE,
   HUB_ZONES,
   dayKeyInZone,
+  hubMonthTitle,
+  isHubToday,
   isHubZone,
+  isSameHubMonth,
+  shiftHubMonth,
   wallTimeToUtc,
 } from "@/lib/calendar/timezone";
 import { cn } from "@/lib/utils";
@@ -101,11 +97,12 @@ export function CalendarPageClient({
           .select("*")
           .eq("community_id", communityId)
           .gte("starts_at", start.toISOString())
-          .lte("starts_at", end.toISOString())
+          .lt("starts_at", end.toISOString())
           .order("starts_at");
 
         if (cancelled) return;
         if (error) {
+          setEvents([]);
           setLoadError("No se pudieron cargar los eventos. Intentá de nuevo.");
           return;
         }
@@ -113,6 +110,7 @@ export function CalendarPageClient({
         setEvents(data || []);
       } catch {
         if (!cancelled) {
+          setEvents([]);
           setLoadError(
             "No se pudieron cargar los eventos. Revisá tu conexión e intentá de nuevo."
           );
@@ -259,18 +257,18 @@ export function CalendarPageClient({
               <button
                 type="button"
                 aria-label="Mes anterior"
-                onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+                onClick={() => setCurrentMonth(shiftHubMonth(currentMonth, -1))}
                 className="flex h-8 w-8 items-center justify-center rounded-full text-[#5f5f5f] hover:bg-[#f3f3f3] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2B6BF2]"
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
               <h1 className="min-w-[11ch] text-center text-[22px] font-semibold capitalize tracking-tight text-[#1a1a1a]">
-                {format(currentMonth, "MMMM yyyy", { locale: es })}
+                {hubMonthTitle(currentMonth)}
               </h1>
               <button
                 type="button"
                 aria-label="Mes siguiente"
-                onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+                onClick={() => setCurrentMonth(shiftHubMonth(currentMonth, 1))}
                 className="flex h-8 w-8 items-center justify-center rounded-full text-[#5f5f5f] hover:bg-[#f3f3f3] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2B6BF2]"
               >
                 <ChevronRight className="h-5 w-5" />
@@ -405,26 +403,26 @@ export function CalendarPageClient({
             </div>
             <div className="grid flex-1 grid-cols-7 grid-rows-6 border-l border-t border-[#ececec]">
               {days.map((day) => {
-                const key = format(day, "yyyy-MM-dd");
+                const key = dayKeyInZone(day, CALENDAR_DAY_ZONE);
                 const dayEvents = eventsByDay.get(key) || [];
-                const inMonth = isSameMonth(day, currentMonth);
+                const inMonth = isSameHubMonth(day, currentMonth);
                 return (
                   <div
                     key={key}
-                    className="min-h-[96px] border-b border-r border-[#ececec] p-1.5 sm:min-h-[108px] sm:p-2"
+                    className="min-h-[96px] overflow-hidden border-b border-r border-[#ececec] p-1.5 sm:min-h-[108px] sm:p-2"
                   >
                     <div className="mb-1">
                       <span
                         className={cn(
                           "inline-flex h-7 min-w-7 items-center justify-center rounded-full text-sm",
-                          isToday(day)
+                          isHubToday(day)
                             ? "bg-[#EA4335] font-semibold text-white"
                             : inMonth
                               ? "text-[#3c3c3c]"
                               : "text-[#c0c0c0]"
                         )}
                       >
-                        {format(day, "d")}
+                        {day.getUTCDate()}
                       </span>
                     </div>
                     <div className="space-y-0.5">
