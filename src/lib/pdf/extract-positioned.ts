@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
+import { ensurePdfNodeDom } from "./node-dom-polyfill";
 
 export interface PositionedTextItem {
   text: string;
@@ -87,6 +88,7 @@ export type PositionedExtractResult = {
 export async function extractPositionedTextFromPdfBuffer(
   buffer: Buffer
 ): Promise<PositionedExtractResult> {
+  await ensurePdfNodeDom();
   const { PDFParse } = await import("pdf-parse");
   const pdfjs = await loadPdfJs();
 

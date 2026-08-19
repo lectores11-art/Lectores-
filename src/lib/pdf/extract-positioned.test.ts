@@ -14,6 +14,10 @@ vi.mock("pdf-parse", () => ({
   })),
 }));
 
+vi.mock("./node-dom-polyfill", () => ({
+  ensurePdfNodeDom: vi.fn().mockResolvedValue(undefined),
+}));
+
 describe("extractPositionedTextFromPdfBuffer", () => {
   beforeEach(() => {
     vi.clearAllMocks();

@@ -1,3 +1,5 @@
+import { ensurePdfNodeDom } from "./node-dom-polyfill";
+
 export type TextBlockStyle = "title" | "subtitle" | "list-item" | "heading" | "paragraph";
 
 export interface TextBlock {
@@ -769,6 +771,7 @@ export const PDF_EXTRACT_FAILURE_MESSAGE =
   "No se pudo extraer el texto del PDF. Verifica que el archivo contenga texto seleccionable.";
 
 export async function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> {
+  await ensurePdfNodeDom();
   const { PDFParse } = await import("pdf-parse");
   // Standalone copy — Node Buffer views can break pdfjs transfer inside pdf-parse on Vercel.
   const data = Uint8Array.from(buffer);
