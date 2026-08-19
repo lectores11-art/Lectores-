@@ -90,6 +90,7 @@ const nextConfig: NextConfig = {
     "/api/c/*/books": [
       "./node_modules/pdfjs-dist/legacy/build/pdf.mjs",
       "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
+      "./node_modules/@napi-rs/canvas/**",
     ],
   },
   async headers() {

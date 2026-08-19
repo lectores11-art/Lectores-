@@ -4,14 +4,10 @@ import type { PositionedTextItem } from "./extract-positioned";
 const mockGetTextContent = vi.fn();
 const mockGetPage = vi.fn();
 const mockDestroy = vi.fn();
-const mockGetInfo = vi.fn();
 const mockGetDocument = vi.fn();
 
-vi.mock("pdf-parse", () => ({
-  PDFParse: vi.fn().mockImplementation(() => ({
-    getInfo: mockGetInfo,
-    destroy: mockDestroy,
-  })),
+vi.mock("pdfjs-dist/legacy/build/pdf.mjs", () => ({
+  getDocument: (...args: unknown[]) => mockGetDocument(...args),
 }));
 
 vi.mock("./node-dom-polyfill", () => ({
@@ -21,7 +17,6 @@ vi.mock("./node-dom-polyfill", () => ({
 describe("extractPositionedTextFromPdfBuffer", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetInfo.mockResolvedValue({ total: 1 });
     mockGetPage.mockResolvedValue({
       getViewport: () => ({
         width: 612,
@@ -37,22 +32,6 @@ describe("extractPositionedTextFromPdfBuffer", () => {
         destroy: mockDestroy,
       }),
     });
-
-    // loadPdfJs uses Function("return import(specifier)") with a file:// URL.
-    // Stub Function so the dynamic import returns our mock pdfjs module.
-    const RealFunction = Function;
-    vi.stubGlobal(
-      "Function",
-      function MockFunction(...args: string[]) {
-        if (args.length === 2 && args[0] === "specifier" && args[1].includes("import")) {
-          return async () => ({
-            getDocument: mockGetDocument,
-            GlobalWorkerOptions: { workerSrc: "" },
-          });
-        }
-        return RealFunction(...args);
-      }
-    );
   });
 
   it("returns positioned items with text, coordinates, and pageIndex", async () => {
@@ -103,8 +82,10 @@ describe("extractPositionedTextFromPdfBuffer", () => {
     expect(items).toHaveLength(0);
   });
 
-  it("rejects when pdf-parse validation fails", async () => {
-    mockGetInfo.mockRejectedValue(new Error("invalid pdf"));
+  it("rejects when pdfjs cannot open the document", async () => {
+    mockGetDocument.mockImplementation(() => ({
+      promise: Promise.reject(new Error("invalid pdf")),
+    }));
     vi.resetModules();
     const { extractPositionedTextFromPdfBuffer } = await import("./extract-positioned");
 

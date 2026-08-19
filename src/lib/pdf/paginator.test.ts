@@ -399,5 +399,7 @@ describe("paginator client boundary (Método subida)", () => {
     );
     expect(src).not.toMatch(/node-dom-polyfill/);
     expect(src).not.toMatch(/from ["']node:module["']/);
+    expect(src).not.toMatch(/pdf-parse/);
+    expect(src).not.toMatch(/pdfjs-dist/);
   });
 });

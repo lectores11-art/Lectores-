@@ -28,7 +28,8 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
-    "**/*.mts"
+    "**/*.mts",
+    "src/lib/pdf/pdfjs-worker.d.ts"
   ],
   "exclude": ["node_modules"]
 }

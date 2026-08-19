@@ -3,7 +3,6 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { isCommunityAdmin, requireApiCommunityAccess } from "@/lib/auth/helpers";
 import type { ReadingProgress } from "@/lib/types/database";
 import {
-  extractTextFromPdfBuffer,
   extractTOC,
   MAX_STORED_PAGES,
   normalizeExtractedText,
@@ -12,6 +11,7 @@ import {
   PDF_EXTRACT_FAILURE_MESSAGE,
   ESTIMATED_PIPELINE_VERSION,
 } from "@/lib/pdf/paginator";
+import { extractTextFromPdfBuffer } from "@/lib/pdf/extract-text";
 import {
   BOOKS_BUCKET,
   COVER_BUCKET,
