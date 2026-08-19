@@ -720,7 +720,7 @@ export function LibraryPageClient({
               {filtered.length} libros
             </span>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {filtered.map((book) => {
               const progress = Number(book.reading_progress?.progress_percent || 0);
               const digital = isDigitalBook(book);
@@ -732,30 +732,34 @@ export function LibraryPageClient({
                   className="group text-left"
                 >
                   <Card className="h-full bg-surface transition-transform hard-shadow-sm">
-                    <CardContent className="p-4">
-                      <div className="relative mb-3 flex h-36 items-center justify-center overflow-hidden rounded-md border border-border bg-accent-light">
+                    <CardContent className="p-2">
+                      <div className="relative aspect-[2/3] w-full overflow-hidden rounded-md border border-border bg-accent-light">
                         {book.cover_url ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={book.cover_url}
                             alt=""
-                            className="h-full w-full object-cover"
+                            className="h-full w-full object-cover object-center"
                           />
                         ) : (
-                          <BookOpen className="h-10 w-10 text-foreground" />
+                          <div className="flex h-full w-full items-center justify-center">
+                            <BookOpen className="h-8 w-8 text-foreground" />
+                          </div>
                         )}
                         {isAdmin && !book.is_published && (
-                          <span className="absolute left-2 top-2 rounded bg-stone-800/90 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                          <span className="absolute left-1.5 top-1.5 rounded bg-stone-800/90 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
                             Borrador
                           </span>
                         )}
                       </div>
-                      <h3 className="font-bold leading-snug">{book.title}</h3>
+                      <h3 className="mt-2 line-clamp-2 text-sm font-bold leading-snug">
+                        {book.title}
+                      </h3>
                       {book.author && (
-                        <p className="mt-1 text-sm text-muted">{book.author}</p>
+                        <p className="mt-0.5 truncate text-xs text-muted">{book.author}</p>
                       )}
                       {isAdmin && (
-                        <div className="mt-2 flex flex-wrap gap-2">
+                        <div className="mt-2 flex flex-wrap gap-1">
                           <Button
                             type="button"
                             variant="outline"
@@ -799,11 +803,11 @@ export function LibraryPageClient({
                           </Button>
                         </div>
                       )}
-                      <div className="mt-3">
+                      <div className="mt-2">
                         {digital ? (
                           <>
                             <Progress value={progress} className="mb-1" />
-                            <div className="flex items-center justify-between">
+                            <div className="flex items-center justify-between gap-2">
                               <p className="text-xs text-muted">
                                 {progress > 0
                                   ? `${Math.round(progress)}% leído`
