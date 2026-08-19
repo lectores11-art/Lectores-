@@ -55,4 +55,41 @@ describe("pdf-parse under Next-like Node (createRequire unavailable)", () => {
     `);
     expect(stdout.trim()).toBe("function");
   });
+
+  it("preloads pdfjsWorker so fake worker does not import ./pdf.worker.mjs", async () => {
+    const polyfillUrl = new URL("./node-dom-polyfill.ts", import.meta.url).href;
+    const { stdout } = await runNode(`
+      ${BREAK_BUILTIN}
+      const { ensurePdfNodeDom } = await import(${JSON.stringify(polyfillUrl)});
+      await ensurePdfNodeDom();
+      const handler = globalThis.pdfjsWorker?.WorkerMessageHandler;
+      console.log(typeof handler);
+    `);
+    expect(stdout.trim()).toBe("function");
+  });
+
+  it("opens a PDF when workerSrc is a missing relative path (Vercel NFT)", async () => {
+    const polyfillUrl = new URL("./node-dom-polyfill.ts", import.meta.url).href;
+    const { stdout } = await runNode(`
+      ${BREAK_BUILTIN}
+      const { ensurePdfNodeDom } = await import(${JSON.stringify(polyfillUrl)});
+      await ensurePdfNodeDom();
+      const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+      pdfjs.GlobalWorkerOptions.workerSrc = "./this-file-does-not-exist.mjs";
+      const data = Uint8Array.from(Buffer.from(
+        "JVBERi0xLjQKMSAwIG9iago8PC9UeXBlL0NhdGFsb2cvUGFnZXMgMiAwIFI+PgplbmRvYmoKMiAwIG9iago8PC9UeXBlL1BhZ2VzL0NvdW50IDEvS2lkc1szIDAgUl0+PgplbmRvYmoKMyAwIG9iago8PC9UeXBlL1BhZ2UvUGFyZW50IDIgMCBSL01lZGlhQm94WzAgMCA2MTIgNzkyXT4+CmVuZG9iagp4cmVmCjAgNAowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA2MyAwMDAwMCBuIAowMDAwMDAwMTI0IDAwMDAwIG4gCnRyYWlsZXIKPDwvU2l6ZSA0L1Jvb3QgMSAwIFI+Pgplc3RhcnR4cmVmCjIwMwolJUVPRgo=",
+        "base64"
+      ));
+      const doc = await pdfjs.getDocument({
+        data,
+        useSystemFonts: true,
+        isEvalSupported: false,
+        useWorkerFetch: false,
+        useWasm: false,
+      }).promise;
+      console.log(doc.numPages);
+      await doc.destroy();
+    `);
+    expect(stdout.trim()).toBe("1");
+  });
 });
