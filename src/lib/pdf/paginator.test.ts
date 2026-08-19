@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   assertWordPreservation,
@@ -385,5 +388,16 @@ describe("reader spread navigation (S3-02 regression)", () => {
     expect([a?.pageNumber, b?.pageNumber, c?.pageNumber, d?.pageNumber]).toEqual([
       0, 1, 2, 3,
     ]);
+  });
+});
+
+describe("paginator client boundary (Método subida)", () => {
+  it("does not import Node-only PDF runtime — the reader bundles this file", () => {
+    const src = readFileSync(
+      path.join(path.dirname(fileURLToPath(import.meta.url)), "paginator.ts"),
+      "utf8"
+    );
+    expect(src).not.toMatch(/node-dom-polyfill/);
+    expect(src).not.toMatch(/from ["']node:module["']/);
   });
 });

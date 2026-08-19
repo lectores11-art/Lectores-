@@ -23,6 +23,7 @@ import {
   slugParamsSchema,
   parseData,
 } from "@/lib/validation";
+import { ensurePdfNodeDom } from "@/lib/pdf/node-dom-polyfill";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -196,6 +197,7 @@ export async function POST(
     try {
       const buffer = Buffer.from(await pdfBlob.arrayBuffer());
       console.info("book finalize: pdf bytes", buffer.byteLength);
+      await ensurePdfNodeDom();
 
       // Nivel B (layout-aware) first — preserves TOC/centrado/listas.
       // Fallback Nivel A (texto) only if B fails, so upload still works.
