@@ -23,7 +23,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es">
+    <html lang="es" className="light">
       <body className={`${spaceGrotesk.variable} ${literata.variable} antialiased`}>
         {children}
       </body>

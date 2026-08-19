@@ -19,7 +19,7 @@ const contentSecurityPolicyDirectives = [
   "form-action 'self'",
   "frame-ancestors 'none'",
   "object-src 'none'",
-  "img-src 'self' data: blob: https://*.supabase.co",
+  "img-src 'self' data: blob: https://*.supabase.co https://i.ytimg.com https://*.ytimg.com",
   "font-src 'self' data:",
   "style-src 'self' 'unsafe-inline'",
   // Next.js App Router still relies on inline/eval in this setup (no nonce pipeline yet).

@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { toEmbedPlayback } from "./embed-url";
+import { parseYoutubeId, toEmbedPlayback } from "./embed-url";
 
 describe("toEmbedPlayback", () => {
-  it("converts youtu.be share links to nocookie embed", () => {
+  it("converts youtu.be share links to youtube embed", () => {
     expect(
       toEmbedPlayback("https://youtu.be/Nfo6ZwZsL04?si=abc")
     ).toEqual({
       kind: "iframe",
-      src: "https://www.youtube-nocookie.com/embed/Nfo6ZwZsL04",
+      src: "https://www.youtube.com/embed/Nfo6ZwZsL04",
     });
   });
 
@@ -16,7 +16,7 @@ describe("toEmbedPlayback", () => {
       toEmbedPlayback("https://www.youtube.com/watch?v=Nfo6ZwZsL04")
     ).toEqual({
       kind: "iframe",
-      src: "https://www.youtube-nocookie.com/embed/Nfo6ZwZsL04",
+      src: "https://www.youtube.com/embed/Nfo6ZwZsL04",
     });
   });
 
@@ -25,7 +25,7 @@ describe("toEmbedPlayback", () => {
       toEmbedPlayback("https://www.youtube.com/embed/Nfo6ZwZsL04")
     ).toEqual({
       kind: "iframe",
-      src: "https://www.youtube-nocookie.com/embed/Nfo6ZwZsL04",
+      src: "https://www.youtube.com/embed/Nfo6ZwZsL04",
     });
   });
 
@@ -48,5 +48,16 @@ describe("toEmbedPlayback", () => {
       kind: "video",
       src: "https://stream.mux.com/abc.m3u8",
     });
+  });
+});
+
+describe("parseYoutubeId", () => {
+  it("extracts ids from share and watch URLs", () => {
+    expect(parseYoutubeId("https://youtu.be/Nfo6ZwZsL04?si=abc")).toBe(
+      "Nfo6ZwZsL04"
+    );
+    expect(parseYoutubeId("https://www.youtube.com/watch?v=Nfo6ZwZsL04")).toBe(
+      "Nfo6ZwZsL04"
+    );
   });
 });

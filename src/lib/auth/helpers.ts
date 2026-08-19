@@ -228,11 +228,17 @@ export async function getMembership(communityId: string, userId: string) {
 
 export async function getCommunityBySlug(slug: string) {
   const supabase = await createClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("communities")
     .select("*")
     .eq("slug", slug)
-    .single();
+    .maybeSingle();
+
+  if (error) {
+    console.error("getCommunityBySlug failed:", { slug, error });
+  } else if (!data) {
+    console.error("getCommunityBySlug: no row for slug:", JSON.stringify(slug));
+  }
 
   return data as Community | null;
 }

@@ -34,6 +34,15 @@ function vimeoVideoId(url: URL): string | null {
   return null;
 }
 
+/** YouTube video id from a watch, share, or embed URL. */
+export function parseYoutubeId(raw: string): string | null {
+  try {
+    return youtubeVideoId(new URL(raw.trim()));
+  } catch {
+    return null;
+  }
+}
+
 /** Turn a pasted watch/share URL into something the classroom player can load. */
 export function toEmbedPlayback(raw: string): EmbedPlayback | null {
   const trimmed = raw.trim();
@@ -52,7 +61,7 @@ export function toEmbedPlayback(raw: string): EmbedPlayback | null {
   if (yt) {
     return {
       kind: "iframe",
-      src: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(yt)}`,
+      src: `https://www.youtube.com/embed/${encodeURIComponent(yt)}`
     };
   }
 
