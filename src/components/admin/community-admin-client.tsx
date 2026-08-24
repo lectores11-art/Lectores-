@@ -8,6 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useDetailPanel } from "@/components/layout/detail-panel-context";
 import { formatRelativeTime } from "@/lib/utils";
+import {
+  countPaidMembers,
+  formatEurFromCents,
+  monthlyEstimateCents,
+} from "@/lib/admin/paid-members";
 
 type InviteRow = {
   id?: string;
@@ -52,7 +57,13 @@ function roleLabel(role: string) {
   return "Miembro";
 }
 
-export function CommunityAdminClient({ slug }: { slug: string }) {
+export function CommunityAdminClient({
+  slug,
+  monthlyPriceCents,
+}: {
+  slug: string;
+  monthlyPriceCents: number;
+}) {
   const [invites, setInvites] = useState<InviteRow[]>([]);
   const [loadingInvites, setLoadingInvites] = useState(true);
   const [listError, setListError] = useState("");
@@ -212,6 +223,9 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
     }
   }
 
+  const paidCount = countPaidMembers(members);
+  const estimateCents = monthlyEstimateCents(paidCount, monthlyPriceCents);
+
   return (
     <div className="p-4 lg:p-6">
       <div className="mb-5">
@@ -220,6 +234,26 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
       </div>
 
       <div className="mx-auto max-w-2xl space-y-6">
+        <Card className="hard-shadow-sm">
+          <CardContent className="pt-6">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+              Socias de pago
+            </p>
+            {loadingMembers ? (
+              <p className="mt-2 text-sm text-muted">Contando miembros…</p>
+            ) : (
+              <>
+                <p className="mt-1 text-5xl font-bold tracking-tight">{paidCount}</p>
+                <p className="mt-2 text-sm text-muted">
+                  {monthlyPriceCents > 0
+                    ? `Estimado mensual: ${formatEurFromCents(estimateCents)} (antes de comisión Stripe)`
+                    : "Cargá el precio mensual de la comunidad para ver el estimado."}
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
         <Card className="hard-shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -312,7 +346,8 @@ export function CommunityAdminClient({ slug }: { slug: string }) {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted">
-              Compartí este link con tus lectoras. Solo quienes tengan el link podrán unirse.
+              Compartí este link con tus lectoras. Es el mismo para todas: sirve
+              hasta 200 cuentas. Solo quienes tengan el link podrán unirse.
             </p>
             <Button onClick={createInvite} disabled={creatingInvite}>
               {creatingInvite ? "Generando..." : "Generar nuevo link"}

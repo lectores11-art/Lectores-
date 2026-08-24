@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth/helpers";
+import { canStartCheckout } from "@/lib/auth/access";
 import {
   internalErrorResponse,
   parseJsonBody,
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Comunidad no encontrada" }, { status: 404 });
     }
 
-    // Must already be an active member (invite/join first). Billing must not undo kick/cancel.
+    // Invite join creates pending; payment is the door. Do not undo a kick.
     const { data: membership } = await supabase
       .from("memberships")
       .select("id, status, rejoin_blocked")
@@ -48,9 +49,9 @@ export async function POST(request: Request) {
       .eq("community_id", communityId)
       .maybeSingle();
 
-    if (!membership || membership.status !== "active" || membership.rejoin_blocked) {
+    if (!membership || !canStartCheckout(membership)) {
       return NextResponse.json(
-        { error: "Necesitás ser miembro activo de la comunidad antes de suscribirte." },
+        { error: "Necesitás una invitación vigente para suscribirte." },
         { status: 403 }
       );
     }
@@ -75,8 +76,8 @@ export async function POST(request: Request) {
           quantity: 1,
         },
       ],
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/c/${community.slug}/forum?subscribed=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`,
+      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/c/${community.slug}/entrar?subscribed=true`,
+      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/c/${community.slug}/entrar`,
       metadata: {
         user_id: user.id,
         community_id: communityId,

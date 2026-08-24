@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createServiceClient } from "@/lib/supabase/server";
-import type { SubscriptionStatus } from "@/lib/types/database";
+import type { MembershipStatus, SubscriptionStatus } from "@/lib/types/database";
+import {
+  joinedAtOnActivate,
+  membershipStatusAfterStripeEvent,
+} from "@/lib/billing/stripe-access";
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY)
@@ -94,6 +98,78 @@ async function syncSubscriptionFromStripe(
   return { ok: true };
 }
 
+async function applyMembershipStatusById(
+  serviceClient: ServiceClient,
+  membershipId: string,
+  status: MembershipStatus,
+  options?: { setJoinedAt?: boolean }
+): Promise<{ ok: true } | { ok: false }> {
+  const { data: membership, error: lookupError } = await serviceClient
+    .from("memberships")
+    .select("id, joined_at, rejoin_blocked")
+    .eq("id", membershipId)
+    .maybeSingle();
+
+  if (lookupError) {
+    console.error("Stripe webhook: membership lookup failed:", lookupError);
+    return { ok: false };
+  }
+  if (!membership) return { ok: true };
+  if (membership.rejoin_blocked) {
+    console.error(
+      "Stripe webhook: refusing to change rejoin_blocked membership",
+      membership.id
+    );
+    return { ok: true };
+  }
+
+  const patch: Record<string, unknown> = {
+    status,
+    updated_at: new Date().toISOString(),
+  };
+  if (options?.setJoinedAt && status === "active") {
+    patch.joined_at = joinedAtOnActivate(
+      membership.joined_at,
+      new Date().toISOString()
+    );
+  }
+
+  const { error } = await serviceClient
+    .from("memberships")
+    .update(patch)
+    .eq("id", membership.id);
+
+  if (error) {
+    console.error("Stripe webhook: membership status update failed:", error);
+    return { ok: false };
+  }
+  return { ok: true };
+}
+
+async function applyMembershipStatusForStripeSubscription(
+  serviceClient: ServiceClient,
+  stripeSubscriptionId: string,
+  status: MembershipStatus | "unchanged"
+): Promise<{ ok: true } | { ok: false }> {
+  if (status === "unchanged") return { ok: true };
+
+  const { data: subscription, error } = await serviceClient
+    .from("subscriptions")
+    .select("membership_id")
+    .eq("stripe_subscription_id", stripeSubscriptionId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Stripe webhook: subscription membership lookup failed:", error);
+    return { ok: false };
+  }
+  if (!subscription?.membership_id) return { ok: true };
+
+  return applyMembershipStatusById(serviceClient, subscription.membership_id, status, {
+    setJoinedAt: status === "active",
+  });
+}
+
 export async function POST(request: Request) {
   if (!stripe) {
     return NextResponse.json(
@@ -116,8 +192,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Firma inválida" }, { status: 400 });
   }
 
-  // service_role: Stripe webhooks have no user session; must update memberships/subscriptions.
-  // Billing sync only — community access remains gated by membership, not paid status.
+  // service_role: Stripe webhooks have no user session. Paid subscription opens access.
   const serviceClient = await createServiceClient();
 
   try {
@@ -152,7 +227,6 @@ export async function POST(request: Request) {
               "Stripe webhook: refusing to activate rejoin_blocked membership",
               membership.id
             );
-            // Ack (2xx) so Stripe stops retrying; do not restore access after kick.
             return NextResponse.json({
               received: true,
               skipped: "rejoin_blocked",
@@ -160,13 +234,19 @@ export async function POST(request: Request) {
           }
 
           if (membership) {
-            const { error: activateError } = await serviceClient
-              .from("memberships")
-              .update({ status: "active" })
-              .eq("id", membership.id);
-
-            if (activateError) {
-              console.error("Stripe webhook: activate membership failed:", activateError);
+            const nextStatus = membershipStatusAfterStripeEvent({
+              type: "checkout.session.completed",
+            });
+            if (nextStatus === "unchanged") {
+              return NextResponse.json({ received: true });
+            }
+            const activated = await applyMembershipStatusById(
+              serviceClient,
+              membership.id,
+              nextStatus,
+              { setJoinedAt: true }
+            );
+            if (!activated.ok) {
               return NextResponse.json({ error: "Sync falló" }, { status: 500 });
             }
 
@@ -209,6 +289,18 @@ export async function POST(request: Request) {
         if (!synced.ok) {
           return NextResponse.json({ error: "Sync falló" }, { status: 500 });
         }
+        const membershipStatus = membershipStatusAfterStripeEvent({
+          type: "customer.subscription.updated",
+          stripeStatus: subscription.status,
+        });
+        const applied = await applyMembershipStatusForStripeSubscription(
+          serviceClient,
+          subscription.id,
+          membershipStatus
+        );
+        if (!applied.ok) {
+          return NextResponse.json({ error: "Sync falló" }, { status: 500 });
+        }
         break;
       }
 
@@ -230,6 +322,15 @@ export async function POST(request: Request) {
           console.error("Stripe webhook: subscription deleted sync failed:", error);
           return NextResponse.json({ error: "Sync falló" }, { status: 500 });
         }
+
+        const locked = await applyMembershipStatusForStripeSubscription(
+          serviceClient,
+          subscription.id,
+          membershipStatusAfterStripeEvent({ type: "customer.subscription.deleted" })
+        );
+        if (!locked.ok) {
+          return NextResponse.json({ error: "Sync falló" }, { status: 500 });
+        }
         break;
       }
 
@@ -248,6 +349,15 @@ export async function POST(request: Request) {
 
           if (error) {
             console.error("Stripe webhook: payment_failed sync failed:", error);
+            return NextResponse.json({ error: "Sync falló" }, { status: 500 });
+          }
+
+          const locked = await applyMembershipStatusForStripeSubscription(
+            serviceClient,
+            stripeSubscriptionId,
+            membershipStatusAfterStripeEvent({ type: "invoice.payment_failed" })
+          );
+          if (!locked.ok) {
             return NextResponse.json({ error: "Sync falló" }, { status: 500 });
           }
         }

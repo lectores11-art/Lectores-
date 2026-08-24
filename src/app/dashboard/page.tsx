@@ -22,10 +22,17 @@ export default async function DashboardPage() {
   const { data: memberships } = await supabase
     .from("memberships")
     .select("*, community:communities(*)")
-    .eq("user_id", user.id)
-    .eq("status", "active");
+    .eq("user_id", user.id);
 
-  const userCommunities = (memberships || []) as (Membership & { community: Community })[];
+  const rows = (memberships || []) as (Membership & { community: Community })[];
+  const userCommunities = rows.filter((m) => m.status === "active");
+  const paywallCommunities = rows.filter(
+    (m) =>
+      !m.rejoin_blocked &&
+      (m.status === "pending" ||
+        m.status === "cancelled" ||
+        m.status === "expired")
+  );
 
   if (user.is_super_admin) {
     const { data: allCommunities } = await supabase
@@ -59,7 +66,7 @@ export default async function DashboardPage() {
   return (
     <DashboardLayout user={user}>
       <h2 className="mb-6 text-2xl font-bold tracking-tight">Mis comunidades</h2>
-      {userCommunities.length === 0 ? (
+      {userCommunities.length === 0 && paywallCommunities.length === 0 ? (
         <Card className="hard-shadow-sm">
           <CardContent className="py-12 text-center">
             <p className="text-muted">
@@ -69,12 +76,31 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
       ) : (
-        <CommunityGrid
-          communities={userCommunities.map((m) => ({
-            community: m.community,
-            isAdmin: m.role === "community_owner",
-          }))}
-        />
+        <div className="space-y-8">
+          {paywallCommunities.length > 0 && (
+            <section>
+              <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
+                Completar pago
+              </h3>
+              <CommunityGrid
+                communities={paywallCommunities.map((m) => ({
+                  community: m.community,
+                  isAdmin: false,
+                  href: `/c/${m.community.slug}/entrar`,
+                  badge: "Pendiente de pago",
+                }))}
+              />
+            </section>
+          )}
+          {userCommunities.length > 0 && (
+            <CommunityGrid
+              communities={userCommunities.map((m) => ({
+                community: m.community,
+                isAdmin: m.role === "community_owner",
+              }))}
+            />
+          )}
+        </div>
       )}
     </DashboardLayout>
   );
@@ -111,12 +137,17 @@ function DashboardLayout({
 function CommunityGrid({
   communities,
 }: {
-  communities: { community: Community; isAdmin: boolean }[];
+  communities: {
+    community: Community;
+    isAdmin: boolean;
+    href?: string;
+    badge?: string;
+  }[];
 }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {communities.map(({ community, isAdmin }) => (
-        <Link key={community.id} href={`/c/${community.slug}/forum`}>
+      {communities.map(({ community, isAdmin, href, badge }) => (
+        <Link key={community.id} href={href ?? `/c/${community.slug}/forum`}>
           <Card className="h-full transition-shadow hover:shadow-md hard-shadow-sm">
             <CardHeader>
               <div className="mb-2 flex items-center gap-2">
@@ -133,8 +164,12 @@ function CommunityGrid({
               </div>
               <CardTitle className="text-lg">{community.name}</CardTitle>
               <CardDescription>
-                {isAdmin ? "Administradora" : "Miembro"}
-                {community.description
+                {badge
+                  ? badge
+                  : isAdmin
+                    ? "Administradora"
+                    : "Miembro"}
+                {!badge && community.description
                   ? ` · ${community.description.slice(0, 60)}`
                   : ""}
               </CardDescription>

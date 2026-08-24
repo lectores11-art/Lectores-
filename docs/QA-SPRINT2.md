@@ -118,7 +118,7 @@ Aplicar `007` en Supabase es paso humano.
 | ~~`NEXT_PUBLIC_DISABLE_AUTH` → `createClient()` service_role~~ | **Cerrado (#16 / S2-02):** eliminado; `createClient()` siempre anon+cookies | — |
 | Stripe ausente → demo | Presente | Low |
 | LiveKit ausente | Depende de config | Low si no emite tokens útiles |
-| Invite join → membership `active` sin pago | By design MVP | Producto |
+| Invite join → membership `pending`; el pago abre `active` | Launch | Producto |
 
 ---
 

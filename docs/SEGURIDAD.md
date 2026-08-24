@@ -2,21 +2,21 @@
 
 ## Modelo de amenaza (Lectores!!)
 
-- **Puerta de acceso = membresía `active`**, no “pagó este mes”.
-- Entrada por **invite token**; Stripe es facturación cuando hay `stripe_price_id`.
-- Launch: invite-gated; **no** gate de pago obligatorio (eso sería un ticket de producto aparte).
+- **Puerta de acceso = membresía `active` después de pagar** (invite = ticket al paywall).
+- Entrada por **invite token** (un link, tope de usos); Stripe suscripción mensual abre la comunidad.
+- Launch: Confirm email OFF; el email se escribe igual, no se espera un correo.
 
 | Control | Estado |
 |---------|--------|
 | Kick → `rejoin_blocked`; leave limpia flag; join mapea 403 | ✅ código (S5-01) + migraciones 010/011 |
 | Stripe webhooks lifecycle + kick fail-closed | ✅ código (S5-02) |
 | LiveKit token solo si `meeting.status === "live"` | ✅ código (S5-03) |
-| Invites: `max_uses=25`, `expires_at=+30d` por default | ✅ código |
-| Rate limit invite lookup (30/min/IP) y join (10/min/IP) | ✅ código (in-memory / por isolate) |
-| Checkout: precio solo desde `communities.stripe_price_id`; exige membership `active` | ✅ código |
-| Webhook checkout: no reactiva si `rejoin_blocked` | ✅ código |
-| Migraciones 006–011 + buckets | ✅ en DB (MCP); SQL 010/011 en repo |
-| Auth Redirect URLs + Confirm email | ✅ Dashboard |
+| Invites: `max_uses=200`, `expires_at=+30d` por default | ✅ código |
+| Rate limit invite lookup (30/min/IP) y join (60/min/IP) | ✅ código (in-memory / por isolate) |
+| Checkout: precio solo desde `communities.stripe_price_id`; exige membership pending/cancelled/expired | ✅ código |
+| Webhook checkout: activa membresía + `joined_at`; no reactiva si `rejoin_blocked` | ✅ código |
+| Migraciones 006–012 + buckets | ⏳ aplicar `012` en Supabase |
+| Auth Redirect URLs + Confirm email OFF para el live | ⏳ Dashboard |
 | Leaked passwords (HaveIBeenPwned) | ⏸ requiere plan Pro — diferido |
 | SMTP real (Resend/etc.) | ⏳ humano |
 | Secretos Vercel (sin `NEXT_PUBLIC_` en server keys) | ⏳ humano |
@@ -122,44 +122,35 @@ Pasos manuales en Authentication → Providers / Settings:
 
 SMTP/Resend y dominio: **configuración humana**, no del agente.
 
-### SMTP de Auth — pendiente de configuración humana (S4-02)
+### Confirm email — apagado para el live
 
-El registro por invitación (`invite-auth-form`) **no desactiva** la confirmación
-por email. Si no hay SMTP, Supabase puede crear el usuario sin sesión y el
-correo nunca sale: la UI avisa con copy honesto + botón **Reenviar confirmación**
-(`supabase.auth.resend`).
+El registro pide nombre + email + contraseña. **No** esperamos un mail de
+confirmación el día D: en el Dashboard, Authentication → Providers → Email →
+**Confirm email = off**. Ver `docs/lanzamiento-pago.md`.
 
-Falta en el proyecto Supabase (humano):
-
-1. Authentication → SMTP Settings: proveedor real (Resend / SendGrid / etc.) o
-   custom SMTP con From verificado.
-2. Confirmar que **Confirm email** sigue activado (no usar “Disable email
-   confirmations” como atajo).
-3. Revisar plantilla **Confirm signup**: link a
-   `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=signup&next=...`
-   (el `next` lo fija la app vía `emailRedirectTo` hacia `/join/[token]`).
-4. Rate limits de email en Auth Settings acordes al tráfico esperado.
-
-Hasta que SMTP esté listo, los registros seguirán pidiendo confirmación y el
-reenvío no entregará mail — eso es esperado, no un bug de la app.
+El fallback de “confirmar email” en `invite-auth-form` queda por si el Dashboard
+sigue con la opción ON. SMTP de Auth (Resend, etc.) sigue siendo útil para
+invitar dueñas y reset de contraseña; no es la puerta de las 150 socias.
 
 ### Invites — abuse defaults
 
-`POST /api/c/[slug]/invites` crea invites con:
+`POST /api/c/[slug]/invites` crea **un** link (no uno por persona) con:
 
-- `max_uses`: **25**
+- `max_uses`: **200**
 - `expires_at`: **+30 días** (UTC)
 
 `GET /api/invites/[token]`: rate limit **30 req/min** por IP.  
-`POST /api/invites/join`: rate limit **10 req/min** por IP.  
+`POST /api/invites/join`: rate limit **60 req/min** por IP.  
 (Limiter in-memory; en serverless es por isolate — complementar con caps del invite.)
 
 ### Checkout Stripe
 
 `POST /api/subscriptions` acepta solo `communityId`. El `price` de Checkout sale
 de `communities.stripe_price_id` (nunca del body del cliente). Requiere membership
-**`active`** y no `rejoin_blocked`; sin precio configurado → 400. El webhook de
-`checkout.session.completed` también se niega a reactivar si `rejoin_blocked`.
+**`pending` / `cancelled` / `expired`** y no `rejoin_blocked`; sin precio → 400.
+El webhook de `checkout.session.completed` activa la membresía y setea `joined_at`;
+también se niega a reactivar si `rejoin_blocked`. Cobro fallido o suscripción
+borrada vuelve a bloquear el acceso (`pending` / `cancelled`).
 
 ### Cambio de contraseña en Settings
 

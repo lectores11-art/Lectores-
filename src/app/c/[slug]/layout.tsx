@@ -1,20 +1,32 @@
 import { redirect, notFound } from "next/navigation";
-import { requireCommunityAccess, isCommunityAdmin } from "@/lib/auth/helpers";
+import type { ReactNode } from "react";
+import {
+  getCommunityContext,
+  hasActiveCommunityAccess,
+  isCommunityAdmin,
+  shouldSeePaywall,
+} from "@/lib/auth/helpers";
 import { CommunityShell } from "@/components/layout/community-shell";
+import { CommunityPaywall } from "@/components/community/community-paywall";
 
 export default async function CommunityLayout({
   children,
   params,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const { user, community, membership } = await requireCommunityAccess(slug);
+  const { user, community, membership } = await getCommunityContext(slug);
 
   if (!user) redirect(`/login?redirect=/c/${slug}/forum`);
   if (!community) notFound();
-  if (!membership && !user.is_super_admin && community.owner_id !== user.id) {
+
+  if (shouldSeePaywall(user, community, membership)) {
+    return <CommunityPaywall community={community} user={user} />;
+  }
+
+  if (!hasActiveCommunityAccess(user, community, membership)) {
     redirect("/dashboard");
   }
 

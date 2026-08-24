@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Community, Membership, Profile } from "@/lib/types/database";
+import { hasActiveCommunityAccess } from "@/lib/auth/access";
+
+export { hasActiveCommunityAccess, shouldSeePaywall } from "@/lib/auth/access";
 
 function formatError(error: unknown): string {
   if (!error) return "Error desconocido";
@@ -243,7 +246,7 @@ export async function getCommunityBySlug(slug: string) {
   return data as Community | null;
 }
 
-export async function requireCommunityAccess(slug: string) {
+export async function getCommunityContext(slug: string) {
   const user = await getCurrentUser();
   if (!user) return { user: null, community: null, membership: null };
 
@@ -251,12 +254,16 @@ export async function requireCommunityAccess(slug: string) {
   if (!community) return { user, community: null, membership: null };
 
   const membership = await getMembership(community.id, user.id);
-  const hasAccess =
-    user.is_super_admin ||
-    membership?.status === "active" ||
-    community.owner_id === user.id;
+  return { user, community, membership };
+}
 
-  if (!hasAccess) {
+export async function requireCommunityAccess(slug: string) {
+  const { user, community, membership } = await getCommunityContext(slug);
+  if (!user || !community) {
+    return { user, community, membership: null };
+  }
+
+  if (!hasActiveCommunityAccess(user, community, membership)) {
     return { user, community, membership: null };
   }
 
@@ -268,18 +275,6 @@ export type ApiCommunityContext = {
   community: Community;
   membership: Membership | null;
 };
-
-export function hasActiveCommunityAccess(
-  user: Profile,
-  community: Community,
-  membership: Membership | null
-): boolean {
-  return (
-    user.is_super_admin ||
-    community.owner_id === user.id ||
-    membership?.status === "active"
-  );
-}
 
 /** Guard for /api/c/[slug] routes — returns 401/403/404 or the authorized context. */
 export async function requireApiCommunityAccess(

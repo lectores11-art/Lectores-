@@ -15,5 +15,5 @@ export default async function CommunityAdminPage({
   const admin = await isCommunityAdmin(community.id, user.id, user.is_super_admin);
   if (!admin) redirect(`/c/${slug}/forum`);
 
-  return <CommunityAdminClient slug={slug} />;
+  return <CommunityAdminClient slug={slug} monthlyPriceCents={community.monthly_price_cents ?? 0} />;
 }

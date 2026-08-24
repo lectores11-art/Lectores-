@@ -1,21 +1,24 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { joinAccessFromStatus } from "@/lib/auth/access";
 import {
   clientIpFromRequest,
   rateLimit,
   rateLimitResponse,
 } from "@/lib/security/rate-limit";
+import { INVITE_JOIN_PER_IP, INVITE_JOIN_WINDOW_MS } from "@/lib/invites/defaults";
 import { internalErrorResponse, inviteJoinSchema, parseJsonBody } from "@/lib/validation";
 
 type AcceptInviteResult = {
   community_slug: string;
   already_member: boolean;
+  membership_status?: string;
 };
 
 export async function POST(request: Request) {
   try {
     const ip = clientIpFromRequest(request);
-    const limited = rateLimit(`invite-join:${ip}`, 10, 60_000);
+    const limited = rateLimit(`invite-join:${ip}`, INVITE_JOIN_PER_IP, INVITE_JOIN_WINDOW_MS);
     if (!limited.ok) return rateLimitResponse(limited.retryAfterSec);
 
     const bodyResult = await parseJsonBody(request, inviteJoinSchema);
@@ -84,10 +87,14 @@ export async function POST(request: Request) {
       return NextResponse.json({
         slug: row.community_slug,
         message: "Ya eres miembro",
+        access: joinAccessFromStatus(row.membership_status),
       });
     }
 
-    return NextResponse.json({ slug: row.community_slug });
+    return NextResponse.json({
+      slug: row.community_slug,
+      access: joinAccessFromStatus(row.membership_status),
+    });
   } catch (err) {
     return internalErrorResponse("POST /api/invites/join failed:", err);
   }

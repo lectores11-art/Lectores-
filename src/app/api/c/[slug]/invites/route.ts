@@ -2,11 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isCommunityAdmin, requireApiCommunityAccess } from "@/lib/auth/helpers";
 import { nanoid } from "nanoid";
+import { DEFAULT_INVITE_MAX_USES, DEFAULT_INVITE_TTL_DAYS } from "@/lib/invites/defaults";
 import { internalErrorResponse, parseData, slugParamsSchema } from "@/lib/validation";
-
-/** Default invite lifetime and use cap (abuse / shared-link hardening). */
-const DEFAULT_INVITE_MAX_USES = 25;
-const DEFAULT_INVITE_TTL_DAYS = 30;
 
 export async function GET(
   _request: Request,

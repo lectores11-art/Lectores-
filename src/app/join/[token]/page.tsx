@@ -6,6 +6,7 @@ import { BookOpen } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { InviteAuthForm } from "@/components/auth/invite-auth-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { postJoinPath } from "@/lib/auth/access";
 import type { Community, Invite } from "@/lib/types/database";
 
 export default function JoinPage({ params }: { params: Promise<{ token: string }> }) {
@@ -36,7 +37,11 @@ export default function JoinPage({ params }: { params: Promise<{ token: string }
         return;
       }
 
-      router.push(`/c/${data.slug}/forum`);
+      const nextPath = postJoinPath(
+        data.slug,
+        data.access === "active" ? "active" : "paywall"
+      );
+      router.push(nextPath);
     },
     [router]
   );

@@ -135,7 +135,7 @@ export function InviteAuthForm({
       setResendLocked(true);
       window.setTimeout(() => setResendLocked(false), 45_000);
       setResendMessage(
-        "Si el email aplica y el proyecto tiene SMTP configurado, vas a recibir un correo en breve. Si no llega, pedile a la admin que revise Auth → SMTP en Supabase."
+        "Si aplica, vas a recibir un correo. Si no llega, pedile a la admin que apague la confirmación de email en Supabase."
       );
     } catch {
       setResendMessage("No se pudo pedir el reenvío. Intentá de nuevo.");
@@ -150,14 +150,12 @@ export function InviteAuthForm({
         <p className="text-sm text-muted">
           Para entrar a{" "}
           <span className="font-semibold text-foreground">{communityName}</span>{" "}
-          necesitás confirmar el email{" "}
+          hace falta una sesión abierta con{" "}
           <span className="font-semibold text-foreground">{email}</span>.
         </p>
         <p className="text-sm text-muted">
-          Si configuramos el envío de correos en Supabase Auth, vas a recibir un
-          link de confirmación. Si no llega ningún mail, es probable que el SMTP
-          del proyecto aún no esté configurado (no desactivamos la confirmación
-          por email).
+          Si no podés continuar, iniciá sesión o pedile a la administradora que
+          revise la confirmación de email en Supabase.
         </p>
         {error && <p className="text-sm text-red-600">{error}</p>}
         {resendMessage && (
@@ -232,8 +230,8 @@ export function InviteAuthForm({
         {loading
           ? "Procesando..."
           : mode === "register"
-            ? "Registrarme y entrar"
-            : "Iniciar sesión y entrar"}
+            ? "Registrarme"
+            : "Iniciar sesión"}
       </Button>
 
       <p className="text-center text-sm text-muted">
