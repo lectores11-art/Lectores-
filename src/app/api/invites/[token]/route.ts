@@ -5,6 +5,7 @@ import {
   rateLimit,
   rateLimitResponse,
 } from "@/lib/security/rate-limit";
+import { INVITE_LOOKUP_PER_IP, INVITE_JOIN_WINDOW_MS } from "@/lib/invites/defaults";
 import { internalErrorResponse, inviteTokenParamsSchema, parseData } from "@/lib/validation";
 
 export async function GET(
@@ -13,7 +14,7 @@ export async function GET(
 ) {
   try {
     const ip = clientIpFromRequest(request);
-    const limited = rateLimit(`invite-lookup:${ip}`, 30, 60_000);
+    const limited = rateLimit(`invite-lookup:${ip}`, INVITE_LOOKUP_PER_IP, INVITE_JOIN_WINDOW_MS);
     if (!limited.ok) return rateLimitResponse(limited.retryAfterSec);
 
     const paramsResult = parseData(inviteTokenParamsSchema, await params);

@@ -98,7 +98,7 @@ siempre usa anon key + cookies (RLS activo). No hay escape hatch por env.
 
 Pasos manuales en Authentication → Providers / Settings:
 
-1. **Confirm email** activado para sign-up (o invitar solo vía invite links).
+1. **Confirm email = off** para el live (Authentication → Providers → Email). El email se escribe igual; no se espera un correo. Ver `docs/lanzamiento-pago.md`. Restaurar confirmación más adelante si hace falta SMTP.
 2. **Password**: mínimo 8+ caracteres; preferir leak detection si el plan lo permite.
 3. **Redirect URLs** (Authentication → URL Configuration) — incluir exactamente:
    - `{NEXT_PUBLIC_APP_URL}/auth/confirm`
@@ -139,7 +139,7 @@ invitar dueñas y reset de contraseña; no es la puerta de las 150 socias.
 - `max_uses`: **200**
 - `expires_at`: **+30 días** (UTC)
 
-`GET /api/invites/[token]`: rate limit **30 req/min** por IP.  
+`GET /api/invites/[token]`: rate limit **60 req/min** por IP.  
 `POST /api/invites/join`: rate limit **60 req/min** por IP.  
 (Limiter in-memory; en serverless es por isolate — complementar con caps del invite.)
 

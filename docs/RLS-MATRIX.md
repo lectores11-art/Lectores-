@@ -1,6 +1,6 @@
 # Matriz RLS — rol × tabla × operación (S2-05)
 
-Fuente: `supabase/migrations/001_initial_schema.sql` + `006_rls_hardening.sql`.  
+Fuente: `supabase/migrations/001_initial_schema.sql` + `006_rls_hardening.sql` + `012_invite_pending_payment.sql`.  
 Aplicar migraciones en el proyecto Supabase; el agente no ejecuta SQL en prod.
 
 Leyenda: ✅ permitido · ❌ denegado · 🔒 solo vía `service_role` / SECURITY DEFINER RPC
@@ -9,7 +9,7 @@ Leyenda: ✅ permitido · ❌ denegado · 🔒 solo vía `service_role` / SECURI
 |-------|------|--------------------------|-------------------------|-------------------------|-------------|
 | **profiles** SELECT | ❌ | ✅ propio + peers de comunidades compartidas | ❌ (salvo peer overlap) | ✅ peers de su comunidad | ✅ todos |
 | **profiles** UPDATE | ❌ | ✅ propio (`is_super_admin` bloqueado por trigger) | ❌ | ✅ propio | ✅ (trigger bloquea flip vía JWT; SQL dashboard/service_role sí) |
-| **communities** SELECT | ❌ (invite GET usa service_role) | ✅ | ❌ | ✅ | ✅ |
+| **communities** SELECT | ❌ (invite GET usa service_role) | ✅ `active` · 🔒 paywall: `pending/cancelled/expired` propios | ❌ | ✅ | ✅ |
 | **communities** INSERT/UPDATE/DELETE | ❌ | ❌ | ❌ | UPDATE propia | ✅ ALL |
 | **memberships** SELECT | ❌ | ✅ propias | ❌ | ✅ de su comunidad | ✅ |
 | **memberships** INSERT | ❌ | 🔒 `accept_invite(token)` → role=`member` | ❌ | ✅ admin policy | ✅ |
@@ -43,4 +43,5 @@ Leyenda: ✅ permitido · ❌ denegado · 🔒 solo vía `service_role` / SECURI
 | Función | Quién | Uso |
 |---------|-------|-----|
 | `lookup_invite_by_token(text)` | anon, authenticated | disponible para clients; GET API usa service_role |
-| `accept_invite(text)` | authenticated | `POST /api/invites/join` |
+| `accept_invite(text)` | authenticated | `POST /api/invites/join` → membership `pending` (012) |
+| `is_community_paywall_visitor(uuid)` | authenticated | SELECT de `communities` para el overlay de pago; no abre foro/libros |

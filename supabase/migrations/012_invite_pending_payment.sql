@@ -98,3 +98,40 @@ GRANT EXECUTE ON FUNCTION public.accept_invite(text) TO authenticated;
 
 COMMENT ON FUNCTION public.accept_invite(text) IS
   'Validates invite token and creates/restores a pending membership. Access is granted after paid Stripe subscription.';
+
+-- Pending/cancelled members must read the community row (name, price) for the
+-- paywall and Checkout. Do NOT widen is_community_member — that would leak
+-- forum, books, classroom, and storage.
+CREATE OR REPLACE FUNCTION public.is_community_paywall_visitor(p_community_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM memberships
+    WHERE community_id = p_community_id
+      AND user_id = auth.uid()
+      AND COALESCE(rejoin_blocked, false) = false
+      AND status IN ('pending', 'cancelled', 'expired')
+  );
+$$;
+
+REVOKE ALL ON FUNCTION public.is_community_paywall_visitor(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.is_community_paywall_visitor(uuid) TO authenticated;
+
+DROP POLICY IF EXISTS "Members can view their communities" ON communities;
+CREATE POLICY "Members can view their communities" ON communities
+  FOR SELECT
+  USING (
+    is_community_member(id)
+    OR is_community_paywall_visitor(id)
+    OR is_super_admin()
+    OR owner_id = auth.uid()
+  );
+
+-- One billing row per membership so webhook upsert cannot insert a second sub.
+CREATE UNIQUE INDEX IF NOT EXISTS subscriptions_membership_id_key
+  ON subscriptions (membership_id);

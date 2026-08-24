@@ -56,6 +56,26 @@ export async function POST(request: Request) {
       );
     }
 
+    const { data: existingSub } = await supabase
+      .from("subscriptions")
+      .select("status, stripe_subscription_id")
+      .eq("membership_id", membership.id)
+      .maybeSingle();
+
+    if (
+      existingSub &&
+      (existingSub.status === "active" ||
+        existingSub.status === "trialing" ||
+        existingSub.status === "past_due")
+    ) {
+      return NextResponse.json(
+        {
+          error: "Ya hay un cobro en curso. Recargá esta página en un momento.",
+        },
+        { status: 409 }
+      );
+    }
+
     const priceId = community.stripe_price_id;
     if (!priceId) {
       return NextResponse.json(

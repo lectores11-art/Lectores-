@@ -5,6 +5,7 @@ import type { MembershipStatus, SubscriptionStatus } from "@/lib/types/database"
 import {
   joinedAtOnActivate,
   membershipStatusAfterStripeEvent,
+  shouldActivateFromCheckout,
 } from "@/lib/billing/stripe-access";
 
 const stripe = process.env.STRIPE_SECRET_KEY
@@ -234,39 +235,44 @@ export async function POST(request: Request) {
           }
 
           if (membership) {
-            const nextStatus = membershipStatusAfterStripeEvent({
-              type: "checkout.session.completed",
-            });
-            if (nextStatus === "unchanged") {
-              return NextResponse.json({ received: true });
-            }
-            const activated = await applyMembershipStatusById(
-              serviceClient,
-              membership.id,
-              nextStatus,
-              { setJoinedAt: true }
-            );
-            if (!activated.ok) {
-              return NextResponse.json({ error: "Sync falló" }, { status: 500 });
-            }
-
             const stripeSubscriptionId =
               typeof session.subscription === "string"
                 ? session.subscription
                 : session.subscription?.id;
+            const paid = shouldActivateFromCheckout(session.payment_status);
 
             const { error: upsertError } = await serviceClient
               .from("subscriptions")
-              .upsert({
-                membership_id: membership.id,
-                stripe_customer_id: session.customer as string,
-                stripe_subscription_id: stripeSubscriptionId,
-                status: "active",
-              });
+              .upsert(
+                {
+                  membership_id: membership.id,
+                  stripe_customer_id: session.customer as string,
+                  stripe_subscription_id: stripeSubscriptionId,
+                  status: paid ? "active" : "trialing",
+                },
+                { onConflict: "membership_id" }
+              );
 
             if (upsertError) {
               console.error("Stripe webhook: subscription upsert failed:", upsertError);
               return NextResponse.json({ error: "Sync falló" }, { status: 500 });
+            }
+
+            if (paid) {
+              const nextStatus = membershipStatusAfterStripeEvent({
+                type: "checkout.session.completed",
+              });
+              if (nextStatus !== "unchanged") {
+                const activated = await applyMembershipStatusById(
+                  serviceClient,
+                  membership.id,
+                  nextStatus,
+                  { setJoinedAt: true }
+                );
+                if (!activated.ok) {
+                  return NextResponse.json({ error: "Sync falló" }, { status: 500 });
+                }
+              }
             }
 
             if (stripeSubscriptionId) {

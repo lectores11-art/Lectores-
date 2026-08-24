@@ -36,3 +36,10 @@ export function joinedAtOnActivate(
 ): string {
   return existing || nowIso;
 }
+
+/** Incomplete Checkout sessions can complete without a successful first charge. */
+export function shouldActivateFromCheckout(
+  paymentStatus: string | null | undefined
+): boolean {
+  return paymentStatus === "paid" || paymentStatus === "no_payment_required";
+}

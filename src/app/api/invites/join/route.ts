@@ -35,8 +35,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 });
     }
 
-    // SECURITY DEFINER: validates token, inserts/activates membership as role=member,
-    // bumps use_count. Replaces open memberships INSERT policy removed in 006.
+    // SECURITY DEFINER: validates token, inserts pending membership as role=member,
+    // bumps use_count once. Access opens after Stripe payment.
     const { data: results, error } = await supabase.rpc("accept_invite", {
       p_token: token,
     });

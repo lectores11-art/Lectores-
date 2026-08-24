@@ -68,7 +68,7 @@ function PaywallWithCheckout({
       }
       if (attempts >= 20) {
         setWaiting(false);
-        setError("El pago puede tardar un momento. Recargá esta página o pulsá de nuevo.");
+        setError("El pago puede tardar un momento. Recargá esta página.");
         return;
       }
       window.setTimeout(() => {
@@ -125,6 +125,15 @@ function PaywallWithCheckout({
           <p className="text-3xl font-bold tracking-tight">{priceLabel}</p>
           {waiting ? (
             <p className="text-sm text-muted">Confirmando el pago…</p>
+          ) : waitingForPayment ? (
+            <p className="text-sm text-muted">
+              Si ya pagaste, recargá esta página. No vuelvas a pulsar pagar.
+            </p>
+          ) : !community.stripe_price_id ? (
+            <p className="text-sm text-muted">
+              El pago todavía no está configurado. Pedile a la administradora que
+              cargue el precio en Stripe.
+            </p>
           ) : (
             <Button
               type="button"

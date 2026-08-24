@@ -17,9 +17,9 @@ Flujo del día D: la clienta pega **un** link en el chat. Cada persona pone nomb
    - `customer.subscription.updated`
    - `customer.subscription.deleted`
    - `invoice.payment_failed`
-5. **Migración** `012_invite_pending_payment.sql` aplicada en el proyecto Supabase.
-6. **Un solo invite** con tope 200 usos (generar un link nuevo en Admin; el default viejo era 25). Copiar ese URL al chat. No hace falta un link por persona.
-7. Prueba: 2–3 tarjetas de test, luego 1 pago real de 1 € o el precio de verdad.
+5. **Migración** `012_invite_pending_payment.sql` aplicada en el proyecto Supabase (incluye SELECT de `communities` para socias pending).
+6. **Un solo invite** con tope 200 usos (generar un link **nuevo** en Admin; el actual de 25 usos no se actualiza solo). Copiar ese URL al chat.
+7. Prueba: 2–3 tarjetas de test, luego 1 pago real de 1 € o el precio de verdad. Camino: join → overlay (sin foro de verdad) → Stripe → recarga → foro. Un segundo clic en pagar no debe abrir otra suscripción.
 
 ## Qué ve el admin
 

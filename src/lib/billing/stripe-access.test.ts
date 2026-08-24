@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   joinedAtOnActivate,
   membershipStatusAfterStripeEvent,
+  shouldActivateFromCheckout,
 } from "./stripe-access";
 
 describe("membershipStatusAfterStripeEvent", () => {
@@ -50,6 +51,15 @@ describe("membershipStatusAfterStripeEvent", () => {
         stripeStatus: "incomplete",
       })
     ).toBe("unchanged");
+  });
+});
+
+describe("shouldActivateFromCheckout", () => {
+  it("activates only after a paid (or free) Checkout session", () => {
+    expect(shouldActivateFromCheckout("paid")).toBe(true);
+    expect(shouldActivateFromCheckout("no_payment_required")).toBe(true);
+    expect(shouldActivateFromCheckout("unpaid")).toBe(false);
+    expect(shouldActivateFromCheckout(undefined)).toBe(false);
   });
 });
 
