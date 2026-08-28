@@ -11,7 +11,7 @@ export function LandingPage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-md bg-band text-foreground">
               <BookOpen className="h-5 w-5" />
             </div>
-            <span className="text-xl font-bold tracking-tight">Lectores</span>
+            <span className="text-xl font-bold tracking-tight">Hilo de Letras</span>
           </div>
           <Button asChild>
             <Link href="/login">Iniciar sesión</Link>
@@ -26,7 +26,7 @@ export function LandingPage() {
               Comunidades privadas
             </p>
             <h1 className="text-4xl font-bold leading-[1.1] tracking-tight sm:text-5xl lg:text-6xl">
-              Lectores
+              Hilo de Letras
             </h1>
             <p className="mt-5 max-w-md text-lg text-muted">
               Foro, biblioteca, classroom y sala en vivo. Acceso solo por invitación.

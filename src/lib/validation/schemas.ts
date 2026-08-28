@@ -208,4 +208,9 @@ export const platformCommunityCreateSchema = z.object({
   ownerEmail: z.string().trim().email().max(320),
   description: z.string().trim().max(2000).optional().nullable(),
   monthlyPriceCents: z.number().int().min(0).max(10_000_000).optional(),
+  /** UTC calendar date YYYY-MM-DD. Empty/omitted = now. */
+  commissionStartsAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida")
+    .optional(),
 });

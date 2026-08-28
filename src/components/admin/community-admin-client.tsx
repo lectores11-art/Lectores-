@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, Link as LinkIcon, UserMinus, Users } from "lucide-react";
+import { Copy, CreditCard, Link as LinkIcon, UserMinus, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -76,6 +76,12 @@ export function CommunityAdminClient({
   const [membersError, setMembersError] = useState("");
   const [kickingId, setKickingId] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [stripeConnected, setStripeConnected] = useState(false);
+  const [stripeChargesEnabled, setStripeChargesEnabled] = useState(false);
+  const [loadingStripe, setLoadingStripe] = useState(true);
+  const [stripeError, setStripeError] = useState("");
+  const [connectingStripe, setConnectingStripe] = useState(false);
+  const [stripeNotice, setStripeNotice] = useState("");
   const { setSearchPlaceholder } = useDetailPanel();
 
   useEffect(() => {
@@ -85,6 +91,18 @@ export function CommunityAdminClient({
   useEffect(() => {
     loadInvites();
     loadMembers();
+    loadStripeStatus();
+    const params = new URLSearchParams(window.location.search);
+    const flag = params.get("stripe");
+    if (flag === "return") {
+      setStripeNotice(
+        "Volviste de Stripe. Si ya terminaste el formulario, los cobros se activan en unos minutos."
+      );
+    } else if (flag === "refresh") {
+      setStripeNotice(
+        "El enlace de Stripe venció. Pulsá de nuevo para continuar."
+      );
+    }
   }, [slug]);
 
   async function loadInvites() {
@@ -106,6 +124,49 @@ export function CommunityAdminClient({
       setListError("No se pudieron cargar las invitaciones.");
     } finally {
       setLoadingInvites(false);
+    }
+  }
+
+  async function loadStripeStatus() {
+    setLoadingStripe(true);
+    setStripeError("");
+    try {
+      const res = await fetch(`/api/c/${slug}/stripe/connect`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setStripeConnected(false);
+        setStripeChargesEnabled(false);
+        setStripeError(data.error || "No se pudo consultar Stripe.");
+        return;
+      }
+      setStripeConnected(Boolean(data.connected));
+      setStripeChargesEnabled(Boolean(data.chargesEnabled));
+    } catch {
+      setStripeConnected(false);
+      setStripeChargesEnabled(false);
+      setStripeError("No se pudo consultar Stripe.");
+    } finally {
+      setLoadingStripe(false);
+    }
+  }
+
+  async function startStripeConnect() {
+    setConnectingStripe(true);
+    setStripeError("");
+    try {
+      const res = await fetch(`/api/c/${slug}/stripe/connect`, {
+        method: "POST",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) {
+        setStripeError(data.error || "No se pudo abrir Stripe.");
+        setConnectingStripe(false);
+        return;
+      }
+      window.location.href = data.url as string;
+    } catch {
+      setStripeError("No se pudo abrir Stripe.");
+      setConnectingStripe(false);
     }
   }
 
@@ -246,10 +307,61 @@ export function CommunityAdminClient({
                 <p className="mt-1 text-5xl font-bold tracking-tight">{paidCount}</p>
                 <p className="mt-2 text-sm text-muted">
                   {monthlyPriceCents > 0
-                    ? `Estimado mensual: ${formatEurFromCents(estimateCents)} (antes de comisión Stripe)`
+                    ? `Estimado mensual: ${formatEurFromCents(estimateCents)} (bruto, antes de comisiones)`
                     : "Cargá el precio mensual de la comunidad para ver el estimado."}
                 </p>
               </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="hard-shadow-sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-accent" />
+              Cobros
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted">
+              Conectá tu Stripe de España. El dinero de las socias cae en tu
+              banco. Los primeros 90 días Hilo de Letras se queda una comisión que
+              baja sola (60%, 40%, 20% y después 0%), más la comisión de la
+              tarjeta.
+            </p>
+            {loadingStripe ? (
+              <p className="text-sm text-muted">Consultando Stripe…</p>
+            ) : stripeChargesEnabled ? (
+              <p className="text-sm font-medium">
+                Stripe conectado. Ya podés cobrar.
+              </p>
+            ) : stripeConnected ? (
+              <p className="text-sm text-muted">
+                Cuenta creada. Falta terminar el formulario de Stripe o que
+                activen los cobros.
+              </p>
+            ) : (
+              <p className="text-sm text-muted">
+                Todavía no hay cuenta conectada. Sin esto, las socias no pueden
+                pagar.
+              </p>
+            )}
+            {stripeNotice && (
+              <p className="text-sm text-muted">{stripeNotice}</p>
+            )}
+            {stripeError && <p className="text-sm text-red-600">{stripeError}</p>}
+            {!stripeChargesEnabled && (
+              <Button
+                type="button"
+                onClick={() => void startStripeConnect()}
+                disabled={connectingStripe || loadingStripe}
+              >
+                {connectingStripe
+                  ? "Abriendo Stripe…"
+                  : stripeConnected
+                    ? "Seguir en Stripe"
+                    : "Conectar Stripe"}
+              </Button>
             )}
           </CardContent>
         </Card>

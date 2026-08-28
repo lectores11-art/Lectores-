@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { requireApiCommunityAccess } from "@/lib/auth/helpers";
+import { stripeAccountOptions } from "@/lib/billing/stripe-connect";
 import {
   internalErrorResponse,
   parseData,
@@ -78,9 +79,11 @@ export async function DELETE(
         );
       }
       try {
-        await stripe.subscriptions.update(stripeSubId, {
-          cancel_at_period_end: true,
-        });
+        await stripe.subscriptions.update(
+          stripeSubId,
+          { cancel_at_period_end: true },
+          stripeAccountOptions(community.stripe_account_id)
+        );
       } catch (err) {
         console.error("leave: stripe cancel failed:", err);
         return NextResponse.json(

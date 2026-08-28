@@ -6,6 +6,7 @@ import { BookOpen, Calendar, GraduationCap, MessageSquare, Video } from "lucide-
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatEurFromCents } from "@/lib/admin/paid-members";
+import { communityCanCharge } from "@/lib/billing/platform-fee";
 import type { Community, Profile } from "@/lib/types/database";
 
 const FAKE_THREADS = [
@@ -129,10 +130,10 @@ function PaywallWithCheckout({
             <p className="text-sm text-muted">
               Si ya pagaste, recargá esta página. No vuelvas a pulsar pagar.
             </p>
-          ) : !community.stripe_price_id ? (
+          ) : !communityCanCharge(community) ? (
             <p className="text-sm text-muted">
-              El pago todavía no está configurado. Pedile a la administradora que
-              cargue el precio en Stripe.
+              El cobro todavía no está listo. Pedile a la administradora que
+              conecte Stripe en Admin.
             </p>
           ) : (
             <Button

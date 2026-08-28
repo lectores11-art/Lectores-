@@ -4,6 +4,11 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth/helpers";
 import { canStartCheckout } from "@/lib/auth/access";
 import {
+  communityCanCharge,
+  platformFeePercent,
+} from "@/lib/billing/platform-fee";
+import { stripeAccountOptions, checkoutIdempotencyKey } from "@/lib/billing/stripe-connect";
+import {
   internalErrorResponse,
   parseJsonBody,
   subscriptionCreateSchema,
@@ -33,7 +38,9 @@ export async function POST(request: Request) {
     const supabase = await createClient();
     const { data: community } = await supabase
       .from("communities")
-      .select("id, slug, stripe_price_id")
+      .select(
+        "id, slug, name, stripe_price_id, stripe_account_id, stripe_charges_enabled, monthly_price_cents, commission_starts_at"
+      )
       .eq("id", communityId)
       .single();
 
@@ -76,35 +83,58 @@ export async function POST(request: Request) {
       );
     }
 
-    const priceId = community.stripe_price_id;
-    if (!priceId) {
+    if (!communityCanCharge(community) || !community.stripe_account_id) {
       return NextResponse.json(
         {
           error:
-            "Esta comunidad no tiene precio de Stripe configurado. Contactá a la administradora.",
+            "El cobro no está listo. La dueña tiene que conectar Stripe en Admin.",
         },
         { status: 400 }
       );
     }
 
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      customer_email: user.email,
-      line_items: [
-        {
-          price: priceId,
-          quantity: 1,
-        },
-      ],
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/c/${community.slug}/entrar?subscribed=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/c/${community.slug}/entrar`,
-      metadata: {
-        user_id: user.id,
-        community_id: communityId,
-        membership_id: membership.id,
-      },
-    });
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    const successUrl = `${appUrl}/c/${community.slug}/entrar?subscribed=true`;
+    const cancelUrl = `${appUrl}/c/${community.slug}/entrar`;
+    const metadata = {
+      user_id: user.id,
+      community_id: communityId,
+      membership_id: membership.id,
+    };
 
+    const fee = platformFeePercent(
+      community.commission_starts_at ?? new Date().toISOString()
+    );
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode: "subscription",
+        customer_email: user.email,
+        line_items: [
+          {
+            price_data: {
+              currency: "eur",
+              unit_amount: community.monthly_price_cents,
+              recurring: { interval: "month" },
+              product_data: {
+                name: `Membresía ${community.name}`,
+              },
+            },
+            quantity: 1,
+          },
+        ],
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        metadata,
+        subscription_data: {
+          metadata,
+          application_fee_percent: fee,
+        },
+      },
+      {
+        ...stripeAccountOptions(community.stripe_account_id),
+        idempotencyKey: checkoutIdempotencyKey(membership.id),
+      }
+    );
     return NextResponse.json({ url: session.url });
   } catch (err) {
     return internalErrorResponse("POST /api/subscriptions failed:", err);
@@ -124,7 +154,7 @@ export async function DELETE(request: Request) {
 
     const { data: membership } = await supabase
       .from("memberships")
-      .select("*, subscriptions(*)")
+      .select("*, subscriptions(*), community:communities(stripe_account_id)")
       .eq("id", membershipId)
       .eq("user_id", user.id)
       .single();
@@ -137,10 +167,20 @@ export async function DELETE(request: Request) {
       ? membership.subscriptions[0]
       : membership.subscriptions;
 
+    const communityRow = Array.isArray(membership.community)
+      ? membership.community[0]
+      : membership.community;
+    const connectedAccount =
+      communityRow && typeof communityRow === "object"
+        ? (communityRow as { stripe_account_id?: string | null }).stripe_account_id
+        : null;
+
     if (stripe && subscription?.stripe_subscription_id) {
-      await stripe.subscriptions.update(subscription.stripe_subscription_id, {
-        cancel_at_period_end: true,
-      });
+      await stripe.subscriptions.update(
+        subscription.stripe_subscription_id,
+        { cancel_at_period_end: true },
+        stripeAccountOptions(connectedAccount)
+      );
     }
 
     await supabase

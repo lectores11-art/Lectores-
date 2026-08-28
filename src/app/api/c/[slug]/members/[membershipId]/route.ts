@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { isCommunityAdmin, requireApiCommunityAccess } from "@/lib/auth/helpers";
+import { stripeAccountOptions } from "@/lib/billing/stripe-connect";
 import {
   internalErrorResponse,
   membershipParamsSchema,
@@ -24,7 +25,8 @@ const stripe = process.env.STRIPE_SECRET_KEY
  * If there is a stripe_subscription_id and cancel cannot be confirmed, returns an error response.
  */
 async function cancelStripeBeforeKick(
-  membershipId: string
+  membershipId: string,
+  stripeAccountId?: string | null
 ): Promise<{ error: NextResponse } | { ok: true }> {
   const serviceClient = await createServiceClient();
   const { data: subscription, error } = await serviceClient
@@ -58,9 +60,11 @@ async function cancelStripeBeforeKick(
   }
 
   try {
-    await stripe.subscriptions.update(stripeSubId, {
-      cancel_at_period_end: true,
-    });
+    await stripe.subscriptions.update(
+      stripeSubId,
+      { cancel_at_period_end: true },
+      stripeAccountOptions(stripeAccountId)
+    );
   } catch (err) {
     console.error("Kick: Stripe cancel failed:", err);
     return {
@@ -161,7 +165,10 @@ async function deactivateMembership(
   }
 
   // Fail-closed: never soft-kick if Stripe cancel cannot be confirmed.
-  const billing = await cancelStripeBeforeKick(target.id);
+  const billing = await cancelStripeBeforeKick(
+    target.id,
+    community.stripe_account_id
+  );
   if ("error" in billing) return billing.error;
 
   // Soft-deactivate only — never delete auth.users.

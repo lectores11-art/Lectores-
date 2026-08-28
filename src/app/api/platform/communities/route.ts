@@ -3,6 +3,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getOrCreateOwnerByEmail, requireSuperAdmin } from "@/lib/auth/helpers";
 import { slugify } from "@/lib/utils";
 import { nanoid } from "nanoid";
+import { DEFAULT_INVITE_MAX_USES, DEFAULT_INVITE_TTL_DAYS } from "@/lib/invites/defaults";
 import {
   internalErrorResponse,
   parseJsonBody,
@@ -16,7 +17,8 @@ export async function POST(request: Request) {
 
     const bodyResult = await parseJsonBody(request, platformCommunityCreateSchema);
     if ("error" in bodyResult) return bodyResult.error;
-    const { name, description, ownerEmail, monthlyPriceCents } = bodyResult.data;
+    const { name, description, ownerEmail, monthlyPriceCents, commissionStartsAt } =
+      bodyResult.data;
 
     // service_role: super-admin bootstrap — create community, owner membership, and invite.
     const serviceClient = await createServiceClient();
@@ -33,6 +35,9 @@ export async function POST(request: Request) {
         owner_id: ownerId,
         monthly_price_cents: monthlyPriceCents ?? 0,
         accent_color: "#0ea5e9",
+        ...(commissionStartsAt
+          ? { commission_starts_at: `${commissionStartsAt}T00:00:00.000Z` }
+          : {}),
       })
       .select()
       .single();
@@ -54,11 +59,17 @@ export async function POST(request: Request) {
       return internalErrorResponse("Error al crear membresía:", membershipError);
     }
 
+    const expiresAt = new Date();
+    expiresAt.setUTCDate(expiresAt.getUTCDate() + DEFAULT_INVITE_TTL_DAYS);
+
     const { data: invite, error: inviteError } = await serviceClient
       .from("invites")
       .insert({
         community_id: community.id,
         created_by: ownerId,
+        token: nanoid(24),
+        max_uses: DEFAULT_INVITE_MAX_USES,
+        expires_at: expiresAt.toISOString(),
       })
       .select()
       .single();

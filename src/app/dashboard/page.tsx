@@ -121,7 +121,7 @@ function DashboardLayout({
             <div className="flex h-9 w-9 items-center justify-center rounded-md bg-band text-foreground">
               <BookOpen className="h-4 w-4" />
             </div>
-            <span className="font-bold">Lectores</span>
+            <span className="font-bold">Hilo de Letras</span>
           </div>
           <div className="flex items-center gap-4">
             <p className="text-sm font-medium">{user.full_name || user.email}</p>

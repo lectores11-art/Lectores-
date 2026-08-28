@@ -222,7 +222,7 @@ export function icsContent(event: CalendarExportEvent): string {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Lectores//Calendar//ES",
+    "PRODID:-//Hilo de Letras//Calendar//ES",
     "CALSCALE:GREGORIAN",
     "BEGIN:VEVENT",
     `UID:${escapeIcs(icsUid(event))}`,

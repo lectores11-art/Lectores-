@@ -13,9 +13,9 @@
 | LiveKit token solo si `meeting.status === "live"` | ✅ código (S5-03) |
 | Invites: `max_uses=200`, `expires_at=+30d` por default | ✅ código |
 | Rate limit invite lookup (30/min/IP) y join (60/min/IP) | ✅ código (in-memory / por isolate) |
-| Checkout: precio solo desde `communities.stripe_price_id`; exige membership pending/cancelled/expired | ✅ código |
+| Checkout: precio desde Connect (`monthly_price_cents` + cuenta conectada); exige membership pending/cancelled/expired | ✅ código |
 | Webhook checkout: activa membresía + `joined_at`; no reactiva si `rejoin_blocked` | ✅ código |
-| Migraciones 006–012 + buckets | ⏳ aplicar `012` en Supabase |
+| Migraciones 006–014 + buckets | ⏳ aplicar `012`, `013` y `014` en Supabase |
 | Auth Redirect URLs + Confirm email OFF para el live | ⏳ Dashboard |
 | Leaked passwords (HaveIBeenPwned) | ⏸ requiere plan Pro — diferido |
 | SMTP real (Resend/etc.) | ⏳ humano |
@@ -73,7 +73,8 @@ Ver `.env.local.example`.
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | sí | publishable |
 | `SUPABASE_SERVICE_ROLE_KEY` | **no** | solo servidor |
 | `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | **no** | |
-| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | **no** | |
+| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | **no** | plataforma; Connect usa `Stripe-Account`, no keys de cada dueña |
+| `CRON_SECRET` | **no** | Bearer del cron `GET /api/cron/platform-fees` |
 
 Checklist: en Vercel, confirmar que `SUPABASE_SERVICE_ROLE_KEY` no tiene prefijo `NEXT_PUBLIC_`.
 
@@ -89,6 +90,8 @@ siempre usa anon key + cookies (RLS activo). No hay escape hatch por env.
 | `GET /api/invites/[token]` | Lookup de invite por token tras endurecer SELECT de invites |
 | `POST /api/platform/communities` | Bootstrap de comunidad + membership + invite (super-admin) |
 | `POST /api/webhooks/stripe` | Webhooks sin sesión de usuario |
+| `GET/POST /api/c/[slug]/stripe/connect` | Admin: persistir `acct_...` y `charges_enabled` |
+| `GET/POST /api/cron/platform-fees` | Cron: actualizar `application_fee_percent` en Stripe Connect |
 | `POST /api/c/[slug]/books` (upload) | Tras check de admin: write a storage/DB sin pelear storage RLS |
 | `GET /api/c/[slug]/books/[bookId]/pdf` | Tras check de membership: mint signed URL corta |
 | `getOrCreateOwnerByEmail` | `auth.admin` + lookup cross-user en platform onboarding |
@@ -145,12 +148,17 @@ invitar dueñas y reset de contraseña; no es la puerta de las 150 socias.
 
 ### Checkout Stripe
 
-`POST /api/subscriptions` acepta solo `communityId`. El `price` de Checkout sale
-de `communities.stripe_price_id` (nunca del body del cliente). Requiere membership
-**`pending` / `cancelled` / `expired`** y no `rejoin_blocked`; sin precio → 400.
-El webhook de `checkout.session.completed` activa la membresía y setea `joined_at`;
-también se niega a reactivar si `rejoin_blocked`. Cobro fallido o suscripción
-borrada vuelve a bloquear el acceso (`pending` / `cancelled`).
+`POST /api/subscriptions` acepta solo `communityId`. El precio de Checkout sale
+de la comunidad Connect: `price_data` en EUR desde `monthly_price_cents` (nunca
+del body) más `application_fee_percent` según la edad del club. Un
+`stripe_price_id` de plataforma **no** cobra. Requiere membership
+**`pending` / `cancelled` / `expired`** y no `rejoin_blocked`;
+sin cobro listo → 400. El webhook de `checkout.session.completed` activa la
+membresía y setea `joined_at`; también se niega a reactivar si `rejoin_blocked`.
+Cobro fallido o suscripción borrada vuelve a bloquear el acceso
+(`pending` / `cancelled`). `account.updated` sincroniza `stripe_charges_enabled`.
+Trigger `protect_community_connect_fields`: la dueña no puede reescribir
+`commission_starts_at` / `stripe_account_id` / `stripe_charges_enabled` con el JWT.
 
 ### Cambio de contraseña en Settings
 

@@ -1,6 +1,6 @@
 # Matriz RLS — rol × tabla × operación (S2-05)
 
-Fuente: `supabase/migrations/001_initial_schema.sql` + `006_rls_hardening.sql` + `012_invite_pending_payment.sql`.  
+Fuente: `supabase/migrations/001_initial_schema.sql` + `006_rls_hardening.sql` + `012_invite_pending_payment.sql` + `013_stripe_connect.sql` + `014_protect_connect_fields.sql`.  
 Aplicar migraciones en el proyecto Supabase; el agente no ejecuta SQL en prod.
 
 Leyenda: ✅ permitido · ❌ denegado · 🔒 solo vía `service_role` / SECURITY DEFINER RPC
@@ -45,3 +45,7 @@ Leyenda: ✅ permitido · ❌ denegado · 🔒 solo vía `service_role` / SECURI
 | `lookup_invite_by_token(text)` | anon, authenticated | disponible para clients; GET API usa service_role |
 | `accept_invite(text)` | authenticated | `POST /api/invites/join` → membership `pending` (012) |
 | `is_community_paywall_visitor(uuid)` | authenticated | SELECT de `communities` para el overlay de pago; no abre foro/libros |
+
+## 013 — Stripe Connect
+
+Columnas en `communities`: `stripe_account_id`, `stripe_charges_enabled`, `commission_starts_at`. Mismas policies SELECT. Escritura de cuenta via `service_role` en `/api/c/[slug]/stripe/connect`. Trigger `protect_community_connect_fields` (014): el JWT `authenticated` (dueña incluida) no puede cambiar esas tres columnas. `UNIQUE (stripe_account_id)`.

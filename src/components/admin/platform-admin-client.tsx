@@ -14,6 +14,7 @@ export function PlatformAdminClient() {
   const [communities, setCommunities] = useState<(Community & { invites?: { token: string }[] })[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [lastInviteUrl, setLastInviteUrl] = useState("");
+  const [lastOwnerEmail, setLastOwnerEmail] = useState("");
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
 
@@ -41,7 +42,7 @@ export function PlatformAdminClient() {
     const name = String(form.get("name") || "").trim();
     const ownerEmail = String(form.get("ownerEmail") || "").trim();
     const description = String(form.get("description") || "").trim();
-    const priceUsd = Number(form.get("price"));
+    const priceEur = Number(form.get("price"));
 
     if (!name) {
       setError("El nombre es obligatorio");
@@ -53,7 +54,7 @@ export function PlatformAdminClient() {
       setCreating(false);
       return;
     }
-    if (!Number.isFinite(priceUsd) || priceUsd < 0) {
+    if (!Number.isFinite(priceEur) || priceEur < 0) {
       setError("El precio debe ser un número ≥ 0");
       setCreating(false);
       return;
@@ -66,7 +67,10 @@ export function PlatformAdminClient() {
         name,
         description: description || null,
         ownerEmail,
-        monthlyPriceCents: Math.round(priceUsd * 100),
+        monthlyPriceCents: Math.round(priceEur * 100),
+        ...(String(form.get("commissionStartsAt") || "").trim()
+          ? { commissionStartsAt: String(form.get("commissionStartsAt")).trim() }
+          : {}),
       }),
     });
 
@@ -79,6 +83,7 @@ export function PlatformAdminClient() {
 
     if (data.community && data.invite) {
       setLastInviteUrl(`${window.location.origin}/join/${data.invite.token}`);
+      setLastOwnerEmail(ownerEmail);
       setShowForm(false);
       await refreshCommunities();
     }
@@ -93,7 +98,7 @@ export function PlatformAdminClient() {
             <div className="flex h-9 w-9 items-center justify-center rounded-md bg-band text-foreground">
               <BookOpen className="h-4 w-4" />
             </div>
-            <span className="font-bold">Lectores · Super Admin</span>
+            <span className="font-bold">Hilo de Letras · Super Admin</span>
           </div>
           <Link href="/dashboard" className="text-sm font-semibold text-foreground hover:text-accent">
             Volver
@@ -112,18 +117,30 @@ export function PlatformAdminClient() {
 
         {lastInviteUrl && (
           <Card className="mb-6 border-border bg-accent-light hard-shadow-sm">
-            <CardContent className="pt-6">
-              <p className="mb-2 text-sm font-bold">
-                Comunidad creada. Link de invitación:
-              </p>
-              <div className="flex gap-2">
-                <Input value={lastInviteUrl} readOnly />
-                <Button
-                  variant="outline"
-                  onClick={() => navigator.clipboard.writeText(lastInviteUrl)}
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
+            <CardContent className="space-y-4 pt-6">
+              <div>
+                <p className="mb-1 text-sm font-bold">Dueña</p>
+                <p className="text-sm text-muted">
+                  No usa este link. Entra en{" "}
+                  <code className="border border-border bg-background px-1">
+                    /login
+                  </code>{" "}
+                  con {lastOwnerEmail || "el email que pusiste"}.
+                </p>
+              </div>
+              <div>
+                <p className="mb-2 text-sm font-bold">
+                  Link para socias (este sí se pega en el chat)
+                </p>
+                <div className="flex gap-2">
+                  <Input value={lastInviteUrl} readOnly />
+                  <Button
+                    variant="outline"
+                    onClick={() => navigator.clipboard.writeText(lastInviteUrl)}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -148,13 +165,22 @@ export function PlatformAdminClient() {
                   <Label>Email de la dueña (influencer)</Label>
                   <Input name="ownerEmail" type="email" required placeholder="duena@ejemplo.com" />
                   <p className="text-xs text-muted">
-                    Se creará automáticamente en Supabase. Si falla, ejecutá{" "}
-                    <code className="border border-border bg-background px-1">002_fix_auth_trigger.sql</code> en Supabase.
+                    Entra por /login con este email. No es un link de admin.
+                    Si es una cuenta nueva, Supabase le manda mail para definir
+                    contraseña. Para una prueba rápida, usá tu propio email.
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Precio mensual (USD)</Label>
+                  <Label>Precio mensual (EUR)</Label>
                   <Input name="price" type="number" min="0" step="0.01" defaultValue="29" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Día D de comisión (opcional)</Label>
+                  <Input name="commissionStartsAt" type="date" />
+                  <p className="text-xs text-muted">
+                    Si el club se crea antes del live, poné el día que pegan el
+                    link. Vacío = el reloj arranca ahora.
+                  </p>
                 </div>
                 {error && <p className="text-sm text-red-600">{error}</p>}
                 <Button type="submit" disabled={creating}>

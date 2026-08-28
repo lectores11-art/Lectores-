@@ -7,6 +7,10 @@ import {
   membershipStatusAfterStripeEvent,
   shouldActivateFromCheckout,
 } from "@/lib/billing/stripe-access";
+import {
+  connectedAccountFromEvent,
+  stripeAccountOptions,
+} from "@/lib/billing/stripe-connect";
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY)
@@ -195,6 +199,8 @@ export async function POST(request: Request) {
 
   // service_role: Stripe webhooks have no user session. Paid subscription opens access.
   const serviceClient = await createServiceClient();
+  const connectedAccount = connectedAccountFromEvent(event);
+  const accountOpts = stripeAccountOptions(connectedAccount);
 
   try {
     switch (event.type) {
@@ -276,7 +282,11 @@ export async function POST(request: Request) {
             }
 
             if (stripeSubscriptionId) {
-              const sub = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+              const sub = await stripe.subscriptions.retrieve(
+                stripeSubscriptionId,
+                {},
+                accountOpts
+              );
               const synced = await syncSubscriptionFromStripe(serviceClient, sub, {
                 stripe_customer_id: session.customer as string,
               });
@@ -364,6 +374,23 @@ export async function POST(request: Request) {
             membershipStatusAfterStripeEvent({ type: "invoice.payment_failed" })
           );
           if (!locked.ok) {
+            return NextResponse.json({ error: "Sync falló" }, { status: 500 });
+          }
+        }
+        break;
+      }
+
+      case "account.updated": {
+        const account = event.data.object as Stripe.Account;
+        if (account.id) {
+          const { error } = await serviceClient
+            .from("communities")
+            .update({
+              stripe_charges_enabled: Boolean(account.charges_enabled),
+            })
+            .eq("stripe_account_id", account.id);
+          if (error) {
+            console.error("Stripe webhook: account.updated sync failed:", error);
             return NextResponse.json({ error: "Sync falló" }, { status: 500 });
           }
         }

@@ -56,7 +56,7 @@ export function IconRail({ community, isAdmin }: IconRailProps) {
         <Link
           href="/dashboard"
           className="flex h-11 w-11 items-center justify-center rounded-md bg-band text-foreground"
-          title="Lectores"
+          title="Hilo de Letras"
         >
           <BookOpen className="h-5 w-5" />
         </Link>

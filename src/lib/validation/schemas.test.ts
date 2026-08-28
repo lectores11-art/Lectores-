@@ -277,6 +277,16 @@ describe("platformCommunityCreateSchema", () => {
     });
   });
 
+  it("accepts an optional commission start date", () => {
+    expect(
+      platformCommunityCreateSchema.parse({
+        name: "Club",
+        ownerEmail: "owner@example.com",
+        commissionStartsAt: "2026-10-01",
+      })
+    ).toMatchObject({ commissionStartsAt: "2026-10-01" });
+  });
+
   it("rejects invalid email or negative price", () => {
     expect(
       platformCommunityCreateSchema.safeParse({

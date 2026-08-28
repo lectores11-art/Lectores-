@@ -24,6 +24,9 @@ export interface Community {
   owner_id: string;
   is_active: boolean;
   stripe_price_id: string | null;
+  stripe_account_id: string | null;
+  stripe_charges_enabled: boolean;
+  commission_starts_at: string;
   monthly_price_cents: number;
   created_at: string;
   updated_at: string;

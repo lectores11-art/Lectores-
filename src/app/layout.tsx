@@ -13,8 +13,8 @@ const literata = Literata({
 });
 
 export const metadata: Metadata = {
-  title: "Lectores - Comunidades de lectura",
-  description: "Plataforma privada para comunidades de lectores",
+  title: "Hilo de Letras - Comunidades de lectura",
+  description: "Plataforma privada para comunidades de lectura",
 };
 
 export default function RootLayout({

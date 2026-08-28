@@ -55,6 +55,7 @@ export default function LoginPage() {
           <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-md bg-band">
             <BookOpen className="h-6 w-6" />
           </div>
+          <p className="mb-1 text-sm font-bold">Hilo de Letras</p>
           <CardTitle>Iniciar sesión</CardTitle>
           <CardDescription>Accedé a tu comunidad de lectura</CardDescription>
         </CardHeader>
