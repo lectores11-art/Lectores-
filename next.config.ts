@@ -83,7 +83,7 @@ const nextConfig: NextConfig = {
   // pdf-parse pulls in pdfjs-dist; keep both out of the Turbopack bundle so the
   // worker resolves from node_modules at runtime (see Notion FIX-PDF task).
   // @napi-rs/canvas is a native addon used to polyfill DOMMatrix before pdfjs loads.
-  serverExternalPackages: ["pdf-parse", "pdfjs-dist", "@napi-rs/canvas"],
+  serverExternalPackages: ["pdf-parse", "pdfjs-dist", "@napi-rs/canvas", "stripe"],
   // NFT traces pdf.mjs via pdf-parse but misses the dynamically imported worker
   // (`import(this.workerSrc)`), which breaks upload on Vercel `/var/task/`.
   outputFileTracingIncludes: {

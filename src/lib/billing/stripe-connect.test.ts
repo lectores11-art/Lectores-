@@ -3,6 +3,7 @@ import {
   checkoutIdempotencyKey,
   connectAccountIdempotencyKey,
   connectedAccountFromEvent,
+  publicConnectError,
   stripeAccountOptions,
 } from "./stripe-connect";
 
@@ -32,5 +33,26 @@ describe("idempotency keys", () => {
 
   it("scopes Connect account creation to the community", () => {
     expect(connectAccountIdempotencyKey("com-1")).toBe("connect-account:com-1");
+  });
+});
+
+describe("publicConnectError", () => {
+  it("maps a missing Connect column to the 013 migration", () => {
+    expect(
+      publicConnectError({
+        message: 'column "stripe_account_id" does not exist',
+        code: "42703",
+      })
+    ).toBe(
+      "Falta la migración 013 en Supabase. Ejecutá 013 y 014 en el SQL Editor."
+    );
+  });
+
+  it("passes Stripe API messages through", () => {
+    expect(
+      publicConnectError({
+        raw: { message: "This application is not setup for Connect." },
+      })
+    ).toBe("This application is not setup for Connect.");
   });
 });

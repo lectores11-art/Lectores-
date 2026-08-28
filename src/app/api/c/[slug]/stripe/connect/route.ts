@@ -1,17 +1,33 @@
 import { NextResponse } from "next/server";
-import Stripe from "stripe";
 import { createServiceClient } from "@/lib/supabase/server";
 import {
   isCommunityAdmin,
   requireApiCommunityAccess,
 } from "@/lib/auth/helpers";
-import { connectAccountIdempotencyKey } from "@/lib/billing/stripe-connect";
+import {
+  connectAccountIdempotencyKey,
+  publicConnectError,
+} from "@/lib/billing/stripe-connect";
 import { getAppUrl } from "@/lib/app-url";
-import { internalErrorResponse, parseData, slugParamsSchema } from "@/lib/validation";
+import { parseData, slugParamsSchema } from "@/lib/validation";
 
-const stripe = process.env.STRIPE_SECRET_KEY
-  ? new Stripe(process.env.STRIPE_SECRET_KEY)
-  : null;
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+async function getStripe() {
+  const key = process.env.STRIPE_SECRET_KEY?.trim();
+  if (!key) return null;
+  const { default: Stripe } = await import("stripe");
+  return new Stripe(key);
+}
+
+function connectFailure(err: unknown): NextResponse {
+  console.error("stripe/connect:", err);
+  return NextResponse.json(
+    { error: publicConnectError(err) },
+    { status: 500 }
+  );
+}
 
 async function requireAdmin(slug: string) {
   const access = await requireApiCommunityAccess(slug);
@@ -38,34 +54,12 @@ export async function GET(
     if (auth instanceof NextResponse) return auth;
     const { community } = auth;
 
-    if (!stripe) {
-      return NextResponse.json(
-        { error: "Stripe no configurado. Definí STRIPE_SECRET_KEY." },
-        { status: 503 }
-      );
-    }
-
-    if (!community.stripe_account_id) {
-      return NextResponse.json({
-        connected: false,
-        chargesEnabled: false,
-      });
-    }
-
-    const account = await stripe.accounts.retrieve(community.stripe_account_id);
-    const chargesEnabled = Boolean(account.charges_enabled);
-    const service = await createServiceClient();
-    await service
-      .from("communities")
-      .update({ stripe_charges_enabled: chargesEnabled })
-      .eq("id", community.id);
-
     return NextResponse.json({
-      connected: true,
-      chargesEnabled,
+      connected: Boolean(community.stripe_account_id),
+      chargesEnabled: Boolean(community.stripe_charges_enabled),
     });
   } catch (err) {
-    return internalErrorResponse("GET /api/c/[slug]/stripe/connect failed:", err);
+    return connectFailure(err);
   }
 }
 
@@ -80,6 +74,7 @@ export async function POST(
     if (auth instanceof NextResponse) return auth;
     const { community } = auth;
 
+    const stripe = await getStripe();
     if (!stripe) {
       return NextResponse.json(
         { error: "Stripe no configurado. Definí STRIPE_SECRET_KEY." },
@@ -120,7 +115,7 @@ export async function POST(
         .update({ stripe_account_id: accountId })
         .eq("id", community.id);
       if (error) {
-        return internalErrorResponse("Error al guardar la cuenta Stripe:", error);
+        return connectFailure(error);
       }
     }
 
@@ -133,9 +128,6 @@ export async function POST(
 
     return NextResponse.json({ url: link.url });
   } catch (err) {
-    return internalErrorResponse(
-      "POST /api/c/[slug]/stripe/connect failed:",
-      err
-    );
+    return connectFailure(err);
   }
 }
