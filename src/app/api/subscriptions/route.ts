@@ -8,6 +8,7 @@ import {
   platformFeePercent,
 } from "@/lib/billing/platform-fee";
 import { stripeAccountOptions, checkoutIdempotencyKey } from "@/lib/billing/stripe-connect";
+import { getAppUrl } from "@/lib/app-url";
 import {
   internalErrorResponse,
   parseJsonBody,
@@ -93,7 +94,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    const appUrl = getAppUrl();
+    if (!appUrl) {
+      return NextResponse.json(
+        { error: "Falta NEXT_PUBLIC_APP_URL." },
+        { status: 500 }
+      );
+    }
     const successUrl = `${appUrl}/c/${community.slug}/entrar?subscribed=true`;
     const cancelUrl = `${appUrl}/c/${community.slug}/entrar`;
     const metadata = {

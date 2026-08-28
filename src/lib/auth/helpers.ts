@@ -3,6 +3,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Community, Membership, Profile } from "@/lib/types/database";
 import { hasActiveCommunityAccess } from "@/lib/auth/access";
+import { getAppUrl } from "@/lib/app-url";
 
 export { hasActiveCommunityAccess, shouldSeePaywall } from "@/lib/auth/access";
 
@@ -61,7 +62,7 @@ async function ensureProfile(
 // with a link to set her password. The email template must point to
 // /auth/confirm?token_hash=...&type=invite&next=/onboarding/set-password
 async function inviteOwnerByEmail(serviceClient: SupabaseClient, email: string) {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const appUrl = getAppUrl() || "http://localhost:3000";
 
   const { data, error } = await serviceClient.auth.admin.inviteUserByEmail(email, {
     redirectTo: `${appUrl}/auth/confirm?next=/onboarding/set-password`,

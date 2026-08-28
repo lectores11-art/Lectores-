@@ -6,6 +6,7 @@ import {
   requireApiCommunityAccess,
 } from "@/lib/auth/helpers";
 import { connectAccountIdempotencyKey } from "@/lib/billing/stripe-connect";
+import { getAppUrl } from "@/lib/app-url";
 import { internalErrorResponse, parseData, slugParamsSchema } from "@/lib/validation";
 
 const stripe = process.env.STRIPE_SECRET_KEY
@@ -86,7 +87,7 @@ export async function POST(
       );
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    const appUrl = getAppUrl();
     if (!appUrl) {
       return NextResponse.json(
         { error: "Falta NEXT_PUBLIC_APP_URL." },
