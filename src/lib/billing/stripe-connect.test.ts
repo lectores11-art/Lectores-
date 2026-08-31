@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   checkoutIdempotencyKey,
   connectAccountIdempotencyKey,
+  connectV2AccountCreateParams,
+  connectV2AccountLinkCreateParams,
   connectedAccountFromEvent,
   publicConnectError,
   stripeAccountOptions,
@@ -32,7 +34,9 @@ describe("idempotency keys", () => {
   });
 
   it("scopes Connect account creation to the community", () => {
-    expect(connectAccountIdempotencyKey("com-1")).toBe("connect-account:com-1");
+    expect(connectAccountIdempotencyKey("com-1")).toBe(
+      "connect-account-v2:com-1"
+    );
   });
 });
 
@@ -54,5 +58,51 @@ describe("publicConnectError", () => {
         raw: { message: "This application is not setup for Connect." },
       })
     ).toBe("This application is not setup for Connect.");
+  });
+
+  it("maps Accounts v1 rejection to a short admin message", () => {
+    expect(
+      publicConnectError({
+        message:
+          "Stripe no longer recommends Accounts v1 for new Connect integrations. Create connected accounts with POST /v2/core/accounts instead.",
+      })
+    ).toBe(
+      "Stripe ya no crea cuentas Connect con la API vieja. Recargá y volvé a pulsar Conectar Stripe."
+    );
+  });
+});
+
+describe("connectV2AccountCreateParams", () => {
+  it("creates a Standard-equivalent merchant account in Spain", () => {
+    const params = connectV2AccountCreateParams({
+      communityId: "club-1",
+      communityName: "Club Borges",
+      ownerEmail: "duena@example.com",
+    });
+    expect(params.dashboard).toBe("full");
+    expect(params.identity).toEqual({
+      country: "es",
+      entity_type: "individual",
+    });
+    expect(params.defaults?.currency).toBe("eur");
+    expect(params.configuration?.merchant?.capabilities?.card_payments).toEqual({
+      requested: true,
+    });
+    expect(params.metadata).toEqual({ community_id: "club-1" });
+  });
+});
+
+describe("connectV2AccountLinkCreateParams", () => {
+  it("onboards the merchant configuration", () => {
+    const params = connectV2AccountLinkCreateParams({
+      accountId: "acct_1",
+      refreshUrl: "https://app.example/refresh",
+      returnUrl: "https://app.example/return",
+    });
+    expect(params.account).toBe("acct_1");
+    expect(params.use_case.type).toBe("account_onboarding");
+    expect(params.use_case.account_onboarding?.configurations).toEqual([
+      "merchant",
+    ]);
   });
 });

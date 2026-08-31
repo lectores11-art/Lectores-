@@ -6,6 +6,8 @@ import {
 } from "@/lib/auth/helpers";
 import {
   connectAccountIdempotencyKey,
+  connectV2AccountCreateParams,
+  connectV2AccountLinkCreateParams,
   publicConnectError,
 } from "@/lib/billing/stripe-connect";
 import { getAppUrl } from "@/lib/app-url";
@@ -100,13 +102,12 @@ export async function POST(
         .eq("id", community.owner_id)
         .maybeSingle();
 
-      const account = await stripe.accounts.create(
-        {
-          type: "standard",
-          country: "ES",
-          email: owner?.email ?? undefined,
-          metadata: { community_id: community.id },
-        },
+      const account = await stripe.v2.core.accounts.create(
+        connectV2AccountCreateParams({
+          communityId: community.id,
+          communityName: community.name,
+          ownerEmail: owner?.email,
+        }),
         { idempotencyKey: connectAccountIdempotencyKey(community.id) }
       );
       accountId = account.id;
@@ -119,12 +120,13 @@ export async function POST(
       }
     }
 
-    const link = await stripe.accountLinks.create({
-      account: accountId,
-      refresh_url: `${appUrl}/c/${community.slug}/admin?stripe=refresh`,
-      return_url: `${appUrl}/c/${community.slug}/admin?stripe=return`,
-      type: "account_onboarding",
-    });
+    const link = await stripe.v2.core.accountLinks.create(
+      connectV2AccountLinkCreateParams({
+        accountId,
+        refreshUrl: `${appUrl}/c/${community.slug}/admin?stripe=refresh`,
+        returnUrl: `${appUrl}/c/${community.slug}/admin?stripe=return`,
+      })
+    );
 
     return NextResponse.json({ url: link.url });
   } catch (err) {
