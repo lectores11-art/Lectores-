@@ -34,8 +34,8 @@ describe("idempotency keys", () => {
   });
 
   it("scopes Connect account creation to the community", () => {
-    expect(connectAccountIdempotencyKey("com-1")).toBe(
-      "connect-account-v2:com-1"
+    expect(connectAccountIdempotencyKey("com-1", "2026-09-02T12:00:00.000Z")).toBe(
+      "connect-account-v2:com-1:2026-09-02T12:00:00.000Z"
     );
   });
 });

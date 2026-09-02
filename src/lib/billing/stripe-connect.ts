@@ -15,8 +15,11 @@ export function checkoutIdempotencyKey(membershipId: string): string {
   return `checkout:${membershipId}`;
 }
 
-export function connectAccountIdempotencyKey(communityId: string): string {
-  return `connect-account-v2:${communityId}`;
+export function connectAccountIdempotencyKey(
+  communityId: string,
+  generation: string
+): string {
+  return `connect-account-v2:${communityId}:${generation}`;
 }
 
 /** Standard Connect (dueña cobra, Stripe dashboard completo) via Accounts v2. */

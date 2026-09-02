@@ -81,6 +81,7 @@ export function CommunityAdminClient({
   const [loadingStripe, setLoadingStripe] = useState(true);
   const [stripeError, setStripeError] = useState("");
   const [connectingStripe, setConnectingStripe] = useState(false);
+  const [resettingStripe, setResettingStripe] = useState(false);
   const [stripeNotice, setStripeNotice] = useState("");
   const { setSearchPlaceholder } = useDetailPanel();
 
@@ -150,23 +151,35 @@ export function CommunityAdminClient({
     }
   }
 
-  async function startStripeConnect() {
-    setConnectingStripe(true);
+  async function startStripeConnect(reset = false) {
+    if (reset) {
+      const ok = window.confirm(
+        "¿Empezar de nuevo? Se suelta la cuenta de Stripe a medias y se abre un onboarding nuevo. Usá un correo que no tenga ya Stripe."
+      );
+      if (!ok) return;
+      setResettingStripe(true);
+    } else {
+      setConnectingStripe(true);
+    }
     setStripeError("");
     try {
       const res = await fetch(`/api/c/${slug}/stripe/connect`, {
         method: "POST",
+        headers: reset ? { "Content-Type": "application/json" } : undefined,
+        body: reset ? JSON.stringify({ reset: true }) : undefined,
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.url) {
         setStripeError(data.error || "No se pudo abrir Stripe.");
         setConnectingStripe(false);
+        setResettingStripe(false);
         return;
       }
       window.location.href = data.url as string;
     } catch {
       setStripeError("No se pudo abrir Stripe.");
       setConnectingStripe(false);
+      setResettingStripe(false);
     }
   }
 
@@ -351,17 +364,29 @@ export function CommunityAdminClient({
             )}
             {stripeError && <p className="text-sm text-red-600">{stripeError}</p>}
             {!stripeChargesEnabled && (
-              <Button
-                type="button"
-                onClick={() => void startStripeConnect()}
-                disabled={connectingStripe || loadingStripe}
-              >
-                {connectingStripe
-                  ? "Abriendo Stripe…"
-                  : stripeConnected
-                    ? "Seguir en Stripe"
-                    : "Conectar Stripe"}
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  onClick={() => void startStripeConnect(false)}
+                  disabled={connectingStripe || resettingStripe || loadingStripe}
+                >
+                  {connectingStripe
+                    ? "Abriendo Stripe…"
+                    : stripeConnected
+                      ? "Seguir en Stripe"
+                      : "Conectar Stripe"}
+                </Button>
+                {stripeConnected && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void startStripeConnect(true)}
+                    disabled={connectingStripe || resettingStripe || loadingStripe}
+                  >
+                    {resettingStripe ? "Reiniciando…" : "Empezar de nuevo"}
+                  </Button>
+                )}
+              </div>
             )}
           </CardContent>
         </Card>

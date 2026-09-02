@@ -93,7 +93,25 @@ export async function POST(
     }
 
     const service = await createServiceClient();
+    const body = await _request.json().catch(() => ({}));
+    const reset = Boolean(
+      body && typeof body === "object" && "reset" in body && body.reset === true
+    );
+
     let accountId = community.stripe_account_id;
+    if (reset && accountId) {
+      const { error: clearError } = await service
+        .from("communities")
+        .update({
+          stripe_account_id: null,
+          stripe_charges_enabled: false,
+        })
+        .eq("id", community.id);
+      if (clearError) {
+        return connectFailure(clearError);
+      }
+      accountId = null;
+    }
 
     if (!accountId) {
       const { data: owner } = await service
@@ -102,13 +120,14 @@ export async function POST(
         .eq("id", community.owner_id)
         .maybeSingle();
 
+      const generation = new Date().toISOString();
       const account = await stripe.v2.core.accounts.create(
         connectV2AccountCreateParams({
           communityId: community.id,
           communityName: community.name,
           ownerEmail: owner?.email,
         }),
-        { idempotencyKey: connectAccountIdempotencyKey(community.id) }
+        { idempotencyKey: connectAccountIdempotencyKey(community.id, generation) }
       );
       accountId = account.id;
       const { error } = await service
