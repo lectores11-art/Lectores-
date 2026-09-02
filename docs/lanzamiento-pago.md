@@ -28,7 +28,7 @@ Flujo del día D: la clienta pega **un** link en el chat. Cada persona pone nomb
 4. **Vercel:** además de las keys Stripe, `STRIPE_WEBHOOK_SECRET` y `CRON_SECRET` (el cron diario de comisión manda `Authorization: Bearer CRON_SECRET`).
 5. **Dueña en Admin → Cobros → Conectar Stripe.** Completa KYC + IBAN de España. El botón de pagar en el paywall aparece cuando `charges_enabled` es true. El precio sale de `monthly_price_cents` (EUR). Un `price_...` viejo de la plataforma **no** cobra: hay que conectar Stripe.
 6. **Un solo invite** con tope 200 usos: generar un link **nuevo** en Admin (un row viejo de 25 usos no se actualiza solo). Copiar ese URL al chat.
-7. Prueba: 2–3 tarjetas de test en el Stripe **conectado**, luego 1 pago real. Camino: join → overlay → Stripe de ella → recarga → foro. Un segundo clic en pagar no debe abrir otra suscripción.
+7. Prueba con alguien de España: ver **`docs/prueba-pagos-connect.md`**. Camino: Connect KYC → invite nuevo (0/200) → paywall → `4242…` → foro. Un segundo clic en pagar no debe abrir otra suscripción.
 
 ## Comisión de plataforma
 
