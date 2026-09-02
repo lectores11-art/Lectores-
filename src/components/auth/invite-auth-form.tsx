@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { mapAuthErrorMessage } from "@/lib/auth/map-auth-error";
+import { mapAuthError } from "@/lib/auth/map-auth-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -55,7 +55,7 @@ export function InviteAuthForm({
       });
 
       if (authError) {
-        setError(mapAuthErrorMessage(authError.message));
+        setError(mapAuthError(authError));
         setLoading(false);
         return;
       }
@@ -97,7 +97,7 @@ export function InviteAuthForm({
     });
 
     if (authError) {
-      const mapped = mapAuthErrorMessage(authError.message);
+      const mapped = mapAuthError(authError);
       setError(mapped);
       if (/confirm/i.test(mapped) || /email not confirmed/i.test(authError.message)) {
         setConfirmPending(true);
@@ -129,7 +129,7 @@ export function InviteAuthForm({
         options: { emailRedirectTo: redirectUrl() },
       });
       if (resendError) {
-        setResendMessage(mapAuthErrorMessage(resendError.message));
+        setResendMessage(mapAuthError(resendError));
         return;
       }
       setResendLocked(true);

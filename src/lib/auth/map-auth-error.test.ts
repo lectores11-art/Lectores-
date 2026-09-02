@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapAuthErrorMessage } from "./map-auth-error";
+import { mapAuthError, mapAuthErrorMessage } from "./map-auth-error";
 
 describe("mapAuthErrorMessage", () => {
   it("maps common Supabase English errors", () => {
@@ -8,6 +8,15 @@ describe("mapAuthErrorMessage", () => {
     );
     expect(mapAuthErrorMessage("Email not confirmed")).toMatch(/confirm/i);
     expect(mapAuthErrorMessage("User already registered")).toMatch(/registrado/i);
+    expect(mapAuthErrorMessage("Database error saving new user")).toMatch(
+      /iniciá sesión/i
+    );
+  });
+
+  it("maps Auth error codes", () => {
+    expect(mapAuthError({ code: "user_already_exists", message: "foo" })).toMatch(
+      /registrado/i
+    );
   });
 
   it("falls back for unknown English messages", () => {

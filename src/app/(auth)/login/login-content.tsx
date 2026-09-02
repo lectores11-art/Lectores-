@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { BookOpen } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { mapAuthErrorMessage } from "@/lib/auth/map-auth-error";
+import { mapAuthError } from "@/lib/auth/map-auth-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,7 +36,7 @@ export default function LoginPage() {
       });
 
       if (authError) {
-        setError(mapAuthErrorMessage(authError.message));
+        setError(mapAuthError(authError));
         return;
       }
 

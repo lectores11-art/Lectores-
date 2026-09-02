@@ -20,11 +20,11 @@ export function mapAuthErrorMessage(
       es: "Tenés que confirmar tu email antes de iniciar sesión.",
     },
     {
-      test: /user already registered|already been registered/,
+      test: /user already registered|already been registered|already exists/,
       es: "Este email ya está registrado. Probá iniciar sesión.",
     },
     {
-      test: /password should be at least|password.*at least/,
+      test: /password should be at least|password.*at least|weak_password/,
       es: "La contraseña es demasiado corta.",
     },
     {
@@ -32,7 +32,7 @@ export function mapAuthErrorMessage(
       es: "El email no es válido.",
     },
     {
-      test: /rate limit|too many requests|over_email_send_rate_limit/,
+      test: /rate limit|too many requests|over_email_send_rate_limit|over_request_rate_limit/,
       es: "Demasiados intentos. Esperá un momento e intentá de nuevo.",
     },
     {
@@ -51,6 +51,14 @@ export function mapAuthErrorMessage(
       test: /error sending|smtp|unable to send|email.*not sent/,
       es: "No se pudo enviar el correo. Revisá la configuración SMTP de Supabase Auth.",
     },
+    {
+      test: /database error saving new user|database error/,
+      es: "No se pudo crear la cuenta. Si este email ya existe, iniciá sesión.",
+    },
+    {
+      test: /signup.?disabled|signups not allowed/,
+      es: "El registro está deshabilitado en Auth.",
+    },
   ];
 
   for (const rule of rules) {
@@ -63,4 +71,29 @@ export function mapAuthErrorMessage(
   }
 
   return fallback;
+}
+
+const AUTH_CODE_MESSAGES: Record<string, string> = {
+  user_already_exists: "Este email ya está registrado. Probá iniciar sesión.",
+  email_exists: "Este email ya está registrado. Probá iniciar sesión.",
+  identity_already_exists: "Este email ya está registrado. Probá iniciar sesión.",
+  email_not_confirmed: "Tenés que confirmar tu email antes de iniciar sesión.",
+  over_email_send_rate_limit:
+    "Demasiados intentos. Esperá un momento e intentá de nuevo.",
+  over_request_rate_limit:
+    "Demasiados intentos. Esperá un momento e intentá de nuevo.",
+  weak_password: "La contraseña es demasiado corta.",
+  signup_disabled: "El registro está deshabilitado en Auth.",
+  invalid_credentials: "Email o contraseña incorrectos.",
+};
+
+export function mapAuthError(err: {
+  message?: string;
+  code?: string;
+} | null): string {
+  const code = err?.code?.trim().toLowerCase() ?? "";
+  if (code && AUTH_CODE_MESSAGES[code]) {
+    return AUTH_CODE_MESSAGES[code];
+  }
+  return mapAuthErrorMessage(err?.message);
 }
