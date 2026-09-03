@@ -14,9 +14,10 @@ describe("mapAuthErrorMessage", () => {
   });
 
   it("maps Auth error codes", () => {
-    expect(mapAuthError({ code: "user_already_exists", message: "foo" })).toMatch(
-      /registrado/i
+    expect(mapAuthError({ code: "leaked_password", message: "x" })).toMatch(
+      /común/i
     );
+    expect(mapAuthError({ code: "weird_code", message: "" })).toMatch(/weird_code/);
   });
 
   it("falls back for unknown English messages", () => {

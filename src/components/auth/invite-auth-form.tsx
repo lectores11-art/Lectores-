@@ -50,7 +50,6 @@ export function InviteAuthForm({
         password,
         options: {
           data: { full_name: fullName },
-          emailRedirectTo: redirectUrl(),
         },
       });
 
@@ -60,34 +59,47 @@ export function InviteAuthForm({
         return;
       }
 
-      // Supabase may return a user without identities when the email already
-      // exists (anti-enumeration). Keep copy neutral — do not confirm existence.
       const identities = data.user?.identities;
-      if (data.user && Array.isArray(identities) && identities.length === 0) {
-        setError(
-          "Si este email aplica, vas a poder confirmar la cuenta o iniciar sesión. Revisá tu correo o pedí reenvío."
-        );
-        setConfirmPending(true);
+      const alreadyKnown =
+        Boolean(data.user) && Array.isArray(identities) && identities.length === 0;
+
+      if (data.session) {
+        onAuthenticated();
+        return;
+      }
+
+      const { data: signedIn, error: signInError } =
+        await supabase.auth.signInWithPassword({ email, password });
+
+      if (signedIn.session) {
+        onAuthenticated();
+        return;
+      }
+
+      if (alreadyKnown) {
+        setError("Este email ya está registrado. Probá iniciar sesión.");
+        setMode("login");
         setLoading(false);
         return;
       }
 
-      // Confirmation required: no session yet. Do not claim the email was
-      // delivered — SMTP may be missing in this project.
-      if (!data.session) {
-        if (!data.user?.email && !email.trim()) {
-          setError(
-            "El registro no devolvió sesión ni email. Revisá Supabase Auth (confirmación + SMTP)."
-          );
-          setLoading(false);
-          return;
+      if (signInError) {
+        const mapped = mapAuthError(signInError);
+        setError(mapped);
+        if (
+          /confirm/i.test(mapped) ||
+          /email not confirmed/i.test(signInError.message)
+        ) {
+          setConfirmPending(true);
         }
-        setConfirmPending(true);
         setLoading(false);
         return;
       }
 
-      onAuthenticated();
+      setError(
+        "El registro no dejó sesión. En Supabase: Authentication → Email → Confirm email = Off."
+      );
+      setLoading(false);
       return;
     }
 

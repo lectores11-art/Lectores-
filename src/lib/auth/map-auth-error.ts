@@ -56,8 +56,12 @@ export function mapAuthErrorMessage(
       es: "No se pudo crear la cuenta. Si este email ya existe, iniciá sesión.",
     },
     {
-      test: /signup.?disabled|signups not allowed/,
-      es: "El registro está deshabilitado en Auth.",
+      test: /leaked|pwned|compromised password|not allowed because/,
+      es: "Esa contraseña es demasiado común. Elegí otra más larga (mínimo 8 caracteres, no un patrón típico).",
+    },
+    {
+      test: /redirect_uri|redirect_to|invalid redirect/,
+      es: "Auth rechazó la redirección. En Supabase: Confirm email = off, y en Redirect URLs el dominio de Vercel.",
     },
   ];
 
@@ -83,6 +87,8 @@ const AUTH_CODE_MESSAGES: Record<string, string> = {
   over_request_rate_limit:
     "Demasiados intentos. Esperá un momento e intentá de nuevo.",
   weak_password: "La contraseña es demasiado corta.",
+  leaked_password:
+    "Esa contraseña es demasiado común. Elegí otra más larga (mínimo 8 caracteres, no un patrón típico).",
   signup_disabled: "El registro está deshabilitado en Auth.",
   invalid_credentials: "Email o contraseña incorrectos.",
 };
@@ -95,5 +101,10 @@ export function mapAuthError(err: {
   if (code && AUTH_CODE_MESSAGES[code]) {
     return AUTH_CODE_MESSAGES[code];
   }
-  return mapAuthErrorMessage(err?.message);
+  const mapped = mapAuthErrorMessage(err?.message);
+  const fallback = "No se pudo completar la autenticación. Intentá de nuevo.";
+  if (mapped === fallback && code) {
+    return `${fallback} (${code})`;
+  }
+  return mapped;
 }
