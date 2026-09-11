@@ -245,7 +245,7 @@ describe("forumThreadPatchSchema", () => {
 });
 
 describe("meetingActionSchema", () => {
-  it("accepts create / token / start actions", () => {
+  it("accepts create / token / start / camera actions", () => {
     expect(meetingActionSchema.parse({ action: "create", title: "Sala" })).toEqual({
       action: "create",
       title: "Sala",
@@ -256,6 +256,38 @@ describe("meetingActionSchema", () => {
     expect(
       meetingActionSchema.parse({ action: "start", meetingId: UUID })
     ).toEqual({ action: "start", meetingId: UUID });
+    expect(
+      meetingActionSchema.parse({ action: "request-camera", meetingId: UUID })
+    ).toEqual({ action: "request-camera", meetingId: UUID });
+    expect(
+      meetingActionSchema.parse({ action: "release-camera", meetingId: UUID })
+    ).toEqual({ action: "release-camera", meetingId: UUID });
+    expect(
+      meetingActionSchema.parse({
+        action: "set-book",
+        meetingId: UUID,
+        bookId: UUID,
+        displayMode: "cover",
+      })
+    ).toEqual({
+      action: "set-book",
+      meetingId: UUID,
+      bookId: UUID,
+      displayMode: "cover",
+    });
+    expect(
+      meetingActionSchema.parse({
+        action: "set-book",
+        meetingId: UUID,
+        bookId: null,
+        displayMode: "none",
+      })
+    ).toEqual({
+      action: "set-book",
+      meetingId: UUID,
+      bookId: null,
+      displayMode: "none",
+    });
   });
 
   it("rejects token without meetingId", () => {

@@ -44,6 +44,8 @@ interface BookReaderProps {
     metrics: PackMetrics
   ) => void | Promise<void>;
   compact?: boolean;
+  /** Keep compact height/% sizing but fill the container width (meeting room). */
+  fillWidth?: boolean;
   onClose?: () => void;
   pipelineVersion?: number;
   /** Viewport used for the pages currently in `pages` (from DB). */
@@ -79,6 +81,7 @@ export function BookReader({
   onBookmark,
   onDomPacked,
   compact = false,
+  fillWidth = false,
   onClose,
   pipelineVersion = 0,
   packMetrics = null,
@@ -299,7 +302,8 @@ export function BookReader({
     <div
       className={cn(
         "reader-shell flex flex-col items-center justify-center",
-        compact ? "h-full overflow-hidden p-4" : "p-6"
+        compact ? "h-full overflow-hidden p-2 sm:p-3" : "p-6",
+        fillWidth && "items-stretch"
       )}
     >
       {showLegacyBanner && !compact && (
@@ -312,7 +316,8 @@ export function BookReader({
       <div
         className={cn(
           "book-reader-stage w-full",
-          compact ? "book-compact max-w-3xl" : "max-w-5xl"
+          compact && "book-compact",
+          fillWidth ? "max-w-none h-full" : compact ? "max-w-3xl" : "max-w-5xl"
         )}
       >
         <header className="book-external-title">

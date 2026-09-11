@@ -199,6 +199,8 @@ export interface ReadingBookmark {
   created_at: string;
 }
 
+export type MeetingBookDisplayMode = "none" | "cover" | "reader";
+
 export interface Meeting {
   id: string;
   community_id: string;
@@ -207,6 +209,7 @@ export interface Meeting {
   description: string | null;
   livekit_room: string;
   active_book_id: string | null;
+  book_display_mode?: MeetingBookDisplayMode;
   status: MeetingStatus;
   scheduled_at: string | null;
   started_at: string | null;
@@ -214,6 +217,13 @@ export interface Meeting {
   created_at: string;
   host?: Profile;
   active_book?: Book;
+}
+
+export interface MeetingCameraGrant {
+  id: string;
+  meeting_id: string;
+  user_id: string;
+  created_at: string;
 }
 
 export interface MeetingChatMessage {

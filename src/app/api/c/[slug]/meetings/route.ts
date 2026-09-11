@@ -1,7 +1,7 @@
 import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import { NextResponse } from "next/server";
 import { isCommunityAdmin, requireApiCommunityAccess } from "@/lib/auth/helpers";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { nanoid } from "nanoid";
 import { decideMeetingTokenAccess } from "@/lib/meetings/token-access";
 import {
@@ -11,6 +11,9 @@ import {
   parseJsonBody,
   slugParamsSchema,
 } from "@/lib/validation";
+
+/** Max non-host camera publishers per meeting. */
+export const MAX_GUEST_CAMERA_GRANTS = 2;
 
 async function bestEffortDeleteLiveKitRoom(roomName: string) {
   const apiKey = process.env.LIVEKIT_API_KEY;
@@ -22,9 +25,45 @@ async function bestEffortDeleteLiveKitRoom(roomName: string) {
     const svc = new RoomServiceClient(host, apiKey, apiSecret);
     await svc.deleteRoom(roomName);
   } catch (err) {
-    // Room may already be empty / missing — never block ending the meeting.
     console.error("LiveKit deleteRoom best-effort failed:", err);
   }
+}
+
+async function issueLiveKitToken(params: {
+  userId: string;
+  displayName: string;
+  roomName: string;
+  canPublish: boolean;
+}) {
+  const apiKey = process.env.LIVEKIT_API_KEY;
+  const apiSecret = process.env.LIVEKIT_API_SECRET;
+  if (!apiKey || !apiSecret) {
+    return null;
+  }
+
+  const at = new AccessToken(apiKey, apiSecret, {
+    identity: params.userId,
+    name: params.displayName,
+  });
+
+  at.addGrant({
+    room: params.roomName,
+    roomJoin: true,
+    canPublish: params.canPublish,
+    canSubscribe: true,
+  });
+
+  return at.toJwt();
+}
+
+function bookHasReadableContent(book: {
+  pdf_storage_path?: string | null;
+  content_json?: unknown;
+  has_pdf?: boolean | null;
+}): boolean {
+  if (book.has_pdf === true) return true;
+  if (book.pdf_storage_path) return true;
+  return Array.isArray(book.content_json) && book.content_json.length > 0;
 }
 
 export async function POST(
@@ -60,6 +99,7 @@ export async function POST(
           description: body.description || null,
           livekit_room: roomName,
           active_book_id: body.activeBookId || null,
+          book_display_mode: body.activeBookId ? "cover" : "none",
           status: "scheduled",
           scheduled_at: body.scheduledAt || new Date().toISOString(),
         })
@@ -76,7 +116,9 @@ export async function POST(
 
       const { data: meeting } = await supabase
         .from("meetings")
-        .select("*")
+        .select(
+          "*, active_book:books(id, title, author, cover_url, pdf_storage_path, content_json, total_pages, table_of_contents, pipeline_version, pack_metrics)"
+        )
         .eq("id", meetingId)
         .eq("community_id", community.id)
         .single();
@@ -100,18 +142,6 @@ export async function POST(
       }
 
       const isHost = accessDecision.isHost;
-      const apiKey = process.env.LIVEKIT_API_KEY;
-      const apiSecret = process.env.LIVEKIT_API_SECRET;
-
-      if (!apiKey || !apiSecret) {
-        return NextResponse.json(
-          {
-            error:
-              "LiveKit no configurado. Definí LIVEKIT_API_KEY y LIVEKIT_API_SECRET.",
-          },
-          { status: 503 }
-        );
-      }
 
       if (accessDecision.shouldStart) {
         const { error: startError } = await supabase
@@ -124,24 +154,286 @@ export async function POST(
         }
       }
 
-      const at = new AccessToken(apiKey, apiSecret, {
-        identity: user.id,
-        name: user.full_name || user.email,
+      const { data: grant } = await supabase
+        .from("meeting_camera_grants")
+        .select("id")
+        .eq("meeting_id", meeting.id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      const canPublish = isHost || Boolean(grant);
+
+      const token = await issueLiveKitToken({
+        userId: user.id,
+        displayName: user.full_name || user.email,
+        roomName: meeting.livekit_room,
+        canPublish,
       });
 
-      at.addGrant({
-        room: meeting.livekit_room,
-        roomJoin: true,
-        canPublish: isHost,
-        canSubscribe: true,
-      });
+      if (!token) {
+        return NextResponse.json(
+          {
+            error:
+              "LiveKit no configurado. Definí LIVEKIT_API_KEY y LIVEKIT_API_SECRET.",
+          },
+          { status: 503 }
+        );
+      }
 
-      const token = await at.toJwt();
+      const { count } = await supabase
+        .from("meeting_camera_grants")
+        .select("id", { count: "exact", head: true })
+        .eq("meeting_id", meeting.id);
+
       return NextResponse.json({
         token,
         room: meeting.livekit_room,
         url: process.env.NEXT_PUBLIC_LIVEKIT_URL,
         isHost,
+        canPublish,
+        hasCameraGrant: Boolean(grant),
+        guestCameraSlotsUsed: count ?? 0,
+        guestCameraSlotsMax: MAX_GUEST_CAMERA_GRANTS,
+        meeting: {
+          ...meeting,
+          status: accessDecision.shouldStart ? "live" : meeting.status,
+        },
+      });
+    }
+
+    if (body.action === "set-book") {
+      const supabase = await createClient();
+      const { data: meeting } = await supabase
+        .from("meetings")
+        .select("id, host_id, status, community_id")
+        .eq("id", body.meetingId)
+        .eq("community_id", community.id)
+        .maybeSingle();
+
+      if (!meeting) {
+        return NextResponse.json({ error: "Reunión no encontrada" }, { status: 404 });
+      }
+
+      const canControl = admin || meeting.host_id === user.id;
+      if (!canControl) {
+        return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+      }
+
+      if (meeting.status === "ended") {
+        return NextResponse.json(
+          { error: "La reunión ya finalizó." },
+          { status: 409 }
+        );
+      }
+
+      let activeBookId: string | null = null;
+      let bookDisplayMode: "none" | "cover" | "reader" = "none";
+      let activeBook = null;
+
+      if (body.displayMode === "none" || !body.bookId) {
+        activeBookId = null;
+        bookDisplayMode = "none";
+      } else {
+        const { data: book } = await supabase
+          .from("books")
+          .select(
+            "id, title, author, cover_url, pdf_storage_path, content_json, total_pages, table_of_contents, pipeline_version, pack_metrics, is_published, community_id, allows_live_display"
+          )
+          .eq("id", body.bookId)
+          .eq("community_id", community.id)
+          .maybeSingle();
+
+        if (!book) {
+          return NextResponse.json({ error: "Libro no encontrado" }, { status: 404 });
+        }
+
+        if (book.allows_live_display === false) {
+          return NextResponse.json(
+            { error: "Este libro no permite exhibición en vivo." },
+            { status: 403 }
+          );
+        }
+
+        if (body.displayMode === "cover") {
+          if (!book.cover_url) {
+            return NextResponse.json(
+              { error: "Este libro no tiene portada." },
+              { status: 400 }
+            );
+          }
+          activeBookId = book.id;
+          bookDisplayMode = "cover";
+          activeBook = book;
+        } else {
+          if (!bookHasReadableContent(book)) {
+            return NextResponse.json(
+              {
+                error:
+                  "Este título es solo ficha: no tiene PDF para abrir el libro. Usá Solo portada.",
+              },
+              { status: 400 }
+            );
+          }
+          activeBookId = book.id;
+          bookDisplayMode = "reader";
+          activeBook = book;
+        }
+      }
+
+      // service_role: meetings UPDATE is admin-only in RLS; host may not be admin.
+      const service = await createServiceClient();
+      const { data: updated, error } = await service
+        .from("meetings")
+        .update({
+          active_book_id: activeBookId,
+          book_display_mode: bookDisplayMode,
+        })
+        .eq("id", meeting.id)
+        .eq("community_id", community.id)
+        .select(
+          "*, active_book:books(id, title, author, cover_url, pdf_storage_path, content_json, total_pages, table_of_contents, pipeline_version, pack_metrics)"
+        )
+        .single();
+
+      if (error) {
+        return internalErrorResponse("Error al actualizar libro de la sala:", error);
+      }
+
+      return NextResponse.json({
+        meeting: updated ?? {
+          ...meeting,
+          active_book_id: activeBookId,
+          book_display_mode: bookDisplayMode,
+          active_book: activeBook,
+        },
+      });
+    }
+
+    if (body.action === "request-camera" || body.action === "release-camera") {
+      const supabase = await createClient();
+      const { data: meeting } = await supabase
+        .from("meetings")
+        .select("id, host_id, status, livekit_room, community_id")
+        .eq("id", body.meetingId)
+        .eq("community_id", community.id)
+        .maybeSingle();
+
+      if (!meeting) {
+        return NextResponse.json({ error: "Reunión no encontrada" }, { status: 404 });
+      }
+
+      if (meeting.status !== "live") {
+        return NextResponse.json(
+          { error: "La reunión tiene que estar en vivo para abrir cámara." },
+          { status: 409 }
+        );
+      }
+
+      const isHost = meeting.host_id === user.id || admin;
+
+      if (body.action === "release-camera") {
+        if (!isHost) {
+          await supabase
+            .from("meeting_camera_grants")
+            .delete()
+            .eq("meeting_id", meeting.id)
+            .eq("user_id", user.id);
+        }
+
+        const canPublish = isHost;
+        const token = await issueLiveKitToken({
+          userId: user.id,
+          displayName: user.full_name || user.email,
+          roomName: meeting.livekit_room,
+          canPublish,
+        });
+        if (!token) {
+          return NextResponse.json(
+            { error: "LiveKit no configurado." },
+            { status: 503 }
+          );
+        }
+
+        const { count } = await supabase
+          .from("meeting_camera_grants")
+          .select("id", { count: "exact", head: true })
+          .eq("meeting_id", meeting.id);
+
+        return NextResponse.json({
+          token,
+          canPublish,
+          hasCameraGrant: false,
+          guestCameraSlotsUsed: count ?? 0,
+          guestCameraSlotsMax: MAX_GUEST_CAMERA_GRANTS,
+        });
+      }
+
+      // request-camera
+      if (isHost) {
+        return NextResponse.json(
+          {
+            error: "La conductora ya puede publicar cámara.",
+          },
+          { status: 400 }
+        );
+      }
+
+      const { data: existing } = await supabase
+        .from("meeting_camera_grants")
+        .select("id")
+        .eq("meeting_id", meeting.id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (!existing) {
+        const { count } = await supabase
+          .from("meeting_camera_grants")
+          .select("id", { count: "exact", head: true })
+          .eq("meeting_id", meeting.id);
+
+        if ((count ?? 0) >= MAX_GUEST_CAMERA_GRANTS) {
+          return NextResponse.json(
+            {
+              error:
+                "Hay 2 cámaras de invitadas abiertas. Pedí de nuevo cuando se libere un lugar.",
+            },
+            { status: 409 }
+          );
+        }
+
+        const { error: insertError } = await supabase
+          .from("meeting_camera_grants")
+          .insert({ meeting_id: meeting.id, user_id: user.id });
+
+        if (insertError) {
+          return internalErrorResponse("Error al pedir cámara:", insertError);
+        }
+      }
+
+      const token = await issueLiveKitToken({
+        userId: user.id,
+        displayName: user.full_name || user.email,
+        roomName: meeting.livekit_room,
+        canPublish: true,
+      });
+      if (!token) {
+        return NextResponse.json(
+          { error: "LiveKit no configurado." },
+          { status: 503 }
+        );
+      }
+
+      const { count } = await supabase
+        .from("meeting_camera_grants")
+        .select("id", { count: "exact", head: true })
+        .eq("meeting_id", meeting.id);
+
+      return NextResponse.json({
+        token,
+        canPublish: true,
+        hasCameraGrant: true,
+        guestCameraSlotsUsed: count ?? 0,
+        guestCameraSlotsMax: MAX_GUEST_CAMERA_GRANTS,
       });
     }
 
@@ -183,12 +475,20 @@ export async function POST(
         return NextResponse.json({ success: true });
       }
 
-      const { error } = await supabase
+      const service = await createServiceClient();
+      const { error } = await service
         .from("meetings")
-        .update({ status: "ended", ended_at: new Date().toISOString() })
+        .update({
+          status: "ended",
+          ended_at: new Date().toISOString(),
+          active_book_id: null,
+          book_display_mode: "none",
+        })
         .eq("id", meeting.id)
         .eq("community_id", community.id);
       if (error) return internalErrorResponse("Error al finalizar reunión:", error);
+
+      await service.from("meeting_camera_grants").delete().eq("meeting_id", meeting.id);
 
       if (meeting.livekit_room) {
         await bestEffortDeleteLiveKitRoom(meeting.livekit_room);
@@ -218,7 +518,9 @@ export async function GET(
   const supabase = await createClient();
   const { data: meetings } = await supabase
     .from("meetings")
-    .select("*, host:profiles(id, full_name), active_book:books(id, title)")
+    .select(
+      "*, host:profiles(id, full_name), active_book:books(id, title, author, cover_url)"
+    )
     .eq("community_id", community.id)
     .neq("status", "ended")
     .order("created_at", { ascending: false });
