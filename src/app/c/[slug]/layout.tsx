@@ -32,15 +32,20 @@ export default async function CommunityLayout({
     return <LegalConsentGate />;
   }
 
-  // Temporary unpaid bypass: promote pending → active so RLS allows content.
+  const unpaidBypass = allowUnpaidInviteAccess();
+  const unpaidStatuses = new Set(["pending", "cancelled", "expired"]);
+
+  // Temporary unpaid bypass: promote → active so RLS allows content.
   if (
-    shouldSeePaywall(user, community, membership) &&
-    allowUnpaidInviteAccess() &&
-    membership?.status === "pending"
+    unpaidBypass &&
+    membership &&
+    unpaidStatuses.has(membership.status) &&
+    !membership.rejoin_blocked
   ) {
     const activated = await activatePendingMembershipForUnpaidBypass({
       userId: user.id,
       communityId: community.id,
+      membershipId: membership.id,
     });
     if (activated) {
       redirect(`/c/${slug}/forum`);
@@ -48,6 +53,13 @@ export default async function CommunityLayout({
   }
 
   if (shouldSeePaywall(user, community, membership)) {
+    // Last resort while bypass is on: never trap testers on Stripe UI.
+    if (unpaidBypass && membership && !membership.rejoin_blocked) {
+      console.error(
+        "ALLOW_UNPAID_INVITE_ACCESS is on but activate failed; check SERVICE_ROLE_KEY / membership row",
+        { slug, membershipId: membership.id, status: membership.status }
+      );
+    }
     return <CommunityPaywall community={community} user={user} />;
   }
 
