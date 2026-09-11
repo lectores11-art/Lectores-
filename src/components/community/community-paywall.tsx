@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatEurFromCents } from "@/lib/admin/paid-members";
 import { communityCanCharge } from "@/lib/billing/platform-fee";
+import { LegalFooter } from "@/components/legal/legal-footer";
+import Link from "next/link";
 import type { Community, Profile } from "@/lib/types/database";
 
 const FAKE_THREADS = [
@@ -50,6 +52,7 @@ function PaywallWithCheckout({
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState("");
   const [waiting, setWaiting] = useState(waitingForPayment);
+  const [acceptPaywall, setAcceptPaywall] = useState(false);
 
   useEffect(() => {
     if (!waitingForPayment) return;
@@ -124,6 +127,33 @@ function PaywallWithCheckout({
             para pasar, activá la suscripción mensual.
           </p>
           <p className="text-3xl font-bold tracking-tight">{priceLabel}</p>
+          <p className="text-xs text-muted">
+            El cobro lo hace la creadora de {community.name} con Stripe, no Hilo de Letras.
+            Hilo retiene una comisión de plataforma.{" "}
+            <Link href="/desistimiento" className="font-semibold text-accent hover:underline">
+              Desistimiento
+            </Link>
+            .
+          </p>
+          <label className="flex items-start gap-2 text-left text-sm">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={acceptPaywall}
+              onChange={(e) => setAcceptPaywall(e.target.checked)}
+            />
+            <span>
+              Confirmo que soy mayor de 18 y acepto los{" "}
+              <Link href="/terminos" className="font-semibold text-accent hover:underline">
+                términos
+              </Link>{" "}
+              y la{" "}
+              <Link href="/privacidad" className="font-semibold text-accent hover:underline">
+                privacidad
+              </Link>
+              .
+            </span>
+          </label>
           {waiting ? (
             <p className="text-sm text-muted">Confirmando el pago…</p>
           ) : waitingForPayment ? (
@@ -140,13 +170,14 @@ function PaywallWithCheckout({
               type="button"
               className="w-full"
               size="lg"
-              disabled={paying}
+              disabled={paying || !acceptPaywall}
               onClick={() => void startCheckout()}
             >
               {paying ? "Abriendo el pago…" : "Pagar y entrar"}
             </Button>
           )}
           {error && <p className="text-sm text-red-600">{error}</p>}
+          <LegalFooter />
           <p className="text-xs text-muted">
             El cobro lo hace Stripe. Si cancelás, volvés a esta pantalla.
           </p>

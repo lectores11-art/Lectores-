@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, startTransition } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { BookOpen, Pencil, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,10 @@ import {
   coverObjectContentType,
 } from "@/lib/storage/book-upload-paths";
 import { MAX_COVER_BYTES, MAX_PDF_BYTES } from "@/lib/validation/schemas";
-import type { Book, ReadingProgress } from "@/lib/types/database";
+import type { Book, LegalCategory, ReadingProgress } from "@/lib/types/database";
+import { COUNTRY_OPTIONS, WORLDWIDE_TERRITORY } from "@/lib/legal/countries";
+import { uncoveredResidenceCountries } from "@/lib/legal/pdf-access";
+import { ReportButton } from "@/components/legal/report-button";
 
 interface LibraryPageClientProps {
   slug: string;
@@ -26,11 +29,14 @@ interface LibraryPageClientProps {
   isAdmin: boolean;
 }
 
-type BookRow = Book & { reading_progress?: ReadingProgress | null };
+type BookRow = Book & {
+  reading_progress?: ReadingProgress | null;
+  has_pdf?: boolean;
+};
 type UploadMode = "pdf" | "catalog";
 
 function isDigitalBook(book: BookRow): boolean {
-  return Boolean(book.pdf_storage_path);
+  return Boolean(book.has_pdf ?? book.pdf_storage_path);
 }
 
 function isCoverFile(file: File): boolean {
@@ -69,6 +75,18 @@ export function LibraryPageClient({
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("");
   const [uploadError, setUploadError] = useState("");
+  const [legalCategory, setLegalCategory] = useState<Exclude<LegalCategory, "catalog">>(
+    "public_domain"
+  );
+  const [worldwide, setWorldwide] = useState(false);
+  const [territories, setTerritories] = useState<string[]>(["ES"]);
+  const [rightsHolderName, setRightsHolderName] = useState("");
+  const [licenseExpiresAt, setLicenseExpiresAt] = useState("");
+  const [allowsLiveDisplay, setAllowsLiveDisplay] = useState(false);
+  const [allowsRecording, setAllowsRecording] = useState(false);
+  const [licenseAttested, setLicenseAttested] = useState(false);
+  const [coverRightsAttested, setCoverRightsAttested] = useState(false);
+  const [memberCountries, setMemberCountries] = useState<string[]>([]);
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingBook, setEditingBook] = useState<BookRow | null>(null);
@@ -156,6 +174,16 @@ export function LibraryPageClient({
     const res = await fetch(`/api/c/${slug}/books`);
     const data = await res.json();
     setBooks(data.books || []);
+    if (isAdmin) {
+      const membersRes = await fetch(`/api/c/${slug}/members`);
+      const membersData = await membersRes.json().catch(() => ({}));
+      const counts = (membersData.countryCounts || {}) as Record<string, number>;
+      const expanded: string[] = [];
+      for (const [code, count] of Object.entries(counts)) {
+        for (let i = 0; i < count; i += 1) expanded.push(code);
+      }
+      setMemberCountries(expanded);
+    }
     setLoading(false);
   }
 
@@ -274,18 +302,32 @@ export function LibraryPageClient({
     fetch(`/api/c/${slug}/books`)
       .then((res) => res.json())
       .then((data) => {
-        if (!cancelled) {
-          startTransition(() => {
-            setBooks(data.books || []);
-            setLoading(false);
-          });
-        }
+        if (cancelled) return;
+        setBooks(data.books || []);
+        setLoading(false);
       });
+
+    if (isAdmin) {
+      fetch(`/api/c/${slug}/members`)
+        .then((res) => res.json())
+        .then((membersData) => {
+          if (cancelled) return;
+          const counts = (membersData.countryCounts || {}) as Record<string, number>;
+          const expanded: string[] = [];
+          for (const [code, count] of Object.entries(counts)) {
+            for (let i = 0; i < count; i += 1) expanded.push(code);
+          }
+          setMemberCountries(expanded);
+        })
+        .catch(() => {
+          /* admin counts are optional */
+        });
+    }
 
     return () => {
       cancelled = true;
     };
-  }, [slug]);
+  }, [slug, isAdmin]);
 
   function selectBook(book: BookRow) {
     const progress = Number(book.reading_progress?.progress_percent || 0);
@@ -307,7 +349,7 @@ export function LibraryPageClient({
         },
         { label: "Formato", value: digital ? "PDF" : "Físico" },
       ],
-      primaryAction: digital
+      primaryAction: digital && book.pdf_readable
         ? {
             label: "Leer ahora",
             href: `/c/${slug}/library/${book.id}`,
@@ -315,7 +357,7 @@ export function LibraryPageClient({
         : undefined,
       secondaryAction: digital
         ? {
-            label: "Abrir ficha",
+            label: book.pdf_readable ? "Abrir ficha" : "No disponible en tu país",
             href: `/c/${slug}/library/${book.id}`,
           }
         : undefined,
@@ -353,7 +395,15 @@ export function LibraryPageClient({
         setUploadError("La portada debe pesar como máximo 5 MB.");
         return;
       }
+      if (!coverRightsAttested) {
+        setUploadError("Tenés que declarar que la portada tiene permiso.");
+        return;
+      }
       if (uploadMode === "pdf") {
+        if (!licenseAttested) {
+          setUploadError("Tenés que declarar que tenés derecho a alojar el PDF.");
+          return;
+        }
         if (!file || !isPdfFile(file)) {
           setUploadError("Elegí un archivo PDF.");
           return;
@@ -412,6 +462,20 @@ export function LibraryPageClient({
           mode: uploadMode,
           coverStoragePath,
           pdfStoragePath,
+          legalCategory: uploadMode === "catalog" ? "catalog" : legalCategory,
+          licenseTerritories:
+            uploadMode === "catalog"
+              ? []
+              : worldwide
+                ? [WORLDWIDE_TERRITORY]
+                : territories,
+          rightsHolderName: rightsHolderName || null,
+          licenseExpiresAt: licenseExpiresAt || null,
+          allowsLiveDisplay,
+          allowsRecording,
+          licenseAttested:
+            uploadMode === "catalog" ? coverRightsAttested : licenseAttested,
+          coverRightsAttested,
         }),
       });
 
@@ -684,6 +748,112 @@ export function LibraryPageClient({
                   <Input id="file" name="file" type="file" accept=".pdf" required />
                 </div>
               )}
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={coverRightsAttested}
+                  onChange={(e) => setCoverRightsAttested(e.target.checked)}
+                  required
+                />
+                <span>Declaro que tengo permiso para usar esta portada.</span>
+              </label>
+              {uploadMode === "pdf" && (
+                <div className="space-y-3 rounded-md border border-border p-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="legalCategory">Base legal del PDF</Label>
+                    <select
+                      id="legalCategory"
+                      className="flex h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
+                      value={legalCategory}
+                      onChange={(e) =>
+                        setLegalCategory(e.target.value as Exclude<LegalCategory, "catalog">)
+                      }
+                    >
+                      <option value="public_domain">Dominio público</option>
+                      <option value="open_license">Licencia abierta (p. ej. CC)</option>
+                      <option value="rights_holder">Acuerdo con autor o editorial</option>
+                    </select>
+                  </div>
+                  {legalCategory === "rights_holder" && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="rightsHolderName">Titular de los derechos</Label>
+                        <Input
+                          id="rightsHolderName"
+                          value={rightsHolderName}
+                          onChange={(e) => setRightsHolderName(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={worldwide}
+                          onChange={(e) => setWorldwide(e.target.checked)}
+                        />
+                        Permiso para todo el mundo
+                      </label>
+                      {!worldwide && (
+                        <div className="space-y-2">
+                          <Label>Países cubiertos</Label>
+                          <select
+                            multiple
+                            className="h-32 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                            value={territories}
+                            onChange={(e) =>
+                              setTerritories(
+                                Array.from(e.target.selectedOptions).map((o) => o.value)
+                              )
+                            }
+                          >
+                            {COUNTRY_OPTIONS.map((country) => (
+                              <option key={country.code} value={country.code}>
+                                {country.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      <div className="space-y-2">
+                        <Label htmlFor="licenseExpiresAt">Caducidad (opcional)</Label>
+                        <Input
+                          id="licenseExpiresAt"
+                          type="date"
+                          value={licenseExpiresAt}
+                          onChange={(e) => setLicenseExpiresAt(e.target.value)}
+                        />
+                      </div>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={allowsLiveDisplay}
+                          onChange={(e) => setAllowsLiveDisplay(e.target.checked)}
+                        />
+                        Incluye mostrar el texto en la sala en vivo
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={allowsRecording}
+                          onChange={(e) => setAllowsRecording(e.target.checked)}
+                        />
+                        Incluye grabar y alojar la lectura
+                      </label>
+                    </>
+                  )}
+                  <label className="flex items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={licenseAttested}
+                      onChange={(e) => setLicenseAttested(e.target.checked)}
+                      required
+                    />
+                    <span>Declaro que tengo derecho a alojar este PDF en este club.</span>
+                  </label>
+                </div>
+              )}
               {uploadStatus && (
                 <p className="text-sm text-muted">{uploadStatus}</p>
               )}
@@ -804,7 +974,7 @@ export function LibraryPageClient({
                         </div>
                       )}
                       <div className="mt-2">
-                        {digital ? (
+                        {digital && book.pdf_readable ? (
                           <>
                             <Progress value={progress} className="mb-1" />
                             <div className="flex items-center justify-between gap-2">
@@ -822,11 +992,33 @@ export function LibraryPageClient({
                               </Link>
                             </div>
                           </>
+                        ) : digital ? (
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                            No disponible en tu país
+                          </p>
                         ) : (
                           <p className="text-xs font-semibold uppercase tracking-wide text-muted">
                             Libro físico
                           </p>
                         )}
+                        {isAdmin &&
+                          book.legal_category === "rights_holder" &&
+                          uncoveredResidenceCountries(
+                            memberCountries,
+                            book.license_territories,
+                            book.legal_category
+                          ).length > 0 && (
+                            <p className="mt-1 text-[10px] text-red-600">
+                              Hay socias fuera del territorio de esta licencia.
+                            </p>
+                          )}
+                        <div
+                          className="mt-2"
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => e.stopPropagation()}
+                        >
+                          <ReportButton slug={slug} targetType="book" targetId={book.id} />
+                        </div>
                       </div>
                     </CardContent>
                   </Card>

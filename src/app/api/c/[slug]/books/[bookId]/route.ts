@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { isCommunityAdmin, requireApiCommunityAccess } from "@/lib/auth/helpers";
+import { canOpenBookPdf, type LegalCategory } from "@/lib/legal/pdf-access";
 import {
   BOOKS_BUCKET,
   COVER_BUCKET,
@@ -50,9 +51,28 @@ export async function GET(
     .eq("user_id", user.id)
     .maybeSingle();
 
-  // Never return a public storage URL — clients must call .../pdf for a signed link.
+  const admin = await isCommunityAdmin(
+    community.id,
+    user.id,
+    user.is_super_admin
+  );
+  const pdfAccess = canOpenBookPdf({
+    hasPdf: Boolean(book.pdf_storage_path),
+    isHidden: Boolean(book.is_hidden),
+    category: (book.legal_category as LegalCategory | null) ?? null,
+    territories: book.license_territories,
+    residenceCountry: user.residence_country,
+  });
+  const pdfReadable = admin || pdfAccess.ok;
+
   return NextResponse.json({
-    book,
+    book: {
+      ...book,
+      pdf_readable: pdfReadable,
+      has_pdf: Boolean(book.pdf_storage_path),
+      content_json: pdfReadable ? book.content_json : [],
+      pdf_storage_path: pdfReadable ? book.pdf_storage_path : null,
+    },
     initialPage: userProgress?.current_page ?? 0,
   });
 }

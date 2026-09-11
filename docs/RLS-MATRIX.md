@@ -1,6 +1,6 @@
 # Matriz RLS — rol × tabla × operación (S2-05)
 
-Fuente: `supabase/migrations/001_initial_schema.sql` + `006_rls_hardening.sql` + `012_invite_pending_payment.sql` + `013_stripe_connect.sql` + `014_protect_connect_fields.sql`.  
+Fuente: `supabase/migrations/001_initial_schema.sql` + `006_rls_hardening.sql` + `012_invite_pending_payment.sql` + `013_stripe_connect.sql` + `014_protect_connect_fields.sql` + `015_legal_compliance.sql`.  
 Aplicar migraciones en el proyecto Supabase; el agente no ejecuta SQL en prod.
 
 Leyenda: ✅ permitido · ❌ denegado · 🔒 solo vía `service_role` / SECURITY DEFINER RPC
@@ -26,7 +26,7 @@ Leyenda: ✅ permitido · ❌ denegado · 🔒 solo vía `service_role` / SECURI
 | **reading_progress / bookmarks** | ❌ | ✅ propias + member del book | ❌ | ✅ | ✅ |
 | **meetings / chat** | ❌ | ✅ view/send | ❌ | ✅ manage | ✅ |
 | **calendar_events** SELECT | ❌ | ✅ | ❌ | ✅ | ✅ |
-| **calendar_events** write | ❌ | ❌ | ❌ | ✅ | ✅ |
+| **content_reports** | ❌ | ✅ insert + ver propios | ❌ | ✅ listar/resolver de su comunidad | ✅ todos |
 | **storage.objects (books)** | ❌ | ✅ SELECT path `{community_id}/…` | ❌ | ✅ upload/delete | ✅ |
 
 ## Cambios críticos en 006

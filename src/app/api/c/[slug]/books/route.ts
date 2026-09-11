@@ -24,6 +24,11 @@ import {
   parseData,
 } from "@/lib/validation";
 import { ensurePdfNodeDom } from "@/lib/pdf/node-dom-polyfill";
+import {
+  bookLicenseColumns,
+  canOpenBookPdf,
+  type LegalCategory,
+} from "@/lib/legal/pdf-access";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -102,8 +107,21 @@ export async function POST(
 
     const bodyResult = await parseJsonBody(request, bookFinalizeUploadSchema);
     if ("error" in bodyResult) return bodyResult.error;
-    const { title, author, description, mode, coverStoragePath: coverPath } =
-      bodyResult.data;
+    const {
+      title,
+      author,
+      description,
+      mode,
+      coverStoragePath: coverPath,
+      legalCategory,
+      licenseTerritories,
+      rightsHolderName,
+      licenseExpiresAt,
+      allowsLiveDisplay,
+      allowsRecording,
+      licenseAttested,
+      coverRightsAttested,
+    } = bodyResult.data;
     coverStoragePath = coverPath;
     pdfStoragePath =
       mode === "pdf" ? bodyResult.data.pdfStoragePath || null : null;
@@ -141,6 +159,17 @@ export async function POST(
       return fail(500, "No se pudo armar la URL de la portada.");
     }
 
+    const license = bookLicenseColumns({
+      legalCategory,
+      licenseTerritories,
+      rightsHolderName,
+      licenseExpiresAt,
+      allowsLiveDisplay,
+      allowsRecording,
+      licenseAttested,
+      coverRightsAttested,
+    });
+
     if (mode === "catalog") {
       const { data: book, error } = await serviceClient
         .from("books")
@@ -156,6 +185,7 @@ export async function POST(
           table_of_contents: [],
           is_published: true,
           pipeline_version: 0,
+          ...license,
         })
         .select(BOOK_SELECT)
         .single();
@@ -280,6 +310,7 @@ export async function POST(
         is_published: true,
         // Estimate only — first open DOM-packs and upgrades to PIPELINE_VERSION.
         pipeline_version: ESTIMATED_PIPELINE_VERSION,
+        ...license,
       })
       .select(BOOK_SELECT)
       .single();
@@ -360,10 +391,24 @@ export async function GET(
     }
   }
 
-  const booksWithProgress = bookList.map((book) => ({
-    ...book,
-    reading_progress: progressByBookId.get(book.id) ?? null,
-  }));
+  const booksWithProgress = bookList.map((book) => {
+    const access = canOpenBookPdf({
+      hasPdf: Boolean(book.pdf_storage_path),
+      isHidden: Boolean(book.is_hidden),
+      category: (book.legal_category as LegalCategory | null) ?? null,
+      territories: book.license_territories,
+      residenceCountry: user.residence_country,
+    });
+    const pdfReadable = admin || access.ok;
+    return {
+      ...book,
+      reading_progress: progressByBookId.get(book.id) ?? null,
+      pdf_readable: pdfReadable,
+      has_pdf: Boolean(book.pdf_storage_path),
+      content_json: pdfReadable ? book.content_json : [],
+      pdf_storage_path: pdfReadable ? book.pdf_storage_path : null,
+    };
+  });
 
   return NextResponse.json({ books: booksWithProgress });
 }

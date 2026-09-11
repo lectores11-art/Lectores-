@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { useDetailPanel } from "@/components/layout/detail-panel-context";
 import { formatRelativeTime } from "@/lib/utils";
+import { ReportButton } from "@/components/legal/report-button";
 import type { ForumPost, ForumThread, Profile } from "@/lib/types/database";
 
 export function ThreadDetailClient({ slug, threadId }: { slug: string; threadId: string }) {
@@ -149,9 +150,12 @@ export function ThreadDetailClient({ slug, threadId }: { slug: string; threadId:
             {thread.author?.full_name} · {formatRelativeTime(thread.created_at)}
           </p>
           <p className="mt-4 whitespace-pre-wrap text-foreground/90">{thread.content}</p>
-          <Button variant="ghost" size="sm" className="mt-3" onClick={toggleLike}>
-            <Heart className="h-4 w-4" /> {thread.like_count}
-          </Button>
+          <div className="mt-3 flex items-center gap-3">
+            <Button variant="ghost" size="sm" onClick={toggleLike}>
+              <Heart className="h-4 w-4" /> {thread.like_count}
+            </Button>
+            <ReportButton slug={slug} targetType="thread" targetId={thread.id} />
+          </div>
         </CardContent>
       </Card>
 

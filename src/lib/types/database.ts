@@ -10,6 +10,11 @@ export interface Profile {
   full_name: string | null;
   avatar_url: string | null;
   is_super_admin: boolean;
+  accepted_terms_at?: string | null;
+  accepted_privacy_at?: string | null;
+  age_attested_at?: string | null;
+  residence_country?: string | null;
+  deleted_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -70,6 +75,7 @@ export interface ForumThread {
   is_featured: boolean;
   reply_count: number;
   like_count: number;
+  is_hidden?: boolean;
   created_at: string;
   updated_at: string;
   author?: Profile;
@@ -110,6 +116,8 @@ export interface Lesson {
   duration_seconds: number | null;
   sort_order: number;
   is_published: boolean;
+  is_hidden?: boolean;
+  recording_consent_attested?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -131,6 +139,12 @@ export interface BookTOCItem {
   pageNumber: number;
 }
 
+export type LegalCategory =
+  | "public_domain"
+  | "open_license"
+  | "rights_holder"
+  | "catalog";
+
 export interface Book {
   id: string;
   community_id: string;
@@ -143,6 +157,17 @@ export interface Book {
   total_pages: number;
   table_of_contents: BookTOCItem[];
   is_published: boolean;
+  legal_category?: LegalCategory | null;
+  license_territories?: string[];
+  rights_holder_name?: string | null;
+  license_expires_at?: string | null;
+  allows_live_display?: boolean;
+  allows_recording?: boolean;
+  license_attested_at?: string | null;
+  cover_rights_attested_at?: string | null;
+  is_hidden?: boolean;
+  pdf_readable?: boolean;
+  has_pdf?: boolean;
   pipeline_version?: number;
   /** Viewport used for last DOM pack; null = unknown / needs measure. */
   pack_metrics?: {
@@ -217,4 +242,17 @@ export interface ReaderSettings {
   fontSize: number;
   fontFamily: "serif" | "sans";
   theme: "light" | "sepia";
+}
+
+export interface ContentReport {
+  id: string;
+  community_id: string;
+  reporter_id: string;
+  target_type: "book" | "thread" | "lesson";
+  target_id: string;
+  reason: string;
+  status: "open" | "hidden" | "dismissed";
+  created_at: string;
+  resolved_at: string | null;
+  resolved_by: string | null;
 }

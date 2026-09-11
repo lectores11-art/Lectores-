@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { LegalFooter } from "@/components/legal/legal-footer";
 
 export default function LoginPage() {
   const searchParams = useSearchParams();
@@ -99,6 +100,7 @@ export default function LoginPage() {
             El acceso es solo por invitación. Si tenés un link de tu comunidad, abrilo para
             registrarte.
           </p>
+          <LegalFooter className="mt-4" />
         </CardContent>
       </Card>
     </div>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LegalFooter } from "@/components/legal/legal-footer";
 
 export function LandingPage() {
   return (
@@ -73,6 +74,9 @@ export function LandingPage() {
           </div>
         </div>
       </main>
+      <footer className="border-t border-border px-6 py-6">
+        <LegalFooter />
+      </footer>
     </div>
   );
 }

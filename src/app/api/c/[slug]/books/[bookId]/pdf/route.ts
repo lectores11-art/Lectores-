@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { requireApiCommunityAccess } from "@/lib/auth/helpers";
+import { isCommunityAdmin, requireApiCommunityAccess } from "@/lib/auth/helpers";
 import {
   bookParamsSchema,
   internalErrorResponse,
   parseData,
 } from "@/lib/validation";
+import { canOpenBookPdf, type LegalCategory } from "@/lib/legal/pdf-access";
 
 /** Short-lived signed URL for the original PDF. Never use public bucket URLs. */
 const SIGNED_URL_EXPIRES_SEC = 60;
@@ -21,12 +22,14 @@ export async function GET(
 
     const access = await requireApiCommunityAccess(slug);
     if (access instanceof NextResponse) return access;
-    const { community } = access;
+    const { user, community } = access;
 
     const supabase = await createClient();
     const { data: book, error } = await supabase
       .from("books")
-      .select("id, community_id, pdf_storage_path, title")
+      .select(
+        "id, community_id, pdf_storage_path, title, legal_category, license_territories, is_hidden"
+      )
       .eq("id", bookId)
       .eq("community_id", community.id)
       .single();
@@ -38,6 +41,25 @@ export async function GET(
     const path = book.pdf_storage_path;
     if (!path) {
       return NextResponse.json({ error: "PDF no disponible" }, { status: 404 });
+    }
+
+    const admin = await isCommunityAdmin(
+      community.id,
+      user.id,
+      user.is_super_admin
+    );
+    const pdfAccess = canOpenBookPdf({
+      hasPdf: true,
+      isHidden: Boolean(book.is_hidden),
+      category: (book.legal_category as LegalCategory | null) ?? null,
+      territories: book.license_territories,
+      residenceCountry: user.residence_country,
+    });
+    if (!admin && !pdfAccess.ok) {
+      return NextResponse.json(
+        { error: "Este PDF no está autorizado para tu país de residencia." },
+        { status: 403 }
+      );
     }
 
     // Defense-in-depth: object must live under this community's folder.

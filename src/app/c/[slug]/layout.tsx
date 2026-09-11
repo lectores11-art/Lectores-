@@ -8,6 +8,8 @@ import {
 } from "@/lib/auth/helpers";
 import { CommunityShell } from "@/components/layout/community-shell";
 import { CommunityPaywall } from "@/components/community/community-paywall";
+import { LegalConsentGate } from "@/components/legal/legal-consent-gate";
+import { hasCompletedLegalConsent } from "@/lib/legal/consent";
 
 export default async function CommunityLayout({
   children,
@@ -21,6 +23,10 @@ export default async function CommunityLayout({
 
   if (!user) redirect(`/login?redirect=/c/${slug}/forum`);
   if (!community) notFound();
+  if (user.deleted_at) redirect("/login");
+  if (!hasCompletedLegalConsent(user)) {
+    return <LegalConsentGate />;
+  }
 
   if (shouldSeePaywall(user, community, membership)) {
     return <CommunityPaywall community={community} user={user} />;

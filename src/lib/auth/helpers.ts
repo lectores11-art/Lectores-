@@ -199,6 +199,11 @@ export async function getCurrentUser() {
     full_name: (user.user_metadata?.full_name as string | undefined) ?? null,
     avatar_url: null,
     is_super_admin: false,
+    accepted_terms_at: null,
+    accepted_privacy_at: null,
+    age_attested_at: null,
+    residence_country: null,
+    deleted_at: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   } as Profile;

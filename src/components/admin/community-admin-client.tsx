@@ -28,6 +28,7 @@ type MemberProfile = {
   email: string;
   full_name: string | null;
   avatar_url: string | null;
+  residence_country?: string | null;
 };
 
 type MemberRow = {
@@ -74,6 +75,10 @@ export function CommunityAdminClient({
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [membersError, setMembersError] = useState("");
+  const [countryCounts, setCountryCounts] = useState<Record<string, number>>({});
+  const [reports, setReports] = useState<
+    { id: string; reason: string; status: string; target_type: string }[]
+  >([]);
   const [kickingId, setKickingId] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [stripeConnected, setStripeConnected] = useState(false);
@@ -93,6 +98,7 @@ export function CommunityAdminClient({
     loadInvites();
     loadMembers();
     loadStripeStatus();
+    loadReports();
     const params = new URLSearchParams(window.location.search);
     const flag = params.get("stripe");
     if (flag === "return") {
@@ -195,12 +201,28 @@ export function CommunityAdminClient({
         return;
       }
       setMembers(data.members || []);
+      setCountryCounts(data.countryCounts || {});
     } catch {
       setMembers([]);
       setMembersError("No se pudieron cargar los miembros.");
     } finally {
       setLoadingMembers(false);
     }
+  }
+
+  async function loadReports() {
+    const res = await fetch(`/api/c/${slug}/reports`);
+    const data = await res.json().catch(() => ({}));
+    setReports(data.reports || []);
+  }
+
+  async function resolveReport(id: string, status: "hidden" | "dismissed") {
+    await fetch(`/api/c/${slug}/reports/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    await loadReports();
   }
 
   async function createInvite() {
@@ -402,6 +424,14 @@ export function CommunityAdminClient({
             <p className="text-sm text-muted">
               Podés desactivar el acceso de un miembro. No se borra su cuenta de usuario.
             </p>
+            {Object.keys(countryCounts).length > 0 && (
+              <p className="text-sm">
+                Países de residencia:{" "}
+                {Object.entries(countryCounts)
+                  .map(([code, count]) => `${code} (${count})`)
+                  .join(" · ")}
+              </p>
+            )}
             {loadingMembers ? (
               <p className="text-sm text-muted">Cargando miembros…</p>
             ) : membersError ? (
@@ -587,6 +617,40 @@ export function CommunityAdminClient({
                 </ul>
               )}
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="hard-shadow-sm">
+          <CardHeader>
+            <CardTitle>Reportes de contenido</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {reports.length === 0 ? (
+              <p className="text-sm text-muted">No hay reportes.</p>
+            ) : (
+              reports.map((report) => (
+                <div key={report.id} className="space-y-2 border-b border-border pb-3 text-sm last:border-0">
+                  <p className="font-semibold">
+                    {report.target_type} · {report.status}
+                  </p>
+                  <p className="text-muted">{report.reason}</p>
+                  {report.status === "open" && (
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => void resolveReport(report.id, "hidden")}>
+                        Ocultar
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void resolveReport(report.id, "dismissed")}
+                      >
+                        Desestimar
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
           </CardContent>
         </Card>
 

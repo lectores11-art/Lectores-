@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { isValidCountryCode, WORLDWIDE_TERRITORY } from "@/lib/legal/countries";
+import { LEGAL_CATEGORIES } from "@/lib/legal/pdf-access";
 
 export const MAX_PDF_BYTES = 50 * 1024 * 1024;
 export const MAX_COVER_BYTES = 5 * 1024 * 1024;
@@ -70,6 +72,42 @@ export const bookUploadFieldsSchema = z.object({
   mode: bookUploadModeSchema.default("pdf"),
 });
 
+export const legalCategorySchema = z.enum(LEGAL_CATEGORIES);
+
+const territoryCodeSchema = z
+  .string()
+  .trim()
+  .transform((value) => value.toUpperCase())
+  .refine(
+    (value) => value === WORLDWIDE_TERRITORY || isValidCountryCode(value),
+    "País inválido"
+  );
+
+export const accountLegalSchema = z.object({
+  residenceCountry: z
+    .string()
+    .trim()
+    .transform((value) => value.toUpperCase())
+    .refine(isValidCountryCode, "País inválido"),
+  acceptTerms: z.literal(true),
+  acceptPrivacy: z.literal(true),
+  attestAge18: z.literal(true),
+});
+
+export const contentReportCreateSchema = z.object({
+  targetType: z.enum(["book", "thread", "lesson"]),
+  targetId: z.string().uuid(),
+  reason: z.string().trim().min(10).max(2000),
+});
+
+export const contentReportPatchSchema = z.object({
+  status: z.enum(["hidden", "dismissed"]),
+});
+
+export const reportParamsSchema = slugParamsSchema.extend({
+  reportId: z.string().uuid(),
+});
+
 /** Finalize after client uploaded cover/PDF directly to Supabase Storage. */
 export const bookFinalizeUploadSchema = z
   .object({
@@ -79,6 +117,18 @@ export const bookFinalizeUploadSchema = z
     mode: bookUploadModeSchema.default("pdf"),
     coverStoragePath: z.string().trim().min(3).max(500),
     pdfStoragePath: z.string().trim().min(3).max(500).optional().nullable(),
+    legalCategory: legalCategorySchema,
+    licenseTerritories: z.array(territoryCodeSchema).max(80).default([]),
+    rightsHolderName: z.string().trim().max(300).optional().nullable(),
+    licenseExpiresAt: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional()
+      .nullable(),
+    allowsLiveDisplay: z.boolean().optional().default(false),
+    allowsRecording: z.boolean().optional().default(false),
+    licenseAttested: z.boolean(),
+    coverRightsAttested: z.boolean(),
   })
   .superRefine((data, ctx) => {
     if (data.mode === "pdf" && !data.pdfStoragePath) {
@@ -87,6 +137,50 @@ export const bookFinalizeUploadSchema = z
         message: "pdfStoragePath required",
         path: ["pdfStoragePath"],
       });
+    }
+    if (data.mode === "catalog" && data.legalCategory !== "catalog") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "catalog mode requires catalog category",
+        path: ["legalCategory"],
+      });
+    }
+    if (data.mode === "pdf" && data.legalCategory === "catalog") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "PDF requires a digital license category",
+        path: ["legalCategory"],
+      });
+    }
+    if (!data.coverRightsAttested) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "cover attestation required",
+        path: ["coverRightsAttested"],
+      });
+    }
+    if (!data.licenseAttested) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "license attestation required",
+        path: ["licenseAttested"],
+      });
+    }
+    if (data.legalCategory === "rights_holder") {
+      if (data.licenseTerritories.length < 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "territories required",
+          path: ["licenseTerritories"],
+        });
+      }
+      if (!data.rightsHolderName || data.rightsHolderName.trim().length < 2) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "rights holder required",
+          path: ["rightsHolderName"],
+        });
+      }
     }
   });
 

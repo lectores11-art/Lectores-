@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isCommunityAdmin, requireApiCommunityAccess } from "@/lib/auth/helpers";
 import { internalErrorResponse, parseData, slugParamsSchema } from "@/lib/validation";
+import { countMembersByCountry } from "@/lib/legal/pdf-access";
 
 export async function GET(
   _request: Request,
@@ -25,7 +26,7 @@ export async function GET(
     const { data: members, error } = await supabase
       .from("memberships")
       .select(
-        "id, user_id, role, status, joined_at, created_at, profile:profiles(id, email, full_name, avatar_url)"
+        "id, user_id, role, status, joined_at, created_at, profile:profiles(id, email, full_name, avatar_url, residence_country)"
       )
       .eq("community_id", community.id)
       .eq("status", "active")
@@ -40,7 +41,19 @@ export async function GET(
         member.role === "community_owner",
     }));
 
-    return NextResponse.json({ members: rows });
+    const countries = rows.map((member) => {
+      const profile = Array.isArray(member.profile)
+        ? member.profile[0]
+        : member.profile;
+      return profile && typeof profile === "object"
+        ? (profile as { residence_country?: string | null }).residence_country
+        : null;
+    });
+
+    return NextResponse.json({
+      members: rows,
+      countryCounts: countMembersByCountry(countries),
+    });
   } catch (err) {
     return internalErrorResponse("GET /api/c/[slug]/members failed:", err);
   }

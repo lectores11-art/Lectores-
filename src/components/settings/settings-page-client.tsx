@@ -238,6 +238,30 @@ export function SettingsPageClient({
     }
   }
 
+  async function deleteAccount() {
+    if (
+      !confirm(
+        "¿Borrar tu cuenta? Se anonimizan tus datos y se pide cancelar las suscripciones. Esta acción no se puede deshacer."
+      )
+    ) {
+      return;
+    }
+    setMessage("");
+    try {
+      const res = await fetch("/api/account/delete", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMessage(data.error || "No se pudo borrar la cuenta.");
+        return;
+      }
+      const supabase = createClient();
+      await supabase.auth.signOut();
+      window.location.assign("/login");
+    } catch {
+      setMessage("No se pudo borrar la cuenta.");
+    }
+  }
+
   const periodEndLabel = formatDate(subscription?.current_period_end);
   const cancelAtLabel = subscription?.cancel_at_period_end
     ? periodEndLabel
@@ -425,6 +449,34 @@ export function SettingsPageClient({
                 {leaving ? "Saliendo…" : "Salir de la comunidad"}
               </Button>
             )}
+          </CardContent>
+        </Card>
+
+        <Card className="hard-shadow-sm">
+          <CardHeader>
+            <CardTitle>Tus datos</CardTitle>
+            <CardDescription>
+              Exportar o borrar la cuenta. El borrado anonimiza el perfil y pide cancelar las
+              renovaciones de Stripe.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                window.location.href = "/api/account/export";
+              }}
+            >
+              Descargar mis datos
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void deleteAccount()}
+            >
+              Borrar mi cuenta
+            </Button>
           </CardContent>
         </Card>
 

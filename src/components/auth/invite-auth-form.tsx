@@ -6,6 +6,10 @@ import { mapAuthError } from "@/lib/auth/map-auth-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  LegalConsentFields,
+  emptyLegalConsent,
+} from "@/components/legal/legal-consent-fields";
 
 interface InviteAuthFormProps {
   token: string;
@@ -28,6 +32,7 @@ export function InviteAuthForm({
   const [resending, setResending] = useState(false);
   const [resendMessage, setResendMessage] = useState("");
   const [resendLocked, setResendLocked] = useState(false);
+  const [legal, setLegal] = useState(emptyLegalConsent);
 
   function redirectUrl() {
     const base =
@@ -45,6 +50,16 @@ export function InviteAuthForm({
     const supabase = createClient();
 
     if (mode === "register") {
+      if (
+        !legal.residenceCountry ||
+        !legal.acceptTerms ||
+        !legal.acceptPrivacy ||
+        !legal.attestAge18
+      ) {
+        setError("Completá país, mayoría de edad, términos y privacidad.");
+        setLoading(false);
+        return;
+      }
       const { data, error: authError } = await supabase.auth.signUp({
         email,
         password,
@@ -64,6 +79,7 @@ export function InviteAuthForm({
         Boolean(data.user) && Array.isArray(identities) && identities.length === 0;
 
       if (data.session) {
+        await saveLegalConsent();
         onAuthenticated();
         return;
       }
@@ -72,6 +88,7 @@ export function InviteAuthForm({
         await supabase.auth.signInWithPassword({ email, password });
 
       if (signedIn.session) {
+        await saveLegalConsent();
         onAuthenticated();
         return;
       }
@@ -119,6 +136,15 @@ export function InviteAuthForm({
     }
 
     onAuthenticated();
+  }
+
+  async function saveLegalConsent() {
+    if (mode !== "register") return;
+    await fetch("/api/account/legal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(legal),
+    });
   }
 
   async function resendConfirmation() {
@@ -237,6 +263,9 @@ export function InviteAuthForm({
           minLength={6}
         />
       </div>
+      {mode === "register" && (
+        <LegalConsentFields values={legal} onChange={setLegal} />
+      )}
       {error && <p className="text-sm text-red-600">{error}</p>}
       <Button type="submit" className="w-full" disabled={loading}>
         {loading

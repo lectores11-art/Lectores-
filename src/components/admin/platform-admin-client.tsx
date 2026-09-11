@@ -17,6 +17,16 @@ export function PlatformAdminClient() {
   const [lastOwnerEmail, setLastOwnerEmail] = useState("");
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
+  const [reports, setReports] = useState<
+    {
+      id: string;
+      reason: string;
+      status: string;
+      target_type: string;
+      created_at: string;
+      community?: { slug: string; name: string } | { slug: string; name: string }[] | null;
+    }[]
+  >([]);
 
   useEffect(() => {
     async function loadCommunities() {
@@ -25,12 +35,28 @@ export function PlatformAdminClient() {
       setCommunities(data.communities || []);
     }
     void loadCommunities();
+    void loadReports();
   }, []);
+
+  async function loadReports() {
+    const res = await fetch("/api/platform/reports");
+    const data = await res.json().catch(() => ({}));
+    setReports(data.reports || []);
+  }
 
   async function refreshCommunities() {
     const res = await fetch("/api/platform/communities");
     const data = await res.json();
     setCommunities(data.communities || []);
+  }
+
+  async function resolveReport(id: string, status: "hidden" | "dismissed") {
+    await fetch(`/api/platform/reports/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    await loadReports();
   }
 
   async function createCommunity(e: React.FormEvent<HTMLFormElement>) {
@@ -206,6 +232,46 @@ export function PlatformAdminClient() {
             </Card>
           ))}
         </div>
+
+        <h2 className="mb-3 mt-10 text-xl font-bold">Reportes de contenido</h2>
+        {reports.length === 0 ? (
+          <p className="text-sm text-muted">No hay reportes.</p>
+        ) : (
+          <div className="space-y-3">
+            {reports.map((report) => {
+              const community = Array.isArray(report.community)
+                ? report.community[0]
+                : report.community;
+              return (
+                <Card key={report.id} className="hard-shadow-sm">
+                  <CardContent className="space-y-2 pt-4 text-sm">
+                    <p className="font-semibold">
+                      {report.target_type} · {report.status} · {community?.name || community?.slug}
+                    </p>
+                    <p className="text-muted">{report.reason}</p>
+                    {report.status === "open" && (
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => void resolveReport(report.id, "hidden")}
+                        >
+                          Ocultar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void resolveReport(report.id, "dismissed")}
+                        >
+                          Desestimar
+                        </Button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </main>
     </div>
   );

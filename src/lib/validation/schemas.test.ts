@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  accountLegalSchema,
+  bookFinalizeUploadSchema,
   bookParamsSchema,
   bookPatchSchema,
   bookPublishPatchSchema,
+  contentReportCreateSchema,
   forumThreadCreateSchema,
   forumThreadPatchSchema,
   inviteJoinSchema,
@@ -337,6 +340,92 @@ describe("subscriptionPortalSchema", () => {
   it("rejects non-uuid communityId", () => {
     expect(
       subscriptionPortalSchema.safeParse({ communityId: "x" }).success
+    ).toBe(false);
+  });
+});
+
+const LICENSE_OK = {
+  title: "Libro",
+  coverStoragePath: `${UUID}/cover.jpg`,
+  pdfStoragePath: `${UUID}/book.pdf`,
+  mode: "pdf" as const,
+  legalCategory: "rights_holder" as const,
+  licenseTerritories: ["ES", "AR"],
+  rightsHolderName: "Editorial Ejemplo",
+  licenseAttested: true,
+  coverRightsAttested: true,
+};
+
+describe("accountLegalSchema", () => {
+  it("requires terms, privacy, age and a country code", () => {
+    expect(
+      accountLegalSchema.parse({
+        residenceCountry: "es",
+        acceptTerms: true,
+        acceptPrivacy: true,
+        attestAge18: true,
+      })
+    ).toEqual({
+      residenceCountry: "ES",
+      acceptTerms: true,
+      acceptPrivacy: true,
+      attestAge18: true,
+    });
+    expect(
+      accountLegalSchema.safeParse({
+        residenceCountry: "ES",
+        acceptTerms: false,
+        acceptPrivacy: true,
+        attestAge18: true,
+      }).success
+    ).toBe(false);
+  });
+});
+
+describe("bookFinalizeUploadSchema license", () => {
+  it("accepts a rights_holder PDF with territories and attestations", () => {
+    const parsed = bookFinalizeUploadSchema.parse(LICENSE_OK);
+    expect(parsed.legalCategory).toBe("rights_holder");
+    expect(parsed.licenseTerritories).toEqual(["ES", "AR"]);
+  });
+
+  it("rejects a PDF without license attestation", () => {
+    expect(
+      bookFinalizeUploadSchema.safeParse({
+        ...LICENSE_OK,
+        licenseAttested: false,
+      }).success
+    ).toBe(false);
+  });
+
+  it("rejects rights_holder without territories", () => {
+    expect(
+      bookFinalizeUploadSchema.safeParse({
+        ...LICENSE_OK,
+        licenseTerritories: [],
+      }).success
+    ).toBe(false);
+  });
+});
+
+describe("contentReportCreateSchema", () => {
+  it("accepts a book report", () => {
+    expect(
+      contentReportCreateSchema.parse({
+        targetType: "book",
+        targetId: UUID,
+        reason: "Este PDF no debería estar publicado.",
+      })
+    ).toMatchObject({ targetType: "book", targetId: UUID });
+  });
+
+  it("rejects a short reason", () => {
+    expect(
+      contentReportCreateSchema.safeParse({
+        targetType: "book",
+        targetId: UUID,
+        reason: "malo",
+      }).success
     ).toBe(false);
   });
 });

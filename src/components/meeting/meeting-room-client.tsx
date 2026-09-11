@@ -20,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useDetailPanel } from "@/components/layout/detail-panel-context";
 import { PIPELINE_VERSION, type PackMetrics } from "@/lib/pdf/paginator";
 import type { Book, BookPage, BookTOCItem, Meeting, MeetingChatMessage } from "@/lib/types/database";
+import { MeetingNotice } from "@/components/legal/meeting-notice";
 
 interface MeetingRoomClientProps {
   slug: string;
@@ -67,6 +68,7 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
   const [isHost, setIsHost] = useState(false);
   const [joinError, setJoinError] = useState("");
   const [joiningId, setJoiningId] = useState<string | null>(null);
+  const [pendingMeeting, setPendingMeeting] = useState<Meeting | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [showBooks, setShowBooks] = useState(false);
@@ -110,11 +112,18 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
 
   async function loadBooks() {
     const res = await fetch(`/api/c/${slug}/books`);
-    const data = await res.json();
-    setBooks(data.books || []);
+    const payload = await res.json();
+    setBooks(
+      (payload.books || []).filter((book: Book) => book.pdf_readable !== false)
+    );
+  }
+
+  async function requestJoin(meeting: Meeting) {
+    setPendingMeeting(meeting);
   }
 
   async function joinMeeting(meeting: Meeting) {
+    setPendingMeeting(null);
     setJoinError("");
     setJoiningId(meeting.id);
     try {
@@ -550,7 +559,7 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
               </CardHeader>
               <CardContent>
                 <Button
-                  onClick={() => joinMeeting(meeting)}
+                  onClick={() => void requestJoin(meeting)}
                   disabled={joiningId === meeting.id}
                 >
                   <Video className="h-4 w-4" />
@@ -560,6 +569,12 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
             </Card>
           ))}
         </div>
+      )}
+      {pendingMeeting && (
+        <MeetingNotice
+          onAccept={() => void joinMeeting(pendingMeeting)}
+          onCancel={() => setPendingMeeting(null)}
+        />
       )}
     </div>
   );

@@ -11,6 +11,7 @@ import { Progress } from "@/components/ui/progress";
 import { useDetailPanel } from "@/components/layout/detail-panel-context";
 import { cn } from "@/lib/utils";
 import { ClassroomVideoPlayer } from "@/components/classroom/classroom-video-player";
+import { ReportButton } from "@/components/legal/report-button";
 import type { Course, Lesson } from "@/lib/types/database";
 
 export function ClassroomPageClient({
@@ -86,6 +87,7 @@ export function ClassroomPageClient({
       video_url: form.get("videoUrl") as string,
       video_provider: "embed",
       is_published: true,
+      recording_consent_attested: true,
     });
 
     if (lessonError) {
@@ -129,7 +131,7 @@ export function ClassroomPageClient({
     const supabase = createClient();
     const { error } = await supabase
       .from("lessons")
-      .update({ title, video_url: videoUrl })
+      .update({ title, video_url: videoUrl, recording_consent_attested: true })
       .eq("id", editingLesson.id);
 
     if (error) {
@@ -157,6 +159,7 @@ export function ClassroomPageClient({
       video_url: String(form.get("videoUrl") || "").trim(),
       video_provider: "embed",
       is_published: true,
+      recording_consent_attested: true,
     });
     if (error) {
       setActionError("No se pudo añadir la grabación.");
@@ -255,6 +258,13 @@ export function ClassroomPageClient({
                   required
                 />
               </div>
+              <label className="flex items-start gap-2 text-sm">
+                <input type="checkbox" name="recordingConsent" required className="mt-1" />
+                <span>
+                  Declaro que las personas identificables consintieron ser grabadas y que la
+                  obra leída está cubierta por permiso.
+                </span>
+              </label>
               <Button type="submit">Crear</Button>
             </form>
           </CardContent>
@@ -302,6 +312,13 @@ export function ClassroomPageClient({
                   required
                 />
               </div>
+              <label className="flex items-start gap-2 text-sm">
+                <input type="checkbox" name="recordingConsent" required className="mt-1" />
+                <span>
+                  Confirmo de nuevo el consentimiento de quienes aparecen y el permiso de la
+                  obra.
+                </span>
+              </label>
               <div className="flex gap-2">
                 <Button type="submit">Guardar</Button>
                 <Button type="button" variant="outline" onClick={() => setEditingLesson(null)}>
@@ -326,6 +343,13 @@ export function ClassroomPageClient({
                 <Label>URL del video</Label>
                 <Input name="videoUrl" required />
               </div>
+              <label className="flex items-start gap-2 text-sm">
+                <input type="checkbox" name="recordingConsent" required className="mt-1" />
+                <span>
+                  Declaro que las personas identificables consintieron ser grabadas y que la
+                  obra leída está cubierta por permiso.
+                </span>
+              </label>
               <div className="flex gap-2">
                 <Button type="submit">Añadir</Button>
                 <Button
@@ -469,6 +493,9 @@ export function ClassroomPageClient({
                 ) : (
                   <p className="text-muted">Video no disponible</p>
                 )}
+                <div className="mt-3">
+                  <ReportButton slug={slug} targetType="lesson" targetId={selectedLesson.id} />
+                </div>
                 <div className="mt-4">
                   <Progress value={0} />
                   <p className="mt-1 text-xs text-muted">Progreso de la lección</p>

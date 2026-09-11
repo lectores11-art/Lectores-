@@ -163,8 +163,9 @@ export function BookReaderPageClient({
       <div className="flex h-screen flex-col items-center justify-center gap-3 bg-slate-900 px-6 text-center text-white">
         <p className="text-lg font-semibold">{book.title}</p>
         <p className="text-sm text-slate-300">
-          Este libro está registrado como físico y no tiene PDF para leer en la
-          plataforma.
+          {book.has_pdf || book.legal_category === "rights_holder"
+            ? "Este PDF no está autorizado para tu país de residencia."
+            : "Este libro está registrado como físico y no tiene PDF para leer en la plataforma."}
         </p>
         <a
           href={`/c/${slug}/library`}

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Space_Grotesk, Literata } from "next/font/google";
+import { CookieBanner } from "@/components/legal/cookie-banner";
 import "./globals.css";
 
 const spaceGrotesk = Space_Grotesk({
@@ -26,6 +27,7 @@ export default function RootLayout({
     <html lang="es" className="light">
       <body className={`${spaceGrotesk.variable} ${literata.variable} antialiased`}>
         {children}
+        <CookieBanner />
       </body>
     </html>
   );

@@ -6,6 +6,9 @@ import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LogoutButton } from "@/components/auth/logout-button";
+import { LegalConsentGate } from "@/components/legal/legal-consent-gate";
+import { LegalFooter } from "@/components/legal/legal-footer";
+import { hasCompletedLegalConsent } from "@/lib/legal/consent";
 import type { Community, Membership } from "@/lib/types/database";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +18,12 @@ export default async function DashboardPage() {
 
   if (!user) {
     redirect("/login?redirect=/dashboard");
+  }
+  if (user.deleted_at) {
+    redirect("/login");
+  }
+  if (!hasCompletedLegalConsent(user) && !user.is_super_admin) {
+    return <LegalConsentGate />;
   }
 
   const supabase = await createClient();
@@ -130,6 +139,9 @@ function DashboardLayout({
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>
+      <footer className="border-t border-border px-6 py-4">
+        <LegalFooter />
+      </footer>
     </div>
   );
 }

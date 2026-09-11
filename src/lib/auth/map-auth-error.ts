@@ -63,6 +63,10 @@ export function mapAuthErrorMessage(
       test: /redirect_uri|redirect_to|invalid redirect/,
       es: "Auth rechazó la redirección. En Supabase: Confirm email = off, y en Redirect URLs el dominio de Vercel.",
     },
+    {
+      test: /email provider is disabled|email_provider_disabled/,
+      es: "En Supabase está apagado el login con email. Authentication → Providers → Email → Enable. Confirm email dejalo Off.",
+    },
   ];
 
   for (const rule of rules) {
@@ -90,6 +94,8 @@ const AUTH_CODE_MESSAGES: Record<string, string> = {
   leaked_password:
     "Esa contraseña es demasiado común. Elegí otra más larga (mínimo 8 caracteres, no un patrón típico).",
   signup_disabled: "El registro está deshabilitado en Auth.",
+  email_provider_disabled:
+    "En Supabase está apagado el login con email. Authentication → Providers → Email → Enable. Confirm email dejalo Off.",
   invalid_credentials: "Email o contraseña incorrectos.",
 };
 

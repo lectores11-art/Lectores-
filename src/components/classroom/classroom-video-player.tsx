@@ -1,9 +1,29 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { toEmbedPlayback } from "@/lib/video/embed-url";
+import {
+  COOKIE_CONSENT_KEY,
+  isEmbedAllowed,
+  parseCookieConsent,
+} from "@/lib/legal/cookies";
+import { Button } from "@/components/ui/button";
 
 export function ClassroomVideoPlayer({ url }: { url: string }) {
   const playback = toEmbedPlayback(url);
+  const [consent, setConsent] = useState(() =>
+    typeof window === "undefined"
+      ? null
+      : parseCookieConsent(window.localStorage.getItem(COOKIE_CONSENT_KEY))
+  );
+
+  useEffect(() => {
+    function sync() {
+      setConsent(parseCookieConsent(window.localStorage.getItem(COOKIE_CONSENT_KEY)));
+    }
+    window.addEventListener("hilo-cookie-consent", sync);
+    return () => window.removeEventListener("hilo-cookie-consent", sync);
+  }, []);
 
   if (!playback) {
     return <p className="text-muted">No se pudo cargar este enlace</p>;
@@ -17,6 +37,26 @@ export function ClassroomVideoPlayer({ url }: { url: string }) {
         className="block w-full"
         style={{ aspectRatio: "16 / 9", height: "auto" }}
       />
+    );
+  }
+
+  if (!isEmbedAllowed(consent)) {
+    return (
+      <div className="space-y-3 rounded-md border border-border p-4 text-sm">
+        <p className="text-muted">
+          Este vídeo viene de un sitio tercero (YouTube, Vimeo o Mux) y puede usar cookies.
+          Aceptá embeds para verlo.
+        </p>
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => {
+            window.dispatchEvent(new Event("hilo-open-cookies"));
+          }}
+        >
+          Revisar cookies
+        </Button>
+      </div>
     );
   }
 
