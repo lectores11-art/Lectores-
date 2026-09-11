@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { joinAccessFromStatus } from "@/lib/auth/access";
 import {
+  activatePendingMembershipForUnpaidBypass,
+  allowUnpaidInviteAccess,
+} from "@/lib/billing/unpaid-invite-access";
+import {
   clientIpFromRequest,
   rateLimit,
   rateLimitResponse,
@@ -36,7 +40,7 @@ export async function POST(request: Request) {
     }
 
     // SECURITY DEFINER: validates token, inserts pending membership as role=member,
-    // bumps use_count once. Access opens after Stripe payment.
+    // bumps use_count once. Access opens after Stripe payment (unless unpaid bypass).
     const { data: results, error } = await supabase.rpc("accept_invite", {
       p_token: token,
     });
@@ -58,7 +62,6 @@ export async function POST(request: Request) {
       if (message.includes("community not found")) {
         return NextResponse.json({ error: "Comunidad no encontrada" }, { status: 404 });
       }
-      // Migrations 010/011: accept_invite raises when memberships.rejoin_blocked.
       if (
         message.includes("membership revoked") ||
         message.includes("rejoin_blocked") ||
@@ -83,17 +86,35 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invitación no válida" }, { status: 404 });
     }
 
+    let membershipStatus = row.membership_status;
+
+    if (allowUnpaidInviteAccess() && membershipStatus === "pending") {
+      const { data: community } = await supabase
+        .from("communities")
+        .select("id")
+        .eq("slug", row.community_slug)
+        .maybeSingle();
+
+      if (community?.id) {
+        const activated = await activatePendingMembershipForUnpaidBypass({
+          userId: user.id,
+          communityId: community.id,
+        });
+        if (activated) membershipStatus = "active";
+      }
+    }
+
     if (row.already_member) {
       return NextResponse.json({
         slug: row.community_slug,
         message: "Ya eres miembro",
-        access: joinAccessFromStatus(row.membership_status),
+        access: joinAccessFromStatus(membershipStatus),
       });
     }
 
     return NextResponse.json({
       slug: row.community_slug,
-      access: joinAccessFromStatus(row.membership_status),
+      access: joinAccessFromStatus(membershipStatus),
     });
   } catch (err) {
     return internalErrorResponse("POST /api/invites/join failed:", err);

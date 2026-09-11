@@ -10,6 +10,10 @@ import { CommunityShell } from "@/components/layout/community-shell";
 import { CommunityPaywall } from "@/components/community/community-paywall";
 import { LegalConsentGate } from "@/components/legal/legal-consent-gate";
 import { hasCompletedLegalConsent } from "@/lib/legal/consent";
+import {
+  activatePendingMembershipForUnpaidBypass,
+  allowUnpaidInviteAccess,
+} from "@/lib/billing/unpaid-invite-access";
 
 export default async function CommunityLayout({
   children,
@@ -26,6 +30,21 @@ export default async function CommunityLayout({
   if (user.deleted_at) redirect("/login");
   if (!hasCompletedLegalConsent(user)) {
     return <LegalConsentGate />;
+  }
+
+  // Temporary unpaid bypass: promote pending → active so RLS allows content.
+  if (
+    shouldSeePaywall(user, community, membership) &&
+    allowUnpaidInviteAccess() &&
+    membership?.status === "pending"
+  ) {
+    const activated = await activatePendingMembershipForUnpaidBypass({
+      userId: user.id,
+      communityId: community.id,
+    });
+    if (activated) {
+      redirect(`/c/${slug}/forum`);
+    }
   }
 
   if (shouldSeePaywall(user, community, membership)) {
