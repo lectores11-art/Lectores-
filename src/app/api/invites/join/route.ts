@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { joinAccessFromStatus } from "@/lib/auth/access";
+import {
+  joinAccessFromStatus,
+} from "@/lib/auth/access";
+import { communityCanCharge } from "@/lib/billing/platform-fee";
 import {
   activatePendingMembershipForUnpaidBypass,
   allowUnpaidInviteAccess,
@@ -12,6 +15,7 @@ import {
 } from "@/lib/security/rate-limit";
 import { INVITE_JOIN_PER_IP, INVITE_JOIN_WINDOW_MS } from "@/lib/invites/defaults";
 import { internalErrorResponse, inviteJoinSchema, parseJsonBody } from "@/lib/validation";
+import type { Community } from "@/lib/types/database";
 
 type AcceptInviteResult = {
   community_slug: string;
@@ -39,8 +43,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 });
     }
 
-    // SECURITY DEFINER: validates token, inserts pending membership as role=member,
-    // bumps use_count once. Access opens after Stripe payment (unless unpaid bypass).
     const { data: results, error } = await supabase.rpc("accept_invite", {
       p_token: token,
     });
@@ -88,17 +90,28 @@ export async function POST(request: Request) {
 
     let membershipStatus = row.membership_status;
 
-    if (allowUnpaidInviteAccess() && membershipStatus === "pending") {
+    if (membershipStatus === "pending") {
       const { data: community } = await supabase
         .from("communities")
-        .select("id")
+        .select(
+          "id, stripe_account_id, stripe_charges_enabled, monthly_price_cents"
+        )
         .eq("slug", row.community_slug)
         .maybeSingle();
 
-      if (community?.id) {
+      const club = community as Pick<
+        Community,
+        "id" | "stripe_account_id" | "stripe_charges_enabled" | "monthly_price_cents"
+      > | null;
+
+      const unlock =
+        Boolean(club) &&
+        (allowUnpaidInviteAccess() || !communityCanCharge(club!));
+
+      if (unlock && club) {
         const activated = await activatePendingMembershipForUnpaidBypass({
           userId: user.id,
-          communityId: community.id,
+          communityId: club.id,
         });
         if (activated) membershipStatus = "active";
       }

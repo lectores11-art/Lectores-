@@ -4,6 +4,7 @@ import {
   hasActiveCommunityAccess,
   shouldSeePaywall,
 } from "@/lib/auth/helpers";
+import { shouldAutoActivateUnpaidMembership } from "@/lib/auth/access";
 import {
   activatePendingMembershipForUnpaidBypass,
   allowUnpaidInviteAccess,
@@ -28,12 +29,11 @@ export async function GET(
     }
 
     if (
-      allowUnpaidInviteAccess() &&
       membership &&
+      membership.status !== "active" &&
       !membership.rejoin_blocked &&
-      (membership.status === "pending" ||
-        membership.status === "cancelled" ||
-        membership.status === "expired")
+      (shouldAutoActivateUnpaidMembership(community, membership) ||
+        allowUnpaidInviteAccess())
     ) {
       const activated = await activatePendingMembershipForUnpaidBypass({
         userId: user.id,

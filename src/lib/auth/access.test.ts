@@ -95,22 +95,33 @@ describe("hasActiveCommunityAccess", () => {
 });
 
 describe("shouldSeePaywall", () => {
-  it("shows paywall for pending invitees", () => {
-    expect(shouldSeePaywall(profile(), community(), membership())).toBe(true);
+  const billable = () =>
+    community({
+      stripe_account_id: "acct_123",
+      stripe_charges_enabled: true,
+      monthly_price_cents: 1900,
+    });
+
+  it("shows paywall for pending invitees when the club can charge", () => {
+    expect(shouldSeePaywall(profile(), billable(), membership())).toBe(true);
   });
 
-  it("shows paywall after cancelled or expired access", () => {
+  it("hides paywall when the club cannot charge yet (no Stripe)", () => {
+    expect(shouldSeePaywall(profile(), community(), membership())).toBe(false);
+  });
+
+  it("shows paywall after cancelled or expired access when billable", () => {
     expect(
       shouldSeePaywall(
         profile(),
-        community(),
+        billable(),
         membership({ status: "cancelled" })
       )
     ).toBe(true);
     expect(
       shouldSeePaywall(
         profile(),
-        community(),
+        billable(),
         membership({ status: "expired" })
       )
     ).toBe(true);
@@ -118,12 +129,12 @@ describe("shouldSeePaywall", () => {
 
   it("hides paywall for owner, admin, and paying members", () => {
     expect(
-      shouldSeePaywall(profile({ id: "owner-1" }), community(), membership())
+      shouldSeePaywall(profile({ id: "owner-1" }), billable(), membership())
     ).toBe(false);
     expect(
       shouldSeePaywall(
         profile(),
-        community(),
+        billable(),
         membership({ status: "active" })
       )
     ).toBe(false);
@@ -133,14 +144,14 @@ describe("shouldSeePaywall", () => {
     expect(
       shouldSeePaywall(
         profile(),
-        community(),
+        billable(),
         membership({ rejoin_blocked: true })
       )
     ).toBe(false);
   });
 
   it("hides paywall when there is no membership", () => {
-    expect(shouldSeePaywall(profile(), community(), null)).toBe(false);
+    expect(shouldSeePaywall(profile(), billable(), null)).toBe(false);
   });
 });
 

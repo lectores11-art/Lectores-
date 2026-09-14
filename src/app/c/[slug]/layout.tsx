@@ -6,6 +6,7 @@ import {
   isCommunityAdmin,
   shouldSeePaywall,
 } from "@/lib/auth/helpers";
+import { shouldAutoActivateUnpaidMembership } from "@/lib/auth/access";
 import { CommunityShell } from "@/components/layout/community-shell";
 import { CommunityPaywall } from "@/components/community/community-paywall";
 import { LegalConsentGate } from "@/components/legal/legal-consent-gate";
@@ -32,21 +33,15 @@ export default async function CommunityLayout({
     return <LegalConsentGate />;
   }
 
-  const unpaidBypass = allowUnpaidInviteAccess();
+  // Free access while Stripe is not connected, or explicit unpaid bypass.
+  const shouldUnlock =
+    Boolean(membership) &&
+    !membership!.rejoin_blocked &&
+    membership!.status !== "active" &&
+    (shouldAutoActivateUnpaidMembership(community, membership) ||
+      allowUnpaidInviteAccess());
 
-  // Temporary unpaid bypass — any non-active, non-blocked membership unlocks.
-  if (
-    unpaidBypass &&
-    membership &&
-    membership.status !== "active" &&
-    !membership.rejoin_blocked
-  ) {
-    console.info("unpaid invite bypass: attempting activate", {
-      slug,
-      membershipId: membership.id,
-      status: membership.status,
-      nodeEnv: process.env.NODE_ENV,
-    });
+  if (shouldUnlock && membership) {
     const activated = await activatePendingMembershipForUnpaidBypass({
       userId: user.id,
       communityId: community.id,
@@ -55,21 +50,15 @@ export default async function CommunityLayout({
     if (activated) {
       redirect(`/c/${slug}/forum`);
     }
+    console.error("paywall unlock failed", {
+      slug,
+      membershipId: membership.id,
+      status: membership.status,
+      hasServiceKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+    });
   }
 
   if (shouldSeePaywall(user, community, membership)) {
-    if (unpaidBypass) {
-      console.error(
-        "ALLOW_UNPAID_INVITE_ACCESS / dev bypass on but still paywall",
-        {
-          slug,
-          membershipId: membership?.id,
-          status: membership?.status,
-          rejoin_blocked: membership?.rejoin_blocked,
-          hasServiceKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
-        }
-      );
-    }
     return <CommunityPaywall community={community} user={user} />;
   }
 
