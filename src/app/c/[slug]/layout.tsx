@@ -33,15 +33,20 @@ export default async function CommunityLayout({
   }
 
   const unpaidBypass = allowUnpaidInviteAccess();
-  const unpaidStatuses = new Set(["pending", "cancelled", "expired"]);
 
-  // Temporary unpaid bypass: promote → active so RLS allows content.
+  // Temporary unpaid bypass — any non-active, non-blocked membership unlocks.
   if (
     unpaidBypass &&
     membership &&
-    unpaidStatuses.has(membership.status) &&
+    membership.status !== "active" &&
     !membership.rejoin_blocked
   ) {
+    console.info("unpaid invite bypass: attempting activate", {
+      slug,
+      membershipId: membership.id,
+      status: membership.status,
+      nodeEnv: process.env.NODE_ENV,
+    });
     const activated = await activatePendingMembershipForUnpaidBypass({
       userId: user.id,
       communityId: community.id,
@@ -53,11 +58,16 @@ export default async function CommunityLayout({
   }
 
   if (shouldSeePaywall(user, community, membership)) {
-    // Last resort while bypass is on: never trap testers on Stripe UI.
-    if (unpaidBypass && membership && !membership.rejoin_blocked) {
+    if (unpaidBypass) {
       console.error(
-        "ALLOW_UNPAID_INVITE_ACCESS is on but activate failed; check SERVICE_ROLE_KEY / membership row",
-        { slug, membershipId: membership.id, status: membership.status }
+        "ALLOW_UNPAID_INVITE_ACCESS / dev bypass on but still paywall",
+        {
+          slug,
+          membershipId: membership?.id,
+          status: membership?.status,
+          rejoin_blocked: membership?.rejoin_blocked,
+          hasServiceKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+        }
       );
     }
     return <CommunityPaywall community={community} user={user} />;

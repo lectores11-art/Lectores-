@@ -2,17 +2,19 @@ import { createServiceClient } from "@/lib/supabase/server";
 
 /**
  * Temporary testing bypass: invite still required, Stripe checkout skipped.
- * Set ALLOW_UNPAID_INVITE_ACCESS=true only on local/staging.
- * Turn OFF before real payments — anyone with a valid invite gets full access.
+ *
+ * On local `next dev` always on.
+ * Elsewhere: set ALLOW_UNPAID_INVITE_ACCESS=true.
+ * Turn OFF before real payments.
  */
 export function allowUnpaidInviteAccess(): boolean {
+  if (process.env.NODE_ENV === "development") return true;
   const raw = process.env.ALLOW_UNPAID_INVITE_ACCESS?.trim().toLowerCase();
   return raw === "true" || raw === "1" || raw === "yes";
 }
 
 /**
  * Promotes unpaid invite memberships to active when bypass is on.
- * Prefer membershipId when known (layout); otherwise user+community.
  */
 export async function activatePendingMembershipForUnpaidBypass(params: {
   userId: string;
@@ -29,22 +31,18 @@ export async function activatePendingMembershipForUnpaidBypass(params: {
       updated_at: new Date().toISOString(),
     };
 
-    let query = service
-      .from("memberships")
-      .update(patch)
-      .in("status", ["pending", "cancelled", "expired"]);
+    // Prefer id-only update (no status filter) so odd rows still unlock.
+    let query = service.from("memberships").update(patch);
 
     if (params.membershipId) {
-      // Caller already verified !rejoin_blocked when using membershipId.
       query = query.eq("id", params.membershipId);
     } else {
-      // Invite-join path: kicked users never land here as pending via accept_invite.
       query = query
         .eq("user_id", params.userId)
         .eq("community_id", params.communityId);
     }
 
-    const { data, error } = await query.select("id");
+    const { data, error } = await query.select("id, status");
 
     if (error) {
       console.error("unpaid invite bypass activate failed:", error);
@@ -56,6 +54,7 @@ export async function activatePendingMembershipForUnpaidBypass(params: {
       return false;
     }
 
+    console.info("unpaid invite bypass: membership activated", data[0]);
     return true;
   } catch (err) {
     console.error("unpaid invite bypass threw:", err);
