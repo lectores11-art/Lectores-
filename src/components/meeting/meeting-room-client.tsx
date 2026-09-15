@@ -7,11 +7,13 @@ import {
   LiveKitRoom,
   ParticipantTile,
   RoomAudioRenderer,
+  isTrackReference,
+  useRemoteParticipants,
   useTracks,
 } from "@livekit/components-react";
 import "@livekit/components-styles";
 import { Track } from "livekit-client";
-import { ArrowLeft, BookOpen, ImageIcon, MessageSquare, Send, Video, X } from "lucide-react";
+import { ArrowLeft, BookOpen, ImageIcon, MessageSquare, Send, Video, VideoOff, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { BookReader } from "@/components/library/book-reader";
 import { Button } from "@/components/ui/button";
@@ -39,72 +41,201 @@ function bookHasReadableContent(book: Book): boolean {
   return Array.isArray(book.content_json) && book.content_json.length > 0;
 }
 
-function MeetingCameraStack({
+function CameraTileSlot({
+  label,
+  trackRef,
+  className,
+}: {
+  label: string;
+  trackRef?: ReturnType<typeof useTracks>[number];
+  className?: string;
+}) {
+  const hasVideo =
+    trackRef &&
+    isTrackReference(trackRef) &&
+    Boolean(
+      trackRef.publication?.track ||
+        (trackRef.participant.isLocal && trackRef.publication)
+    );
+
+  return (
+    <div
+      className={`relative aspect-video w-full min-h-[11rem] shrink-0 overflow-hidden rounded-lg border border-border bg-surface ${className ?? ""}`}
+    >
+      {hasVideo && isTrackReference(trackRef) ? (
+        <ParticipantTile
+          trackRef={trackRef}
+          className="absolute inset-0 !h-full !w-full [&_video]:h-full [&_video]:w-full [&_video]:object-cover"
+        />
+      ) : (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-2 text-center">
+          <Video className="h-4 w-4 text-muted" />
+          <p className="text-[10px] font-medium uppercase tracking-wide text-muted">
+            {label}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Wireframe layout — left column:
+ * conductor cam → guest cams → user controls
+ */
+function MeetingCameraColumn({
   canPublish,
-  enlarge,
+  hostUserId,
+  showHostControls,
+  grantedUserIds,
+  slotsUsed,
+  slotsMax,
+  busy,
+  onGrant,
+  onRevoke,
 }: {
   canPublish: boolean;
-  enlarge: boolean;
+  hostUserId: string;
+  showHostControls: boolean;
+  grantedUserIds: Set<string>;
+  slotsUsed: number;
+  slotsMax: number;
+  busy: boolean;
+  onGrant: (userId: string) => void;
+  onRevoke: (userId: string) => void;
 }) {
   const tracks = useTracks(
-    [
-      { source: Track.Source.Camera, withPlaceholder: true },
-      { source: Track.Source.ScreenShare, withPlaceholder: false },
-    ],
+    [{ source: Track.Source.Camera, withPlaceholder: false }],
     { onlySubscribed: false }
   );
 
-  const cameraTracks = tracks
-    .filter((t) => t.source === Track.Source.Camera)
-    .slice(0, 3);
-  const screenTracks = tracks.filter((t) => t.source === Track.Source.ScreenShare);
-  const displayTracks = [...cameraTracks, ...screenTracks].slice(0, 4);
+  const live = tracks.filter(isTrackReference).filter((t) => {
+    const pub = t.publication;
+    if (!pub) return false;
+    // Local cam can be "on" before track is fully attached; still show the tile.
+    if (t.participant.isLocal) {
+      return !pub.isMuted || Boolean(pub.track);
+    }
+    return Boolean(pub.track);
+  });
+
+  const hostTrack =
+    live.find((t) => t.participant.identity === hostUserId) ??
+    live.find((t) => t.participant.isLocal);
+  const otherTracks = live
+    .filter((t) => t.participant.identity !== hostTrack?.participant.identity)
+    .slice(0, 2);
 
   return (
-    <div className="meeting-livekit flex h-full min-h-0 flex-col">
-      <div
-        className={
-          enlarge
-            ? "grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto p-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-1"
-            : "flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2"
-        }
-      >
-        {displayTracks.length === 0 ? (
-          <div
-            className={
-              enlarge
-                ? "flex min-h-[12rem] flex-1 items-center justify-center rounded-md border border-border bg-surface text-sm text-muted"
-                : "flex aspect-video items-center justify-center rounded-md border border-border bg-surface text-xs text-muted"
-            }
-          >
-            Sin cámara
-          </div>
-        ) : (
-          displayTracks.map((trackRef) => (
-            <div
-              key={`${trackRef.participant.identity}-${trackRef.source}`}
-              className={
-                enlarge
-                  ? "relative min-h-[10rem] flex-1 overflow-hidden rounded-md border border-border bg-surface aspect-video lg:min-h-[11rem]"
-                  : "relative aspect-video w-full shrink-0 overflow-hidden rounded-md border border-border bg-surface"
-              }
-            >
-              <ParticipantTile trackRef={trackRef} className="h-full w-full" />
-            </div>
-          ))
-        )}
+    <aside className="flex w-full shrink-0 flex-col gap-2 border-b border-border p-2 lg:h-full lg:w-[calc(30%+10px)] lg:max-w-[330px] lg:border-b-0 lg:border-r xl:w-[calc(28%+10px)]">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
+        <CameraTileSlot label="Cámara de conductora" trackRef={hostTrack} />
+        <CameraTileSlot label="Cámara de invitada" trackRef={otherTracks[0]} />
+        <CameraTileSlot label="Cámara de invitada" trackRef={otherTracks[1]} />
       </div>
-      <ControlBar
-        variation="minimal"
-        controls={{
-          camera: canPublish,
-          microphone: canPublish,
-          screenShare: canPublish,
-          chat: false,
-          leave: false,
-        }}
-      />
-    </div>
+
+      <div className="meeting-livekit shrink-0 grow-0 overflow-visible rounded-lg border border-border bg-background">
+        <p className="border-b border-border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+          Configuración
+        </p>
+        {canPublish ? (
+          <ControlBar
+            variation="minimal"
+            controls={{
+              camera: true,
+              microphone: true,
+              screenShare: false,
+              chat: false,
+              leave: false,
+            }}
+          />
+        ) : (
+          <p className="px-2 py-2 text-[11px] text-muted">
+            Oyente — la conductora puede darte cámara
+          </p>
+        )}
+        {showHostControls ? (
+          <HostGuestCameraControls
+            grantedUserIds={grantedUserIds}
+            slotsUsed={slotsUsed}
+            slotsMax={slotsMax}
+            busy={busy}
+            onGrant={onGrant}
+            onRevoke={onRevoke}
+          />
+        ) : null}
+      </div>
+    </aside>
+  );
+}
+
+function HostGuestCameraControls({
+  grantedUserIds,
+  slotsUsed,
+  slotsMax,
+  busy,
+  onGrant,
+  onRevoke,
+}: {
+  grantedUserIds: Set<string>;
+  slotsUsed: number;
+  slotsMax: number;
+  busy: boolean;
+  onGrant: (userId: string) => void;
+  onRevoke: (userId: string) => void;
+}) {
+  const remotes = useRemoteParticipants();
+
+  if (remotes.length === 0) {
+    return (
+      <p className="border-t border-border px-2 py-1.5 text-[10px] text-muted">
+        Nadie más en la sala.
+      </p>
+    );
+  }
+
+  return (
+    <ul className="max-h-24 space-y-1 overflow-y-auto border-t border-border px-1.5 py-1.5">
+      {remotes.map((p) => {
+        const uid = p.identity;
+        const name = p.name || uid.slice(0, 8);
+        const hasGrant = grantedUserIds.has(uid);
+        return (
+          <li
+            key={uid}
+            className="flex items-center justify-between gap-1 rounded-md border border-border bg-surface px-1.5 py-1"
+          >
+            <span className="min-w-0 truncate text-[11px] font-medium text-foreground">
+              {name}
+            </span>
+            {hasGrant ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 shrink-0 px-2 text-[10px]"
+                disabled={busy}
+                onClick={() => onRevoke(uid)}
+              >
+                <VideoOff className="h-3 w-3" />
+                Quitar
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                className="h-7 shrink-0 px-2 text-[10px]"
+                disabled={busy || slotsUsed >= slotsMax}
+                onClick={() => onGrant(uid)}
+              >
+                <Video className="h-3 w-3" />
+                Dar
+              </Button>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -120,6 +251,7 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
   const [hasCameraGrant, setHasCameraGrant] = useState(false);
   const [guestSlotsUsed, setGuestSlotsUsed] = useState(0);
   const [guestSlotsMax, setGuestSlotsMax] = useState(2);
+  const [grantedUserIds, setGrantedUserIds] = useState<string[]>([]);
   const [cameraActionError, setCameraActionError] = useState("");
   const [cameraBusy, setCameraBusy] = useState(false);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
@@ -138,6 +270,10 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const unsubscribeChatRef = useRef<(() => void) | null>(null);
   const unsubscribeStageRef = useRef<(() => void) | null>(null);
+  const canPublishRef = useRef(false);
+  const hasCameraGrantRef = useRef(false);
+  canPublishRef.current = canPublish;
+  hasCameraGrantRef.current = hasCameraGrant;
 
   const canControlStage = isHost || isAdmin;
   const stageOpen = displayMode === "cover" || displayMode === "reader";
@@ -332,11 +468,41 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
       )
       .subscribe();
 
+    async function loadGrants() {
+      const { data } = await supabase
+        .from("meeting_camera_grants")
+        .select("user_id")
+        .eq("meeting_id", meetingId);
+      const ids = (data || []).map((g) => g.user_id as string);
+      setGrantedUserIds(ids);
+      setGuestSlotsUsed(ids.length);
+    }
+
+    void loadGrants();
+
+    const grantsChannel = supabase
+      .channel(`meeting-grants-${meetingId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "meeting_camera_grants",
+          filter: `meeting_id=eq.${meetingId}`,
+        },
+        () => {
+          void loadGrants();
+          void refreshLiveKitToken(meetingId);
+        }
+      )
+      .subscribe();
+
     unsubscribeChatRef.current = () => {
       void supabase.removeChannel(chatChannel);
     };
     unsubscribeStageRef.current = () => {
       void supabase.removeChannel(stageChannel);
+      void supabase.removeChannel(grantsChannel);
     };
 
     return () => {
@@ -345,7 +511,44 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
       unsubscribeStageRef.current?.();
       unsubscribeStageRef.current = null;
     };
-  }, [activeMeeting?.id]);
+  }, [activeMeeting?.id, slug]);
+
+  // Fallback if Realtime on grants is slow/off: guest picks up host grant.
+  useEffect(() => {
+    if (!activeMeeting || isHost) return;
+    const id = activeMeeting.id;
+    const timer = window.setInterval(() => {
+      void refreshLiveKitToken(id);
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [activeMeeting?.id, isHost]);
+
+  async function refreshLiveKitToken(meetingId: string) {
+    try {
+      const res = await fetch(`/api/c/${slug}/meetings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "token", meetingId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.token) return;
+      const nextPublish = Boolean(data.canPublish ?? data.isHost);
+      const nextGrant = Boolean(data.hasCameraGrant);
+      const permissionsChanged =
+        nextPublish !== canPublishRef.current ||
+        nextGrant !== hasCameraGrantRef.current;
+      if (permissionsChanged) {
+        setToken(data.token);
+      }
+      setCanPublish(nextPublish);
+      setHasCameraGrant(nextGrant);
+      setIsHost(Boolean(data.isHost));
+      setGuestSlotsUsed(Number(data.guestCameraSlotsUsed ?? 0));
+      setGuestSlotsMax(Number(data.guestCameraSlotsMax ?? 2));
+    } catch {
+      /* ignore transient refresh errors */
+    }
+  }
 
   async function sendChat(e: React.FormEvent) {
     e.preventDefault();
@@ -411,6 +614,7 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
     setCanPublish(false);
     setHasCameraGrant(false);
     setGuestSlotsUsed(0);
+    setGrantedUserIds([]);
     setCameraActionError("");
     setBookActionError("");
     setMobileChatOpen(false);
@@ -452,7 +656,7 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
     }
   }
 
-  async function requestCamera() {
+  async function grantCamera(targetUserId: string) {
     if (!activeMeeting) return;
     setCameraBusy(true);
     setCameraActionError("");
@@ -461,24 +665,50 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "request-camera",
+          action: "grant-camera",
           meetingId: activeMeeting.id,
+          targetUserId,
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.token) {
-        setCameraActionError(
-          data.error || "No se pudo abrir la cámara. Intentá de nuevo."
-        );
+      if (!res.ok) {
+        setCameraActionError(data.error || "No se pudo dar la cámara.");
         return;
       }
-      setToken(data.token);
-      setCanPublish(Boolean(data.canPublish));
-      setHasCameraGrant(Boolean(data.hasCameraGrant));
       setGuestSlotsUsed(Number(data.guestCameraSlotsUsed ?? guestSlotsUsed));
-      setGuestSlotsMax(Number(data.guestCameraSlotsMax ?? guestSlotsMax));
+      setGrantedUserIds((prev) =>
+        prev.includes(targetUserId) ? prev : [...prev, targetUserId]
+      );
     } catch {
-      setCameraActionError("No se pudo abrir la cámara. Revisá tu conexión.");
+      setCameraActionError("No se pudo dar la cámara. Revisá tu conexión.");
+    } finally {
+      setCameraBusy(false);
+    }
+  }
+
+  async function revokeCamera(targetUserId: string) {
+    if (!activeMeeting) return;
+    setCameraBusy(true);
+    setCameraActionError("");
+    try {
+      const res = await fetch(`/api/c/${slug}/meetings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "revoke-camera",
+          meetingId: activeMeeting.id,
+          targetUserId,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCameraActionError(data.error || "No se pudo quitar la cámara.");
+        return;
+      }
+      setGuestSlotsUsed(Number(data.guestCameraSlotsUsed ?? 0));
+      setGrantedUserIds((prev) => prev.filter((id) => id !== targetUserId));
+    } catch {
+      setCameraActionError("No se pudo quitar la cámara. Revisá tu conexión.");
     } finally {
       setCameraBusy(false);
     }
@@ -619,26 +849,16 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
               <MessageSquare className="h-4 w-4" />
               Chat
             </Button>
-            {!isHost &&
-              (hasCameraGrant ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={cameraBusy}
-                  onClick={() => void releaseCamera()}
-                >
-                  Soltar cámara
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  disabled={cameraBusy || guestSlotsUsed >= guestSlotsMax}
-                  onClick={() => void requestCamera()}
-                >
-                  <Video className="h-4 w-4" />
-                  Pedir cámara
-                </Button>
-              ))}
+            {!isHost && hasCameraGrant && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={cameraBusy}
+                onClick={() => void releaseCamera()}
+              >
+                Soltar cámara
+              </Button>
+            )}
             {(isAdmin || isHost) && activeMeeting.status !== "ended" && (
               <>
                 {activeMeeting.status !== "live" && (
@@ -765,130 +985,116 @@ export function MeetingRoomClient({ slug, isAdmin }: MeetingRoomClientProps) {
           onDisconnected={leaveMeeting}
         >
           <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-            {/* Cámaras */}
-            <aside
-              className={
-                stageOpen
-                  ? "flex max-h-[36vh] w-full shrink-0 flex-col border-b border-border lg:max-h-none lg:w-[22rem] lg:border-b-0 lg:border-r xl:w-[24rem]"
-                  : "flex max-h-[50vh] min-w-0 flex-1 flex-col border-b border-border lg:max-h-none lg:border-b-0 lg:border-r"
-              }
-            >
-              <div className="flex shrink-0 items-center justify-between border-b border-border px-2.5 py-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-                  Cámaras
-                </p>
-                <span className="text-[11px] text-muted">
-                  {isHost
-                    ? "Conductora"
-                    : hasCameraGrant
-                      ? "En vivo"
-                      : "Oyente"}
-                </span>
-              </div>
-              <div className="min-h-0 flex-1 overflow-hidden">
-                <MeetingCameraStack
-                  canPublish={canPublish}
-                  enlarge={!stageOpen}
-                />
-              </div>
-            </aside>
+            <MeetingCameraColumn
+              canPublish={canPublish}
+              hostUserId={activeMeeting.host_id}
+              showHostControls={canControlStage}
+              grantedUserIds={new Set(grantedUserIds)}
+              slotsUsed={guestSlotsUsed}
+              slotsMax={guestSlotsMax}
+              busy={cameraBusy}
+              onGrant={(id) => void grantCamera(id)}
+              onRevoke={(id) => void revokeCamera(id)}
+            />
 
-            {/* Escenario + chat */}
-            <section
-              className={
-                stageOpen
-                  ? "flex min-h-0 min-w-0 flex-1 flex-col"
-                  : "flex min-h-0 w-full shrink-0 flex-col lg:w-[20rem] xl:w-[22rem]"
-              }
-            >
-              {stageOpen ? (
-                <div className="flex min-h-0 flex-[1.65] flex-col bg-[#0c1727]">
-                  {displayMode === "cover" && stageBook ? (
-                    <div className="flex min-h-0 flex-1 items-center justify-center p-4 sm:p-6">
-                      <div className="flex max-h-full max-w-md flex-col items-center gap-3">
-                        {stageBook.cover_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={stageBook.cover_url}
-                            alt={stageBook.title}
-                            className="max-h-[min(58vh,28rem)] w-auto max-w-full rounded-sm object-contain shadow-lg"
-                          />
-                        ) : (
-                          <div className="flex h-64 w-44 items-center justify-center rounded bg-white/10 text-white/70">
-                            Sin portada
-                          </div>
-                        )}
-                        <div className="text-center text-white">
-                          <p className="text-base font-semibold">{stageBook.title}</p>
-                          {stageBook.author ? (
-                            <p className="text-sm text-white/70">{stageBook.author}</p>
-                          ) : null}
+            {/* Derecha: libro/portada arriba + chat abajo */}
+            <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 p-2">
+              <div className="flex min-h-0 flex-[1.45] flex-col overflow-hidden rounded-lg border border-border bg-[#0c1727]">
+                {displayMode === "cover" && stageBook ? (
+                  <div className="flex min-h-0 flex-1 items-center justify-center p-4 sm:p-6">
+                    <div className="flex max-h-full max-w-lg flex-col items-center gap-3">
+                      {stageBook.cover_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={stageBook.cover_url}
+                          alt={stageBook.title}
+                          className="max-h-full w-auto max-w-full rounded-md object-contain shadow-lg"
+                        />
+                      ) : (
+                        <div className="flex h-64 w-44 items-center justify-center rounded-md bg-white/10 text-white/70">
+                          Sin portada
                         </div>
+                      )}
+                      <div className="text-center text-white">
+                        <p className="text-base font-semibold">{stageBook.title}</p>
+                        {stageBook.author ? (
+                          <p className="text-sm text-white/70">{stageBook.author}</p>
+                        ) : null}
                       </div>
                     </div>
-                  ) : displayMode === "reader" && stageBook ? (
-                    <div className="min-h-0 flex-1 overflow-hidden">
-                      <BookReader
-                        title={stageBook.title}
-                        author={stageBook.author}
-                        pages={(stageBook.content_json as BookPage[]) || []}
-                        tableOfContents={
-                          (stageBook.table_of_contents as BookTOCItem[]) || []
-                        }
-                        pipelineVersion={stageBook.pipeline_version ?? 0}
-                        packMetrics={
-                          (stageBook.pack_metrics as PackMetrics | null) ?? null
-                        }
-                        compact
-                        fillWidth
-                        onDomPacked={async (packed, metrics) => {
-                          setStageBook((prev) =>
-                            prev
-                              ? {
-                                  ...prev,
-                                  content_json: packed as BookPage[],
-                                  total_pages: packed.length,
-                                  pipeline_version: PIPELINE_VERSION,
-                                  pack_metrics: metrics,
-                                }
-                              : prev
-                          );
-                          try {
-                            await fetch(
-                              `/api/c/${slug}/books/${stageBook.id}/paginate`,
-                              {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                  pages: packed,
-                                  packMetrics: metrics,
-                                  force: true,
-                                }),
+                  </div>
+                ) : displayMode === "reader" && stageBook ? (
+                  <div className="min-h-0 flex-1 overflow-hidden">
+                    <BookReader
+                      title={stageBook.title}
+                      author={stageBook.author}
+                      pages={(stageBook.content_json as BookPage[]) || []}
+                      tableOfContents={
+                        (stageBook.table_of_contents as BookTOCItem[]) || []
+                      }
+                      pipelineVersion={stageBook.pipeline_version ?? 0}
+                      packMetrics={
+                        (stageBook.pack_metrics as PackMetrics | null) ?? null
+                      }
+                      compact
+                      fillWidth
+                      onDomPacked={async (packed, metrics) => {
+                        setStageBook((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                content_json: packed as BookPage[],
+                                total_pages: packed.length,
+                                pipeline_version: PIPELINE_VERSION,
+                                pack_metrics: metrics,
                               }
-                            );
-                          } catch (err) {
-                            console.error("meeting paginate persist failed", err);
-                          }
-                        }}
-                      />
-                    </div>
-                  ) : null}
-                </div>
-              ) : (
-                <div className="hidden border-b border-border px-3 py-3 text-sm text-muted lg:block">
-                  {canControlStage
-                    ? "Elegí un libro para mostrar portada o abrir el lector."
-                    : "La conductora aún no abrió un libro."}
-                </div>
-              )}
+                            : prev
+                        );
+                        try {
+                          await fetch(
+                            `/api/c/${slug}/books/${stageBook.id}/paginate`,
+                            {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                pages: packed,
+                                packMetrics: metrics,
+                                force: true,
+                              }),
+                            }
+                          );
+                        } catch (err) {
+                          console.error("meeting paginate persist failed", err);
+                        }
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-white">
+                    <BookOpen className="h-10 w-10 text-white/50" />
+                    <p className="text-sm font-semibold">
+                      Portada o libro abierto
+                    </p>
+                    <p className="max-w-sm text-xs text-white/65">
+                      {canControlStage
+                        ? "Elegí un libro arriba para mostrar la portada o abrir el lector."
+                        : "La conductora todavía no abrió el escenario."}
+                    </p>
+                    {canControlStage ? (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setShowBooks(true)}
+                      >
+                        <BookOpen className="h-4 w-4" />
+                        Elegir libro
+                      </Button>
+                    ) : null}
+                  </div>
+                )}
+              </div>
 
-              <div
-                className={
-                  stageOpen
-                    ? "hidden min-h-[12rem] flex-1 border-t border-border lg:flex"
-                    : "hidden min-h-0 flex-1 lg:flex"
-                }
-              >
+              <div className="hidden min-h-[11rem] flex-1 overflow-hidden rounded-lg border border-border lg:flex">
                 {renderChatPanel()}
               </div>
             </section>

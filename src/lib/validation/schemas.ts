@@ -275,8 +275,20 @@ export const meetingStartEndSchema = z.object({
   meetingId: z.string().uuid(),
 });
 
-export const meetingCameraGrantSchema = z.object({
-  action: z.enum(["request-camera", "release-camera"]),
+export const meetingGrantCameraSchema = z.object({
+  action: z.literal("grant-camera"),
+  meetingId: z.string().uuid(),
+  targetUserId: z.string().uuid(),
+});
+
+export const meetingRevokeCameraSchema = z.object({
+  action: z.literal("revoke-camera"),
+  meetingId: z.string().uuid(),
+  targetUserId: z.string().uuid(),
+});
+
+export const meetingReleaseCameraSchema = z.object({
+  action: z.literal("release-camera"),
   meetingId: z.string().uuid(),
 });
 
@@ -291,7 +303,9 @@ export const meetingActionSchema = z.discriminatedUnion("action", [
   meetingCreateSchema,
   meetingTokenSchema,
   meetingStartEndSchema,
-  meetingCameraGrantSchema,
+  meetingGrantCameraSchema,
+  meetingRevokeCameraSchema,
+  meetingReleaseCameraSchema,
   meetingSetBookSchema,
 ]);
 

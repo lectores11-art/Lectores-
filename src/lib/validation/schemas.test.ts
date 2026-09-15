@@ -257,8 +257,27 @@ describe("meetingActionSchema", () => {
       meetingActionSchema.parse({ action: "start", meetingId: UUID })
     ).toEqual({ action: "start", meetingId: UUID });
     expect(
-      meetingActionSchema.parse({ action: "request-camera", meetingId: UUID })
-    ).toEqual({ action: "request-camera", meetingId: UUID });
+      meetingActionSchema.parse({
+        action: "grant-camera",
+        meetingId: UUID,
+        targetUserId: UUID,
+      })
+    ).toEqual({
+      action: "grant-camera",
+      meetingId: UUID,
+      targetUserId: UUID,
+    });
+    expect(
+      meetingActionSchema.parse({
+        action: "revoke-camera",
+        meetingId: UUID,
+        targetUserId: UUID,
+      })
+    ).toEqual({
+      action: "revoke-camera",
+      meetingId: UUID,
+      targetUserId: UUID,
+    });
     expect(
       meetingActionSchema.parse({ action: "release-camera", meetingId: UUID })
     ).toEqual({ action: "release-camera", meetingId: UUID });

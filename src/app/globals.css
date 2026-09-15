@@ -592,9 +592,13 @@ body {
   --lk-control-active-bg: var(--accent-light);
   --lk-control-secondary-bg: var(--background);
   --lk-control-secondary-fg: var(--foreground);
-  height: 100%;
   background: var(--background);
   color: var(--foreground);
+}
+
+/* Full-height only when the LiveKit surface is the main stage, not the cam strip controls. */
+.meeting-livekit.meeting-livekit--fill {
+  height: 100%;
 }
 
 .meeting-livekit .lk-grid-layout,

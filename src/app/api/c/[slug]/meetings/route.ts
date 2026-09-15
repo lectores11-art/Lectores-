@@ -309,7 +309,11 @@ export async function POST(
       });
     }
 
-    if (body.action === "request-camera" || body.action === "release-camera") {
+    if (
+      body.action === "grant-camera" ||
+      body.action === "revoke-camera" ||
+      body.action === "release-camera"
+    ) {
       const supabase = await createClient();
       const { data: meeting } = await supabase
         .from("meetings")
@@ -324,19 +328,31 @@ export async function POST(
 
       if (meeting.status !== "live") {
         return NextResponse.json(
-          { error: "La reunión tiene que estar en vivo para abrir cámara." },
+          { error: "La reunión tiene que estar en vivo para gestionar cámaras." },
           { status: 409 }
         );
       }
 
       const isHost = meeting.host_id === user.id || admin;
+      const meetingId = meeting.id;
+      const livekitRoom = meeting.livekit_room;
+      const hostId = meeting.host_id;
+
+      async function grantCounts() {
+        const { count } = await supabase
+          .from("meeting_camera_grants")
+          .select("id", { count: "exact", head: true })
+          .eq("meeting_id", meetingId);
+        return count ?? 0;
+      }
 
       if (body.action === "release-camera") {
+        // Guest drops their own grant (host keeps publish rights).
         if (!isHost) {
           await supabase
             .from("meeting_camera_grants")
             .delete()
-            .eq("meeting_id", meeting.id)
+            .eq("meeting_id", meetingId)
             .eq("user_id", user.id);
         }
 
@@ -344,7 +360,7 @@ export async function POST(
         const token = await issueLiveKitToken({
           userId: user.id,
           displayName: user.full_name || user.email,
-          roomName: meeting.livekit_room,
+          roomName: livekitRoom,
           canPublish,
         });
         if (!token) {
@@ -354,85 +370,82 @@ export async function POST(
           );
         }
 
-        const { count } = await supabase
-          .from("meeting_camera_grants")
-          .select("id", { count: "exact", head: true })
-          .eq("meeting_id", meeting.id);
-
         return NextResponse.json({
           token,
           canPublish,
           hasCameraGrant: false,
-          guestCameraSlotsUsed: count ?? 0,
+          guestCameraSlotsUsed: await grantCounts(),
           guestCameraSlotsMax: MAX_GUEST_CAMERA_GRANTS,
         });
       }
 
-      // request-camera
-      if (isHost) {
+      // grant-camera / revoke-camera — host only
+      if (!isHost) {
+        return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+      }
+
+      if (body.targetUserId === user.id || body.targetUserId === hostId) {
         return NextResponse.json(
-          {
-            error: "La conductora ya puede publicar cámara.",
-          },
+          { error: "La conductora ya publica cámara." },
           { status: 400 }
         );
       }
 
+      if (body.action === "revoke-camera") {
+        const service = await createServiceClient();
+        await service
+          .from("meeting_camera_grants")
+          .delete()
+          .eq("meeting_id", meetingId)
+          .eq("user_id", body.targetUserId);
+
+        return NextResponse.json({
+          success: true,
+          targetUserId: body.targetUserId,
+          hasCameraGrant: false,
+          guestCameraSlotsUsed: await grantCounts(),
+          guestCameraSlotsMax: MAX_GUEST_CAMERA_GRANTS,
+        });
+      }
+
+      // grant-camera
       const { data: existing } = await supabase
         .from("meeting_camera_grants")
         .select("id")
-        .eq("meeting_id", meeting.id)
-        .eq("user_id", user.id)
+        .eq("meeting_id", meetingId)
+        .eq("user_id", body.targetUserId)
         .maybeSingle();
 
       if (!existing) {
-        const { count } = await supabase
-          .from("meeting_camera_grants")
-          .select("id", { count: "exact", head: true })
-          .eq("meeting_id", meeting.id);
-
-        if ((count ?? 0) >= MAX_GUEST_CAMERA_GRANTS) {
+        const used = await grantCounts();
+        if (used >= MAX_GUEST_CAMERA_GRANTS) {
           return NextResponse.json(
             {
               error:
-                "Hay 2 cámaras de invitadas abiertas. Pedí de nuevo cuando se libere un lugar.",
+                "Ya hay 2 cámaras de invitadas. Quitá una antes de dar otra.",
             },
             { status: 409 }
           );
         }
 
-        const { error: insertError } = await supabase
+        const service = await createServiceClient();
+        const { error: insertError } = await service
           .from("meeting_camera_grants")
-          .insert({ meeting_id: meeting.id, user_id: user.id });
+          .insert({
+            meeting_id: meetingId,
+            user_id: body.targetUserId,
+          });
 
         if (insertError) {
-          return internalErrorResponse("Error al pedir cámara:", insertError);
+          return internalErrorResponse("Error al dar cámara:", insertError);
         }
       }
 
-      const token = await issueLiveKitToken({
-        userId: user.id,
-        displayName: user.full_name || user.email,
-        roomName: meeting.livekit_room,
-        canPublish: true,
-      });
-      if (!token) {
-        return NextResponse.json(
-          { error: "LiveKit no configurado." },
-          { status: 503 }
-        );
-      }
-
-      const { count } = await supabase
-        .from("meeting_camera_grants")
-        .select("id", { count: "exact", head: true })
-        .eq("meeting_id", meeting.id);
-
       return NextResponse.json({
-        token,
-        canPublish: true,
+        success: true,
+        targetUserId: body.targetUserId,
         hasCameraGrant: true,
-        guestCameraSlotsUsed: count ?? 0,
+        guestCameraSlotsUsed: await grantCounts(),
         guestCameraSlotsMax: MAX_GUEST_CAMERA_GRANTS,
       });
     }
